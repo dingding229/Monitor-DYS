@@ -652,7 +652,7 @@
     {:else}
       {#if processedMetrics}
         <!-- 4 charts side-by-side: wide 4 cols, medium 2 cols, mobile 1 col -->
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div class="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-4">
           <!-- 1. CPU -->
           <UPlotChart
             title="CPU 使用率"
@@ -873,7 +873,7 @@
 
       <!-- Ping Latency & Loss below (Per SPEC-v1.2 §6.e: remove subtitle on Ping Latency, remove '丢包' from Ping Loss legend labels) -->
       {#if processedPing}
-        <div class="grid grid-cols-1 gap-3 {processedPing.hasLossPoints ? 'lg:grid-cols-2' : ''}">
+        <div class="grid grid-cols-1 items-start gap-3 {processedPing.hasLossPoints ? 'lg:grid-cols-2' : ''}">
           <UPlotChart
             title="Ping 延迟"
             height={180}

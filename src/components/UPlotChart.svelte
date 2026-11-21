@@ -25,6 +25,7 @@
   } = $props()
 
   let container: HTMLDivElement | undefined = $state()
+  let canvasHost: HTMLDivElement | undefined = $state()
   let chart: uPlot | null = null
   let resizeObserver: ResizeObserver | null = null
 
@@ -58,7 +59,7 @@
   })
 
   function buildOptions(width: number): uPlot.Options {
-    const axisColor = "#6b7280"
+    const axisColor = "#737373"
     const gridColor = "rgba(0,0,0,0.05)"
     const pointCount = Array.isArray(data[0]) ? data[0].length : 0
     // Per SPEC-v1.2 §6.f: Show point circles only when there are fewer than 30 points
@@ -68,7 +69,7 @@
       width: Math.max(180, width),
       height,
       // Per SPEC-v1.2 §6.c: right padding 24px so the last X-axis tick label is never clipped
-      padding: [8, 24, 0, 0],
+      padding: [6, 24, 0, 0],
       cursor: {
         drag: { x: false, y: false },
       },
@@ -95,7 +96,9 @@
           stroke: axisColor,
           grid: { stroke: gridColor, width: 1 },
           ticks: { stroke: gridColor, width: 1, size: 3 },
-          font: "10.5px -apple-system, BlinkMacSystemFont, sans-serif",
+          size: 22,
+          gap: 3,
+          font: "11px -apple-system, BlinkMacSystemFont, sans-serif",
           // Per SPEC-v1.2 §6.d:
           // - hours > 24: show date `MM-DD`
           // - hours <= 24: show `HH:mm`, and when crossing day boundary show `MM-DD HH:mm` on the first tick
@@ -121,7 +124,8 @@
           grid: { stroke: gridColor, width: 1 },
           ticks: { stroke: gridColor, width: 1, size: 3 },
           size: 52,
-          font: "10.5px -apple-system, BlinkMacSystemFont, sans-serif",
+          gap: 4,
+          font: "11px -apple-system, BlinkMacSystemFont, sans-serif",
           values: (_u, splits) =>
             splits.map((v) => (yFormat ? yFormat(v) : Number.isInteger(v) ? String(v) : v.toFixed(1))),
         },
@@ -156,15 +160,16 @@
   }
 
   function renderChart() {
-    if (!container) return
+    if (!container || !canvasHost) return
     const width = container.clientWidth || 320
     containerWidth = width
     if (chart) {
       chart.destroy()
       chart = null
     }
+    canvasHost.replaceChildren()
     try {
-      chart = new uPlot(buildOptions(width), data, container)
+      chart = new uPlot(buildOptions(width), data, canvasHost)
     } catch {
       // fallback if canvas is unavailable in test env
     }
@@ -240,8 +245,10 @@
     onmouseleave={() => (hoverIdx = null)}
     role="img"
     aria-label={title}
+    style="height: {height}px;"
     class="relative w-full overflow-hidden"
   >
+    <div bind:this={canvasHost} class="h-full w-full"></div>
     {#if hoverIdx !== null && hoverTimeStr}
       <div
         class="pointer-events-none absolute z-20 rounded-md border border-neutral-200 bg-white/95 px-2 py-1 text-[11px] shadow-xs backdrop-blur"

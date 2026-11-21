@@ -227,22 +227,19 @@ let regionDisplayNames: Intl.DisplayNames | null = null
 
 export function regionName(code?: string | null): string {
   if (!code || typeof code !== "string") return ""
-  const upper = code.trim().toUpperCase()
-  if (!upper) return ""
-  if (upper === "HK") return "香港"
-  if (upper === "MO") return "澳门"
-  if (upper === "TW") return "台湾"
-  if (!/^[A-Z]{2}$/.test(upper)) return upper
+  const trimmed = code.trim()
+  if (!trimmed) return ""
+  const upper = trimmed.toUpperCase()
   try {
     if (!regionDisplayNames && typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
       regionDisplayNames = new Intl.DisplayNames("zh-CN", { type: "region" })
     }
     const name = regionDisplayNames?.of(upper)
-    if (name && name !== upper) {
-      return name.replace(/^中国/, "") || name
+    if (name && name.toUpperCase() !== upper) {
+      return name.replace(/^中国/, "").replace(/特别行政区$/, "") || name
     }
-    return upper
   } catch {
-    return upper
+    // ignore
   }
+  return code
 }

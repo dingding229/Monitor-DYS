@@ -142,7 +142,6 @@
 </script>
 
 <div
-  data-testid="world-map"
   class="flex flex-col justify-between overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-3"
 >
   <!-- Top status header -->
@@ -168,11 +167,14 @@
   <!-- Map + Country List layout: side-by-side on wide screen, stacked on narrow, <520px only shows country-list -->
   <div class="mt-2 grid grid-cols-1 items-stretch gap-2.5 min-[1180px]:grid-cols-12">
     <!-- Left: SVG Dot-Matrix World Map (hidden below 520px per SPEC-v1.2 §7) -->
-    <div class="relative hidden min-[520px]:flex min-[1180px]:col-span-7 items-center justify-center">
-      <div class="relative w-full">
+    <div
+      data-testid="world-map"
+      class="relative hidden h-[160px] min-[520px]:flex min-[1180px]:col-span-7 items-center justify-center"
+    >
+      <div class="relative h-full w-full">
         <svg
           viewBox="0 0 {MAP_W} {MAP_H}"
-          class="h-auto max-h-[164px] w-full select-none"
+          class="h-full w-full select-none"
           aria-label="世界节点分布图"
         >
           <!-- Land dots colored by country node presence -->
@@ -275,10 +277,10 @@
       </div>
     </div>
 
-    <!-- Right / Bottom: Compact Country List sorted by node count descending -->
+    <!-- Right / Bottom: Compact Country List sorted by node count descending (fixed height matching map, scrollable) -->
     <div
       data-testid="country-list"
-      class="flex max-h-[164px] flex-col gap-1 overflow-y-auto pr-0.5 min-[1180px]:col-span-5"
+      class="thin-scroll flex h-[160px] flex-col gap-1 overflow-y-auto pr-1 min-[1180px]:col-span-5"
     >
       {#if countryGroups.length === 0}
         <div class="py-6 text-center text-[12px] text-neutral-400">暂无地区数据</div>
@@ -295,7 +297,7 @@
             onmouseleave={() => {
               if (hovered?.code === c.code) hovered = null
             }}
-            class="flex w-full cursor-pointer items-center justify-between gap-1.5 rounded-md border px-2 py-1 text-left text-[11.5px] transition-colors {isSelected
+            class="flex w-full shrink-0 cursor-pointer items-center justify-between gap-1.5 rounded-md border px-2 py-1 text-left text-[11.5px] transition-colors {isSelected
               ? 'border-neutral-900 bg-neutral-900/5 font-semibold text-neutral-900'
               : 'border-transparent bg-neutral-50/80 text-neutral-700 hover:bg-neutral-100'}"
           >
