@@ -138,7 +138,8 @@ export async function api<T>(
       })) as T
     } catch (e) {
       if (e instanceof ApiError) throw e
-      const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
+      const namedError = e instanceof Error || (typeof DOMException !== "undefined" && e instanceof DOMException)
+      const timedOut = namedError && (e.name === "TimeoutError" || e.name === "AbortError")
       if (!timedOut || attempt >= maxRetries) {
         throw new ApiError(0, "网络连接失败，稍后再试")
       }

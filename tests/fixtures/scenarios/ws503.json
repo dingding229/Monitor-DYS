@@ -1,1 +1,1 @@
-{ "routeStatus": { "/api/ws": 503 } }
+{ "routeStatus": { "/api/ws": 503 }, "config": { "poll_interval": 2 } }

@@ -104,6 +104,14 @@ try {
     assert.ok(short.metrics.length <= 61 && short.metrics.some(({ minutes }) => minutes < short.step / 60));
     assert.ok(short.metrics.every(({ cpu, cpu_max }) => cpu_max >= cpu));
     assert.deepEqual(short.ping, []);
+    for (const key of ['mem_used', 'disk_used', 'swap_used']) {
+      const live = nodes[0].metrics[key];
+      assert.ok(live > 0);
+      assert.ok(short.metrics.every((bucket) => Math.abs(bucket[key] - live) / live < 0.25), key);
+      assert.ok(new Set(short.metrics.map((bucket) => bucket[key])).size > 1, key);
+    }
+    const noSwap = get(base, '/api/nodes/2/metrics?hours=6&series=metrics');
+    assert.ok(noSwap.metrics.every(({ swap_used }) => swap_used === 0));
     const long = get(base, '/api/nodes/1/metrics?hours=9999&points=30&series=ping');
     assert.equal(long.step, 129600);
     assert.deepEqual(long.metrics, []);
@@ -114,7 +122,7 @@ try {
     assert.equal(full.step, 60);
     assert.ok(full.metrics.length && full.ping.length);
     await Promise.all([frames(base, { count: 2 }), frames(base, { query: '?gzip=0', gzip: true, count: 2 })]);
-    return '12 nodes, static/SPA and API OK; history step 360s/129600s; text + gzip pushes ≈2s apart';
+    return '12 nodes, static/SPA and API OK; history step 360s/129600s and storage near live; text + gzip pushes ≈2s apart';
   });
   await scenario('nogroups', (base) => {
     assert.ok(get(base, '/api/nodes').nodes.every(({ group }) => group === ''));
@@ -185,7 +193,7 @@ try {
     assert.equal(config.show_summary, false);
     assert.equal(config.accent, 'notacolor');
     assert.equal(config.poll_interval, 999);
-    assert.match(config.announcement, /\n.*<b>/);
+    assert.match(config.announcement, /\n.*<img src=x onerror=alert\(1\)>/);
     return 'valid and invalid saved values returned unchanged';
   });
 } finally {

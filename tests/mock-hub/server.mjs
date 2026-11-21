@@ -45,6 +45,20 @@ function dateAfter(days) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function storageFor(id) {
+  return { mem_total: (2 + (id % 4) * 2) * GiB, swap_total: (id % 2) * GiB, disk_total: (20 + id * 10) * GiB };
+}
+
+// Sample the same bounded resource usage for the live snapshot and historical buckets.
+function usageAt(storage, id, ts) {
+  const minute = Math.floor(ts / 60);
+  return {
+    mem_used: Math.round(storage.mem_total * (0.45 + 0.035 * Math.sin(minute / 17 + id))),
+    swap_used: Math.round(storage.swap_total * (0.10 + 0.009 * Math.sin(minute / 29 + id))),
+    disk_used: Math.round(storage.disk_total * (0.30 + 0.012 * Math.sin(minute / 47 + id))),
+  };
+}
+
 function snapshot() {
   const now = Math.floor(Date.now() / 1000);
   const elapsed = Math.max(0, Math.floor((Date.now() - started) / 1000));
@@ -53,14 +67,13 @@ function snapshot() {
     const { id } = seed;
     const online = seed.online ?? true;
     const age = own(seed, 'last_seen_ago') ? (seed.last_seen_ago === null ? null : seed.last_seen_ago + elapsed) : 1;
-    const storage = { mem_total: (2 + (id % 4) * 2) * GiB, swap_total: (id % 2) * GiB, disk_total: (20 + id * 10) * GiB };
+    const storage = storageFor(id);
     const traffic = { total_rx: id * 38 * GiB + tick * 23456, total_tx: id * 23 * GiB + tick * 12345,
       month_rx: id * 3 * GiB + tick * 23456, month_tx: id * 2 * GiB + tick * 12345 };
     const custom = scenario.metricOverrides ?? {};
     const metrics = !online || (own(custom, id) && custom[id] === null) ? null : {
       uptime: 86400 * id + elapsed, cpu: 7 + ((id * 11 + tick) % 75), load: [0.8, 0.6, 0.4],
-      ...storage, mem_used: storage.mem_total * 0.45, swap_used: storage.swap_total * 0.1,
-      disk_used: storage.disk_total * 0.3, net_rx: id * 20000 + (tick % 20) * 6200,
+      ...storage, ...usageAt(storage, id, now), net_rx: id * 20000 + (tick % 20) * 6200,
       net_tx: id * 9000 + (tick % 16) * 4100, ...traffic, tcp: 90 + id, udp: 10 + id, procs: 100 + id,
       ...custom[id],
     };
@@ -96,14 +109,15 @@ function history(id, query) {
   const end = Math.floor(Date.now() / 60000) * 60;
   const start = end - duration;
   const times = Array.from({ length: Math.ceil(duration / step) }, (_, i) => start + i * step);
+  const storage = storageFor(id);
   const metrics = series === 'ping' ? [] : times.map((ts, i) => {
     const available = Math.min(step, end - ts) / 60;
     const minutes = i % 13 === 4 ? Math.floor(available / 2) : available;
     const cpu = 8 + ((id * 7 + i * 3) % 50);
     const net_rx = 20000 + ((i * 23511 + id * 563) % 600000);
     const net_tx = 10000 + ((i * 8251 + id * 271) % 250000);
-    const point = { ts, minutes, cpu, cpu_max: cpu + 12, mem_used: id * 128 * MiB + i * MiB,
-      swap_used: id % 2 ? 128 * MiB : 0, disk_used: id * 3 * GiB, net_rx, net_tx,
+    const midpoint = ts + available * 30;
+    const point = { ts, minutes, cpu, cpu_max: cpu + 12, ...usageAt(storage, id, midpoint), net_rx, net_tx,
       net_rx_max: net_rx * 3, net_tx_max: net_tx * 2, tcp: 80 + (i % 20), udp: 8 + (i % 9), procs: 90 + (i % 12) };
     omit(point, scenario.omitHistoryFields);
     return point;

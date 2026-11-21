@@ -40,8 +40,7 @@ export function percent(x: number, total?: number): string {
     return `${p < 10 && p > 0 ? p.toFixed(1) : Math.round(p)}%`
   }
   if (typeof x !== "number" || !Number.isFinite(x)) return "0%"
-  const val = x > 0 && x < 1 ? x * 100 : x
-  const clamped = Math.max(0, val)
+  const clamped = Math.max(0, x)
   return `${clamped < 10 && clamped > 0 && !Number.isInteger(clamped) ? clamped.toFixed(1) : Math.round(clamped)}%`
 }
 
@@ -184,7 +183,7 @@ export function offlineFor(
   node: { online?: boolean; last_seen?: number | null; last_seen_ago?: number | null },
   nowMs = Date.now(),
 ): string | null {
-  if (node.online) return null
+  if (node.online !== false) return null
 
   const hasAgo = "last_seen_ago" in node && node.last_seen_ago !== undefined
   let seconds: number | null

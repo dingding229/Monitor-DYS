@@ -32,11 +32,10 @@ function isValidCssColor(v: string): boolean {
   if (typeof CSS !== "undefined" && typeof CSS.supports === "function") {
     return CSS.supports("color", s)
   }
-  return (
-    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s) ||
-    /^(rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color)\([^)]+\)$/i.test(s) ||
-    /^[a-zA-Z]{3,20}$/.test(s)
-  )
+  if (typeof document === "undefined") return false
+  const style = document.createElement("span").style
+  style.color = s
+  return style.color !== ""
 }
 
 function extractFields(declared: unknown): ConfigField[] {

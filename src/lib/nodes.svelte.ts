@@ -208,8 +208,10 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     pause()
     retryAttempts = 0
     gap = true
-    void fetchOnce()
-    connect()
+    const resumedEpoch = epoch
+    void fetchOnce().then(() => {
+      if (resumedEpoch === epoch && !doc?.hidden) connect()
+    })
   }
 
   function onVisibilityChange() {
