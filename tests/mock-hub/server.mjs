@@ -38,16 +38,38 @@ const nodeSeeds = normal.nodes.map((seed, index) => ({
   ...scenario.nodeOverrides?.[seed.id],
 })).filter((seed) => me.authed || seed.public !== false);
 
+const dateLabel = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
 function dateAfter(days) {
   const date = new Date(started);
   date.setHours(12, 0, 0, 0);
   date.setDate(date.getDate() + days);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return dateLabel(date);
 }
 
-function storageFor(id) {
-  return { mem_total: (2 + (id % 4) * 2) * GiB, swap_total: (id % 2) * GiB, disk_total: (20 + id * 10) * GiB };
+function monthStart(now, resetDay) {
+  const date = new Date(now * 1000);
+  const boundary = (offset) => {
+    const year = date.getFullYear(), month = date.getMonth() + offset;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(lastDay, resetDay));
+  };
+  const thisMonth = boundary(0);
+  return dateLabel(date >= thisMonth ? thisMonth : boundary(-1));
 }
+
+function billedUsage(mode, rx, tx) {
+  if (mode === 'up') return tx;
+  if (mode === 'down') return rx;
+  if (mode === 'max') return Math.max(rx, tx);
+  return rx + tx;
+}
+
+function storageFor({ id, swap_total = (id % 2) * GiB }) {
+  return { mem_total: (2 + (id % 4) * 2) * GiB, swap_total, disk_total: (20 + id * 10) * GiB };
+}
+
+const baseCpu = (id) => 7 + ((id * 11) % 75);
 
 // Sample the same bounded resource usage for the live snapshot and historical buckets.
 function usageAt(storage, id, ts) {
@@ -67,25 +89,30 @@ function snapshot() {
     const { id } = seed;
     const online = seed.online ?? true;
     const age = own(seed, 'last_seen_ago') ? (seed.last_seen_ago === null ? null : seed.last_seen_ago + elapsed) : 1;
-    const storage = storageFor(id);
+    const storage = storageFor(seed);
+    const { traffic_mode = 'sum', traffic_limit = id % 3 ? 2 * 1024 * GiB : 0, traffic_reset_day = 1 } = seed;
     const traffic = { total_rx: id * 38 * GiB + tick * 23456, total_tx: id * 23 * GiB + tick * 12345,
       month_rx: id * 3 * GiB + tick * 23456, month_tx: id * 2 * GiB + tick * 12345 };
     const custom = scenario.metricOverrides ?? {};
     const metrics = !online || (own(custom, id) && custom[id] === null) ? null : {
-      uptime: 86400 * id + elapsed, cpu: 7 + ((id * 11 + tick) % 75), load: [0.8, 0.6, 0.4],
+      uptime: 86400 * id + elapsed, cpu: baseCpu(id) + tick % 5, load: [0.8, 0.6, 0.4],
       ...storage, ...usageAt(storage, id, now), net_rx: id * 20000 + (tick % 20) * 6200,
       net_tx: id * 9000 + (tick % 16) * 4100, ...traffic, tcp: 90 + id, udp: 10 + id, procs: 100 + id,
       ...custom[id],
     };
+    const address = `192.0.2.${id}`;
+    const adminFields = me.authed ? {
+      hostname: `node-${id}.example.invalid`, ip: address, ipv4: address, remark: `仅管理员可见的节点 ${id} 备注`,
+    } : {};
     const node = {
-      public: true, public_remark: '', ...seed, online, sort: index, metrics,
+      public: true, public_remark: '', ...adminFields, ...seed, online, sort: index, metrics,
       last_seen: age === null ? 0 : now - age, last_seen_ago: age,
       os: id % 3 ? 'Debian GNU/Linux 12' : 'Ubuntu 24.04 LTS', kernel: '6.1.0',
       arch: id % 4 ? 'x86_64' : 'aarch64', virt: id % 5 ? 'kvm' : 'lxc',
-      cpu_name: 'AMD EPYC 7B13', cpu_cores: 2 + (id % 4) * 2, ...storage,
+      cpu_name: seed.cpu_name ?? 'AMD EPYC 7B13', cpu_cores: seed.cpu_cores ?? (2 + (id % 4) * 2), ...storage,
       agent_version: '1.4.3', expires_at: seed.expires_in === null ? null : dateAfter(seed.expires_in),
-      traffic_limit: id % 3 ? 2 * 1024 * GiB : 0, traffic_mode: 'sum', traffic_reset_day: 1,
-      ...traffic, month_used: traffic.month_rx + traffic.month_tx, month_start: `${dateAfter(0).slice(0, 7)}-01`,
+      traffic_limit, traffic_mode, traffic_reset_day,
+      ...traffic, month_used: billedUsage(traffic_mode, traffic.month_rx, traffic.month_tx), month_start: monthStart(now, traffic_reset_day),
       day_rx: id * 20 * MiB, day_tx: id * 12 * MiB,
     };
     if (!me.authed) omit(node, ['hostname', 'ip', 'ipv4', 'ipv6', 'ipv4_pin', 'ipv6_pin', 'ipv4_auto', 'ipv6_auto', 'addresses', 'remark']);
@@ -99,7 +126,8 @@ const probes = [[9, '东京探测'], [2, '法兰克福探测']];
 function positiveInt(value, fallback) {
   return value && /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : fallback;
 }
-function history(id, query) {
+function history(seed, query) {
+  const { id } = seed;
   const hours = Math.min(positiveInt(query.get('hours'), 6), (me.history_days ?? 7) * 24);
   const points = Math.max(60, Math.min(1440, positiveInt(query.get('points'), 1440)));
   const series = query.get('series');
@@ -109,15 +137,15 @@ function history(id, query) {
   const end = Math.floor(Date.now() / 60000) * 60;
   const start = end - duration;
   const times = Array.from({ length: Math.ceil(duration / step) }, (_, i) => start + i * step);
-  const storage = storageFor(id);
+  const storage = storageFor(seed);
   const metrics = series === 'ping' ? [] : times.map((ts, i) => {
     const available = Math.min(step, end - ts) / 60;
     const minutes = i % 13 === 4 ? Math.floor(available / 2) : available;
-    const cpu = 8 + ((id * 7 + i * 3) % 50);
+    const cpu = Math.max(0, Math.round(baseCpu(id) + 6 * Math.sin(ts / 701 + id)));
     const net_rx = 20000 + ((i * 23511 + id * 563) % 600000);
     const net_tx = 10000 + ((i * 8251 + id * 271) % 250000);
     const midpoint = ts + available * 30;
-    const point = { ts, minutes, cpu, cpu_max: cpu + 12, ...usageAt(storage, id, midpoint), net_rx, net_tx,
+    const point = { ts, minutes, cpu, cpu_max: Math.min(100, cpu + 12), ...usageAt(storage, id, midpoint), net_rx, net_tx,
       net_rx_max: net_rx * 3, net_tx_max: net_tx * 2, tcp: 80 + (i % 20), udp: 8 + (i % 9), procs: 90 + (i % 12) };
     omit(point, scenario.omitHistoryFields);
     return point;
@@ -201,7 +229,8 @@ async function handle(req, res) {
     const match = /^\/api\/nodes\/(\d+)\/metrics$/.exec(path);
     if (match) {
       const id = Number(match[1]);
-      return nodeSeeds.some((node) => node.id === id) ? json(res, history(id, url.searchParams)) : error(res, 404);
+      const seed = nodeSeeds.find((node) => node.id === id);
+      return seed ? json(res, history(seed, url.searchParams)) : error(res, 404);
     }
     return error(res, 404);
   }

@@ -11,8 +11,10 @@ describe("resolveConfig", () => {
     const supports = vi.fn().mockReturnValue(true)
     vi.stubGlobal("CSS", { supports })
     const valid = {
-      layout: "table", color_scheme: "dark", accent: "  rebeccapurple  ", show_summary: false, show_billing: false,
-      announcement: "第一行\n第二行", footer: "A footer", poll_interval: 2,
+      layout: "table", card_size: "standard", accent: "  rebeccapurple  ",
+      show_summary: false, show_map: false, show_search: false, show_sort: false, show_billing: false,
+      finance_currency: "EUR", expiry_warning_days: 3, visitor_info_enabled: false,
+      announcement: "第一行\n第二行", footer: "A footer", footer_url: "https://example.invalid/about", poll_interval: 2,
     }
     expect(resolveConfig(manifest, valid)).toEqual({ ...valid, accent: "rebeccapurple" })
     expect(supports).toHaveBeenCalledWith("color", "rebeccapurple")
@@ -24,8 +26,10 @@ describe("resolveConfig", () => {
     vi.stubGlobal("CSS", { supports })
     const fields = [...manifest.config, { type: "title", label: "Test title", key: "heading", default: "ignored" }]
     expect(resolveConfig(fields, {
-      layout: "unknown", color_scheme: 3, accent: "notacolor", show_summary: "false", show_billing: 1,
-      announcement: null, footer: ["not a string"], poll_interval: "5", heading: "not a setting", secret: "undeclared",
+      layout: "unknown", card_size: 3, color_scheme: "dark", accent: "notacolor", show_summary: "false", show_billing: 1,
+      show_map: "false", show_search: null, show_sort: 1, finance_currency: "GBP", expiry_warning_days: 366,
+      visitor_info_enabled: "false", announcement: null, footer: ["not a string"], footer_url: "ftp://example.invalid",
+      poll_interval: "5", heading: "not a setting", secret: "undeclared",
     })).toEqual(defaults)
     expect(supports).toHaveBeenCalledWith("color", "notacolor")
     expect(resolveConfig(manifest, { show_summary: false, poll_interval: 999 })).toEqual({ ...defaults, show_summary: false })

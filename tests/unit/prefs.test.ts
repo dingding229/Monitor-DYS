@@ -12,17 +12,17 @@ const storage: Storage = {
 }
 beforeEach(() => storage.clear())
 
-it("loads only the three visitor preferences and ignores site-level keys", () => {
+it("loads layout/sort and ignores old color preferences and site-level keys", () => {
   savePref("layout", "table", storage)
-  savePref("color_scheme", "dark", storage)
   savePref("sort", "cpu", storage)
-  for (const key of ["accent", "poll_interval", "announcement", "show_billing"]) storage.setItem(key, "ignored")
-  expect(loadPrefs(storage)).toEqual({ layout: "table", color_scheme: "dark", sort: "cpu" })
+  for (const key of ["accent", "poll_interval", "announcement", "show_billing", "visitor_info_enabled"]) storage.setItem(key, "ignored")
+  storage.setItem("theme", "dark")
+  storage.setItem("dys.color_scheme", "dark")
+  expect(loadPrefs(storage)).toEqual({ layout: "table", sort: "cpu" })
 })
 
 it("ignores invalid stored values", () => {
   storage.setItem("dys.layout", "bad")
-  storage.setItem("theme", "bad")
   storage.setItem("dys.sort", "bad")
   expect(loadPrefs(storage)).toEqual({})
 })

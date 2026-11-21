@@ -1,5 +1,8 @@
 import { expect, test, type Response } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
+import { mockGeo } from "./helpers"
+
+test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
 
 const isNodes = (url: string) => new URL(url).pathname === "/api/nodes"
 const isSocket = (url: string) => new URL(url).pathname === "/api/ws"
@@ -19,8 +22,15 @@ test("ws503: two fallback polls arrive within 10 seconds and update the page", a
   await expect.poll(() => snapshots.length, { timeout: 10_000 }).toBeGreaterThanOrEqual(3)
   const [first, later] = await Promise.all([snapshots[0].json(), snapshots[2].json()])
   expect(later.nodes[0].metrics.cpu).not.toBe(first.nodes[0].metrics.cpu)
-  const cpu = page.getByTestId("node-card").filter({ hasText: "东京 01" }).getByText(/^CPU/).locator("..")
-  await expect(cpu).toContainText(`${later.nodes[0].metrics.cpu}%`)
+  const cpuRow = page.getByTestId("node-card").filter({ hasText: "东京 01" })
+    .getByText(/^CPU(?:\s+\d+\s*核)?$/).locator("xpath=ancestor::div[1]")
+  const percent = cpuRow.getByText(/^\d+(?:\.\d+)?%$/)
+  const initial = first.nodes[0].metrics.cpu
+  await expect.poll(async () => {
+    const displayed = Number((await percent.innerText()).replace("%", ""))
+    const polled = await Promise.all(snapshots.slice(2).map((response) => response.json()))
+    return displayed !== initial && polled.some(({ nodes }) => nodes[0].metrics.cpu === displayed)
+  }).toBe(true)
 })
 
 test("config: invalid poll_interval falls back to five seconds on disconnect", async ({ page }) => {

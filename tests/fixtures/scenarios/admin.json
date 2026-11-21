@@ -1,0 +1,19 @@
+{
+  "me": { "authed": true },
+  "nodeOverrides": {
+    "1": {
+      "hostname": "tokyo.example.invalid",
+      "ip": "192.0.2.1",
+      "ipv4": "192.0.2.1",
+      "ipv6": "2001:db8::1",
+      "remark": "仅管理员可见的东京备注"
+    },
+    "12": {
+      "public": false,
+      "hostname": "seoul.example.invalid",
+      "ip": "198.51.100.12",
+      "ipv4": "198.51.100.12",
+      "remark": "未公开节点"
+    }
+  }
+}

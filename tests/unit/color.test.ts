@@ -21,11 +21,11 @@ describe("withAlpha", () => {
     expect(withAlpha("rgba(10, 20, 30, 0.8)", 0.2)).toBe("rgba(10, 20, 30, 0.2)")
   })
 
-  it("falls back to default #2563eb on invalid color values", () => {
-    expect(withAlpha("notacolor", 0.1)).toBe("rgba(37, 99, 235, 0.1)")
-    expect(withAlpha("", 0.1)).toBe("rgba(37, 99, 235, 0.1)")
-    expect(withAlpha("#zzzzzz", 0.1)).toBe("rgba(37, 99, 235, 0.1)")
-    expect(withAlpha("rgb(bad)", 0.1)).toBe("rgba(37, 99, 235, 0.1)")
+  it("falls back to default #10b981 on invalid color values", () => {
+    expect(withAlpha("notacolor", 0.1)).toBe("rgba(16, 185, 129, 0.1)")
+    expect(withAlpha("", 0.1)).toBe("rgba(16, 185, 129, 0.1)")
+    expect(withAlpha("#zzzzzz", 0.1)).toBe("rgba(16, 185, 129, 0.1)")
+    expect(withAlpha("rgb(bad)", 0.1)).toBe("rgba(16, 185, 129, 0.1)")
   })
 
   it("clamps alpha into [0, 1]", () => {

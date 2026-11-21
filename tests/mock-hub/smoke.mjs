@@ -60,9 +60,10 @@ async function frames(base, { query = '', gzip = false, count = 1 } = {}) {
           let text;
           if (gzip) { assert.ok(data instanceof ArrayBuffer); text = gunzipSync(Buffer.from(data)).toString(); }
           else { assert.equal(typeof data, 'string'); text = data; }
-          const { nodes } = JSON.parse(text);
+          const payload = JSON.parse(text);
+          const { nodes } = payload;
           assert.ok(nodes.length > 0);
-          received.push({ at: performance.now(), speed: nodes[0].metrics.net_rx });
+          received.push({ at: performance.now(), speed: nodes[0].metrics.net_rx, payload });
           if (received.length === count) done();
         } catch (err) { done(err); }
       });
@@ -72,6 +73,7 @@ async function frames(base, { query = '', gzip = false, count = 1 } = {}) {
       assert.ok(interval >= 1500 && interval <= 5000, `Push interval ${interval}ms`);
       assert.notEqual(received[0].speed, received[1].speed);
     }
+    return received.map(({ payload }) => payload);
   } finally { ws.close(); }
 }
 
@@ -82,16 +84,37 @@ try {
   await scenario('normal', async (base) => {
     const me = get(base, '/api/me');
     assert.equal(me.public_page, true);
+    assert.equal(me.authed, false);
     assert.equal(me.history_days, 90);
     const { nodes } = get(base, '/api/nodes');
-    assert.equal(nodes.length, 12);
+    assert.equal(nodes.length, 16);
+    const countries = new Set(nodes.map(({ country }) => country));
+    assert.equal(countries.size, 12);
+    for (const country of ['CN', 'HK', 'JP', 'SG', 'US', 'DE', 'GB', 'KR']) assert.ok(countries.has(country));
     assert.deepEqual([...new Set(nodes.map(({ group }) => group))], ['亚太', '欧洲', '美洲', '']);
-    assert.deepEqual([...new Set(nodes.map(({ expires_in }) => expires_in))].sort((a, b) => (a ?? 100) - (b ?? 100)), [-3, 0, 5, 60, null]);
+    assert.deepEqual([...new Set(nodes.map(({ expires_in }) => expires_in))].sort((a, b) => (a ?? 100) - (b ?? 100)), [-3, 0, 3, 5, 15, 30, 60, null]);
     const offlineAges = nodes.filter(({ online }) => !online).map(({ last_seen_ago }) => last_seen_ago);
     assert.equal(offlineAges.length, 2);
     assert.ok(offlineAges[0] >= 4500);
     assert.equal(offlineAges[1], null);
     assert.ok(nodes.some(({ billing_cycle }) => /^\d+m$/.test(billing_cycle)));
+    assert.ok(nodes.some(({ billing_cycle }) => billing_cycle === 'once'));
+    const currencies = new Set(nodes.map(({ currency }) => currency));
+    for (const code of ['CNY', 'USD', 'EUR', 'JPY', 'HKD']) assert.ok(currencies.has(code));
+    assert.ok(nodes.some(({ traffic_limit }) => traffic_limit === 0));
+    assert.deepEqual([...new Set(nodes.map(({ traffic_mode }) => traffic_mode))].sort(), ['down', 'max', 'sum', 'up']);
+    for (const node of nodes) {
+      for (const key of ['traffic_limit', 'month_used', 'day_rx', 'day_tx', 'price', 'swap_total', 'cpu_cores']) {
+        assert.ok(Number.isFinite(node[key]) && node[key] >= 0, `${node.id}: ${key}`);
+      }
+      assert.match(node.month_start, /^\d{4}-\d{2}-\d{2}$/);
+      assert.ok(node.traffic_reset_day >= 1 && node.traffic_reset_day <= 31);
+      assert.equal(typeof node.cpu_name, 'string');
+      assert.equal(typeof node.public_remark, 'string');
+      const { month_rx: rx, month_tx: tx } = node;
+      assert.equal(node.month_used, { down: rx, max: Math.max(rx, tx), sum: rx + tx, up: tx }[node.traffic_mode]);
+    }
+    assert.match(nodes.find(({ id }) => id === 13).month_start, /-(?:28|29|30|31)$/);
     assert.deepEqual(get(base, '/api/themes/dys/config'), {});
     assert.equal(curl(base, '/').body, staticIndex);
     assert.equal(curl(base, '/node/1').body, staticIndex);
@@ -110,6 +133,14 @@ try {
       assert.ok(short.metrics.every((bucket) => Math.abs(bucket[key] - live) / live < 0.25), key);
       assert.ok(new Set(short.metrics.map((bucket) => bucket[key])).size > 1, key);
     }
+    for (const node of nodes.slice(12)) {
+      const history = get(base, `/api/nodes/${node.id}/metrics?hours=6&series=metrics`);
+      assert.ok(history.metrics.length > 0);
+      for (const key of ['mem_used', 'disk_used', 'swap_used']) {
+        const live = node.metrics[key];
+        assert.ok(history.metrics.every((bucket) => live === 0 ? bucket[key] === 0 : Math.abs(bucket[key] - live) / live < 0.25), `${node.id}: ${key}`);
+      }
+    }
     const noSwap = get(base, '/api/nodes/2/metrics?hours=6&series=metrics');
     assert.ok(noSwap.metrics.every(({ swap_used }) => swap_used === 0));
     const long = get(base, '/api/nodes/1/metrics?hours=9999&points=30&series=ping');
@@ -121,8 +152,9 @@ try {
     const full = get(base, '/api/nodes/1/metrics');
     assert.equal(full.step, 60);
     assert.ok(full.metrics.length && full.ping.length);
-    await Promise.all([frames(base, { count: 2 }), frames(base, { query: '?gzip=0', gzip: true, count: 2 })]);
-    return '12 nodes, static/SPA and API OK; history step 360s/129600s and storage near live; text + gzip pushes ≈2s apart';
+    const streams = await Promise.all([frames(base, { count: 2 }), frames(base, { query: '?gzip=0', gzip: true, count: 2 })]);
+    assert.ok(streams.flat().every(({ nodes, admin }) => nodes.length === 16 && admin === false));
+    return '16 nodes / 12 countries; billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; text + gzip pushes ≈2s apart';
   });
   await scenario('nogroups', (base) => {
     assert.ok(get(base, '/api/nodes').nodes.every(({ group }) => group === ''));
@@ -132,13 +164,33 @@ try {
     assert.ok(get(base, '/api/nodes').nodes.every(({ group }) => group));
     return 'all nodes grouped';
   });
+  await scenario('admin', async (base) => {
+    assert.equal(get(base, '/api/me').authed, true);
+    const { admin, nodes } = get(base, '/api/nodes');
+    assert.equal(admin, true);
+    assert.equal(nodes.length, 16);
+    const tokyo = nodes.find(({ id }) => id === 1);
+    assert.equal(tokyo.hostname, 'tokyo.example.invalid');
+    assert.equal(tokyo.ip, '192.0.2.1');
+    assert.equal(tokyo.ipv4, '192.0.2.1');
+    assert.equal(tokyo.ipv6, '2001:db8::1');
+    assert.equal(tokyo.remark, '仅管理员可见的东京备注');
+    assert.ok(nodes.every((node) => node.ip && node.ipv4 && node.hostname && node.remark && !('token' in node)));
+    assert.equal(nodes.find(({ id }) => id === 12).public, false);
+    assert.ok(get(base, '/api/nodes/12/metrics').metrics.length);
+    const [push] = await frames(base, { query: '?gzip' });
+    assert.equal(push.admin, true);
+    assert.equal(push.nodes[0].remark, tokyo.remark);
+    return 'authed, admin fields + private node/history, text frame even with ?gzip';
+  });
   await scenario('anonymous', (base) => {
     const { admin, nodes } = get(base, '/api/nodes');
     assert.equal(admin, false);
-    assert.equal(nodes.length, 11);
-    assert.ok(nodes.every((node) => node.public && ['hostname', 'ip', 'remark', 'token'].every((key) => !(key in node))));
+    assert.equal(get(base, '/api/me').authed, false);
+    assert.equal(nodes.length, 15);
+    assert.ok(nodes.every((node) => node.public && ['hostname', 'ip', 'ipv4', 'ipv6', 'remark', 'token'].every((key) => !(key in node))));
     assert.equal(curl(base, '/api/nodes/12/metrics').status, 404);
-    return '11 public nodes, no admin fields, private history 404';
+    return '15 public nodes, no admin fields, private history 404';
   });
   await scenario('legacy-1.2', async (base) => {
     assert.ok(!('history_days' in get(base, '/api/me')));
@@ -175,7 +227,7 @@ try {
     const result = curl(base, '/api/ws?gzip', upgrade);
     assert.equal(result.status, 503);
     assert.match(result.type, /^text\/plain/);
-    assert.equal(get(base, '/api/nodes').nodes.length, 12);
+    assert.equal(get(base, '/api/nodes').nodes.length, 16);
     return 'upgrade 503, polling 200';
   });
   await scenario('proxy502', (base) => {
@@ -191,6 +243,8 @@ try {
     const config = get(base, '/api/themes/dys/config');
     assert.equal(config.layout, 'table');
     assert.equal(config.show_summary, false);
+    assert.equal(config.visitor_info_enabled, false);
+    assert.equal(config.expiry_warning_days, 3);
     assert.equal(config.accent, 'notacolor');
     assert.equal(config.poll_interval, 999);
     assert.match(config.announcement, /\n.*<img src=x onerror=alert\(1\)>/);

@@ -1,7 +1,9 @@
 {
   "config": {
     "layout": "table",
-    "color_scheme": "dark",
+    "card_size": "standard",
+    "visitor_info_enabled": false,
+    "expiry_warning_days": 3,
     "show_summary": false,
     "show_billing": "false",
     "accent": "notacolor",

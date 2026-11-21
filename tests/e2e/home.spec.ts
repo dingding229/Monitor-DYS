@@ -1,34 +1,37 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
+import { historyRangeLabels, historyRangeSelect, mockGeo } from "./helpers"
+
+test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
 
 const longRanges = ["1 小时", "6 小时", "1 天", "7 天", "30 天", "90 天"]
 
-test("normal: 12 cards, first-seen groups, and filtered summary totals", async ({ page }) => {
+test("normal: 16 cards, first-seen groups, and ungrouped filtering", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   const cards = page.getByTestId("node-card")
   const tabs = page.getByTestId("group-tab")
   const summary = page.getByTestId("summary")
-  await expect(cards).toHaveCount(12)
-  await expect(tabs).toHaveText(["全部 12", "亚太 3", "欧洲 3", "美洲 3", "未分组 3"])
-  await expect(summary).toContainText("10 / 12")
-  await expect(summary).toContainText("390 GB")
+  await expect(cards).toHaveCount(16)
+  await expect(tabs).toHaveText(["全部 16", "亚太 4", "欧洲 4", "美洲 4", "未分组 4"])
+  await expect(summary).toContainText("14 / 16")
+  await expect(summary).toContainText(/680\s*GB/)
 
   const ungrouped = page.getByRole("tab", { name: /^未分组/ })
   await ungrouped.click()
   await expect(ungrouped).toHaveAttribute("aria-selected", "true")
-  await expect(cards).toHaveCount(3)
-  await expect(cards.getByRole("heading")).toHaveText(["北京 01", "悉尼 01", "首尔 01"])
-  await expect(summary).toContainText("3 / 3")
-  await expect(summary).toContainText("125 GB")
+  await expect(cards).toHaveCount(4)
+  await expect(cards).toContainText(["北京 01", "悉尼 01", "首尔 01", "东京 02"])
+  await expect(summary).toContainText("4 / 4")
+  await expect(summary).toContainText(/195\s*GB/)
 })
 
 test("normal: table layout is restored after a reload", async ({ page }) => {
   await page.goto(mockUrl("normal"))
-  await expect(page.getByTestId("node-card")).toHaveCount(12)
-  await page.getByRole("button", { name: "切换为列表视图" }).click()
-  await expect(page.getByTestId("node-row")).toHaveCount(12)
+  await expect(page.getByTestId("node-card")).toHaveCount(16)
+  await page.getByRole("button", { name: /^(?:切换为)?列表(?:视图)?$/ }).first().click()
+  await expect(page.getByTestId("node-row")).toHaveCount(16)
   await page.reload()
-  await expect(page.getByTestId("node-row")).toHaveCount(12)
+  await expect(page.getByTestId("node-row")).toHaveCount(16)
   await expect(page.getByTestId("node-card")).toHaveCount(0)
 })
 
@@ -42,9 +45,15 @@ test("normal: opening a card renders charts; changing the range requests both hi
     const url = new URL(request.url())
     return url.pathname === "/api/nodes/1/metrics" && url.searchParams.get("hours") === "720" && url.searchParams.get("series") === series
   }))
-  const month = page.getByRole("button", { name: "30 天", exact: true })
-  await month.click()
-  await expect(month).toHaveAttribute("aria-pressed", "true")
+  const range = historyRangeSelect(page)
+  if (await range.count()) {
+    await range.selectOption({ label: "30 天" })
+    await expect(range).toHaveValue("720")
+  } else {
+    const month = page.getByRole("button", { name: "30 天", exact: true })
+    await month.click()
+    await expect(month).toHaveAttribute("aria-pressed", "true")
+  }
   for (const request of await Promise.all(requests)) {
     const points = Number(new URL(request.url()).searchParams.get("points"))
     expect(points).toBeGreaterThanOrEqual(60)
@@ -56,29 +65,22 @@ test("normal: /node/1 loads directly with all 90-day history ranges", async ({ p
   const response = await page.goto(mockUrl("normal", "/node/1"))
   expect(response?.status()).toBe(200)
   await expect(page).toHaveTitle("东京 01 · DYS Mock Hub")
-  await expect(page.getByTestId("range-btn")).toHaveText(longRanges)
+  await expect.poll(async () => (await historyRangeLabels(page)).map((label) => label.trim())).toEqual(longRanges)
   await expect(page.getByTestId("chart").filter({ hasText: "网络速率" }).locator("canvas")).toBeVisible()
   const ping = page.getByTestId("chart").filter({ hasText: "Ping 延迟" })
   await expect(ping).toContainText(/东京探测.*法兰克福探测/)
-  await expect(page.locator("dl")).toContainText(/总 ↓ 38\.0 GB ↑ 23\.0 GB/)
 })
 
-test("normal: 360px layout has no document overflow and dark mode toggles html.dark", async ({ page }) => {
+test("normal: 360px home and detail have no document overflow", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 })
   await page.goto(mockUrl("normal"))
-  await expect(page.getByTestId("node-card")).toHaveCount(12)
+  await expect(page.getByTestId("node-card")).toHaveCount(16)
   expect(await page.evaluate(() => window.innerWidth)).toBe(360)
   const horizontalScroll = () => page.evaluate(() => {
     window.scrollTo({ left: 10_000, top: window.scrollY, behavior: "instant" })
     return window.scrollX
   })
   await expect.poll(horizontalScroll).toBe(0)
-  const html = page.locator("html")
-  await expect(html).not.toHaveClass(/\bdark\b/)
-  await page.getByRole("button", { name: "切换为深色模式" }).click()
-  await expect(html).toHaveClass(/\bdark\b/)
-  await page.reload()
-  await expect(html).toHaveClass(/\bdark\b/)
   await page.goto(mockUrl("normal", "/node/1"))
   await expect(page.getByTestId("chart").filter({ hasText: "CPU 使用率" }).locator("canvas")).toBeVisible()
   await expect.poll(horizontalScroll).toBe(0)

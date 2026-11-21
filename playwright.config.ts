@@ -12,7 +12,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: process.env.CI ? 2 : 4,
   reporter: "list",
-  use: { colorScheme: "light", trace: "retain-on-failure" },
+  use: { trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: Object.entries(mockPorts).map(([scenario, port]) => ({
     name: `mock-${scenario}`,
