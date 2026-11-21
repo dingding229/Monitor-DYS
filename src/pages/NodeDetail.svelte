@@ -605,7 +605,7 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2 text-[12px]">
-        <!-- Range buttons (keeps data-testid="range-btn" for E2E & quick click) -->
+        <!-- Range buttons (keeps data-testid="range-btn") -->
         <div class="flex flex-wrap items-center gap-1" role="group" aria-label="时间范围">
           {#each rangeHoursList as h (h)}
             {@const active = selectedHours === h}
@@ -623,18 +623,6 @@
             </button>
           {/each}
         </div>
-
-        <!-- Range dropdown selector -->
-        <select
-          aria-label="选择时间范围"
-          value={selectedHours}
-          onchange={(e) => (selectedHours = Number((e.currentTarget as HTMLSelectElement).value))}
-          class="h-7 cursor-pointer rounded-lg border border-neutral-200 bg-white px-2 text-[12px] text-neutral-700 outline-none"
-        >
-          {#each rangeHoursList as h (h)}
-            <option value={h}>{rangeLabel(h)}</option>
-          {/each}
-        </select>
 
         <label class="inline-flex cursor-pointer items-center gap-1 text-[12px] text-neutral-600">
           <input
@@ -851,7 +839,7 @@
         {#if hasConnMetrics}
           <UPlotChart
             title="TCP / UDP / 进程数"
-            height={145}
+            height={180}
             partialBuckets={processedMetrics.partialBuckets}
             data={[
               processedMetrics.ts,
@@ -890,6 +878,7 @@
         <div class="grid grid-cols-1 gap-3 {processedPing.hasLossPoints ? 'lg:grid-cols-2' : ''}">
           <UPlotChart
             title="Ping 延迟"
+            height={180}
             subtitle={processedPing.probeInfos
               .map((p) => (p.totalLoss !== null && p.totalLoss > 0 ? `${p.name} 丢包 ${p.totalLoss.toFixed(1)}%` : `${p.name}`))
               .join(" · ")}
@@ -907,6 +896,7 @@
           {#if processedPing.hasLossPoints}
             <UPlotChart
               title="Ping 丢包率"
+              height={180}
               data={processedPing.lossData}
               yMin={0}
               yMax={100}

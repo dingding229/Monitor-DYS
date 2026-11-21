@@ -14,6 +14,8 @@
     name: string
     x: number
     y: number
+    dispX: number
+    dispY: number
     online: number
     total: number
   }
@@ -42,10 +44,38 @@
         name: countryName(code),
         x,
         y,
+        dispX: x,
+        dispY: y,
         online: counts.online,
         total: counts.total,
       })
     }
+
+    // Simple collision avoidance for nearby flag badges (< 18px on the 360x160 coordinate grid)
+    const MIN_DX = 20
+    const MIN_DY = 14
+    for (let pass = 0; pass < 6; pass++) {
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const a = list[i]
+          const b = list[j]
+          const dx = b.dispX - a.dispX
+          const dy = b.dispY - a.dispY
+          if (Math.abs(dx) < MIN_DX && Math.abs(dy) < MIN_DY) {
+            const pushX = ((MIN_DX - Math.abs(dx)) / 2 + 0.5) * (dx >= 0 ? 1 : -1)
+            const pushY = ((MIN_DY - Math.abs(dy)) / 2 + 0.5) * (dy >= 0 ? 1 : -1)
+            if (Math.abs(dx) / MIN_DX > Math.abs(dy) / MIN_DY) {
+              a.dispX = Math.max(14, Math.min(MAP_W - 14, a.dispX - pushX))
+              b.dispX = Math.max(14, Math.min(MAP_W - 14, b.dispX + pushX))
+            } else {
+              a.dispY = Math.max(16, Math.min(MAP_H - 8, a.dispY - pushY))
+              b.dispY = Math.max(16, Math.min(MAP_H - 8, b.dispY + pushY))
+            }
+          }
+        }
+      }
+    }
+
     return list
   })
 
@@ -96,27 +126,39 @@
       </g>
 
       {#each markers as m (m.code)}
+        <!-- Optional leader line when flag is displaced from centroid -->
+        {#if Math.hypot(m.dispX - m.x, m.dispY - m.y) > 4}
+          <line
+            x1={m.x}
+            y1={m.y}
+            x2={m.dispX}
+            y2={m.dispY - 4}
+            stroke="#94a3b8"
+            stroke-width="0.7"
+            stroke-dasharray="1.5 1.5"
+          />
+        {/if}
         <g transform="translate({m.x}, {m.y})">
           <circle
-            r="6"
+            r="5"
             fill={m.online === m.total ? "var(--online)" : "var(--warn)"}
             fill-opacity="0.18"
           />
           <circle
-            r="2.6"
+            r="2.2"
             fill={m.online === m.total ? "var(--online)" : "var(--warn)"}
             stroke="#ffffff"
-            stroke-width="1"
+            stroke-width="0.9"
           />
         </g>
       {/each}
     </svg>
 
-    <!-- Interactive HTML Flag badges positioned over centroids -->
+    <!-- Interactive HTML Flag badges positioned with collision avoidance -->
     <div class="pointer-events-none absolute inset-0">
       {#each markers as m (m.code)}
-        {@const leftPct = (m.x / MAP_W) * 100}
-        {@const topPct = (m.y / MAP_H) * 100}
+        {@const leftPct = (m.dispX / MAP_W) * 100}
+        {@const topPct = (m.dispY / MAP_H) * 100}
         <button
           type="button"
           data-testid="map-marker"
@@ -130,7 +172,7 @@
             if (hovered?.code === m.code) hovered = null
           }}
           class="pointer-events-auto absolute -translate-x-1/2 -translate-y-full cursor-pointer rounded bg-white/95 p-0.5 shadow-2xs ring-1 ring-neutral-200 transition-transform hover:z-20 hover:scale-110"
-          style="left: {leftPct.toFixed(1)}%; top: {Math.max(12, topPct - 2).toFixed(1)}%;"
+          style="left: {leftPct.toFixed(1)}%; top: {Math.max(10, topPct - 1.5).toFixed(1)}%;"
         >
           <CountryFlag code={m.code} />
         </button>

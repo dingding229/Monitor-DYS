@@ -17,10 +17,10 @@
   let meError = $state<string>("")
   let meUnauthorized = $state<boolean>(false)
   let siteConfig = $state<ThemeConfig>(resolveConfig())
-  const initialPrefs = loadPrefs()
-  let visitorPrefs = $state<VisitorPrefs>(initialPrefs)
+  let configLoaded = $state<boolean>(false)
+  let visitorPrefs = $state<VisitorPrefs>(loadPrefs())
   let selectedGroup = $state<GroupKey>(ALL_GROUP)
-  let sortKey = $state<SortKey>(initialPrefs.sort ?? "default")
+  let sortKey = $state<SortKey>(loadPrefs().sort ?? "default")
   let searchQuery = $state<string>("")
   let orderedNodes = $state<Node[]>([])
 
@@ -87,6 +87,7 @@
     void fetchMe()
     void loadConfig().then((cfg) => {
       siteConfig = cfg
+      configLoaded = true
     })
     nodeStore.start()
   })
@@ -357,7 +358,9 @@
       </div>
     </footer>
 
-    <!-- Bottom Visitor Bubble -->
-    <VisitorBubble enabled={siteConfig.visitor_info_enabled} />
+    <!-- Bottom Visitor Bubble: only mounted AFTER loadConfig() resolves -->
+    {#if configLoaded && siteConfig.visitor_info_enabled}
+      <VisitorBubble enabled={siteConfig.visitor_info_enabled} />
+    {/if}
   </div>
 {/if}

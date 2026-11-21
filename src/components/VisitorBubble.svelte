@@ -9,20 +9,28 @@
     type VisitorGeo,
   } from "@/lib/visitor"
 
-  let { enabled = true }: { enabled?: boolean } = $props()
+  let { enabled = false }: { enabled?: boolean } = $props()
 
-  let dismissed = $state<boolean>(isVisitorBubbleDismissed())
+  let dismissed = $state<boolean>(false)
   let expanded = $state<boolean>(false)
   let geo = $state<VisitorGeo | null>(null)
   let fetched = $state<boolean>(false)
-  let visitTime = $state<string>(new Date().toLocaleString("zh-CN", { hour12: false }))
+  let visitTime = $state<string>("")
 
   let uaInfo = $derived(
     parseUA(typeof navigator !== "undefined" ? navigator.userAgent : ""),
   )
 
   $effect(() => {
-    if (enabled && !dismissed && !fetched) {
+    if (!enabled) return
+    if (isVisitorBubbleDismissed()) {
+      dismissed = true
+      return
+    }
+    if (!visitTime) {
+      visitTime = new Date().toLocaleString("zh-CN", { hour12: false })
+    }
+    if (!fetched) {
       fetched = true
       void fetchVisitor().then((res) => {
         geo = res
