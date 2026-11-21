@@ -1,8 +1,8 @@
 {
   "name": "DYS",
   "short": "dys",
-  "description": "极简卡片风格的 Monitor 状态主题，Svelte 5 + uPlot",
-  "version": "1.0.0",
+  "description": "紧凑信息型 Monitor 状态主题：总览卡片、点阵地图、搜索排序、访客气泡，Svelte 5 + uPlot",
+  "version": "1.1.0",
   "author": "dingding229",
   "url": "https://github.com/dingding229/Monitor-DYS",
   "config": [
@@ -19,22 +19,45 @@
       ]
     },
     {
-      "key": "color_scheme",
+      "key": "card_size",
       "type": "select",
-      "default": "auto",
-      "label": "默认配色",
+      "default": "compact",
+      "label": "卡片尺寸",
+      "help": "紧凑：宽屏每行 4–5 张；标准：每行 3–4 张",
       "options": [
-        { "value": "auto", "label": "跟随系统" },
-        { "value": "light", "label": "浅色" },
-        { "value": "dark", "label": "深色" }
+        { "value": "compact", "label": "紧凑" },
+        { "value": "standard", "label": "标准" }
       ]
     },
-    { "key": "accent", "type": "string", "default": "#2563eb", "label": "主题色", "help": "CSS 颜色值，如 #2563eb；无效值回退默认" },
-    { "type": "title", "label": "内容" },
-    { "key": "show_summary", "type": "boolean", "default": true, "label": "显示汇总", "help": "节点列表上方的在线数、流量、网速" },
-    { "key": "show_billing", "type": "boolean", "default": true, "label": "显示价格与到期" },
+    { "key": "accent", "type": "string", "default": "#10b981", "label": "主题色", "help": "CSS 颜色值，如 #10b981；无效值回退默认" },
+    { "type": "title", "label": "首页" },
+    { "key": "show_summary", "type": "boolean", "default": true, "label": "显示总览卡片", "help": "内存、剩余价值、实时上行、硬盘、累计流量、实时下行六格" },
+    { "key": "show_map", "type": "boolean", "default": true, "label": "显示节点地图", "help": "点阵世界地图，按国家标出节点与在线数" },
+    { "key": "show_search", "type": "boolean", "default": true, "label": "显示搜索", "help": "按名称、地区、系统、公开备注搜索" },
+    { "key": "show_sort", "type": "boolean", "default": true, "label": "显示排序选择" },
     { "key": "announcement", "type": "text", "default": "", "label": "公告", "help": "显示在页面顶部，按纯文本渲染" },
-    { "key": "footer", "type": "string", "default": "", "label": "页脚文字" },
+    { "type": "title", "label": "费用" },
+    { "key": "show_billing", "type": "boolean", "default": true, "label": "显示价格、到期与剩余价值" },
+    {
+      "key": "finance_currency",
+      "type": "select",
+      "default": "CNY",
+      "label": "剩余价值汇总币种",
+      "help": "总览只累计该币种的节点，其他币种计为「未计入」，不请求汇率",
+      "options": [
+        { "value": "CNY", "label": "人民币 CNY" },
+        { "value": "USD", "label": "美元 USD" },
+        { "value": "EUR", "label": "欧元 EUR" },
+        { "value": "HKD", "label": "港币 HKD" },
+        { "value": "JPY", "label": "日元 JPY" }
+      ]
+    },
+    { "key": "expiry_warning_days", "type": "number", "default": 7, "min": 1, "max": 365, "label": "到期提醒天数", "help": "剩余天数小于等于此值时显示提醒色" },
+    { "type": "title", "label": "访客与页脚" },
+    { "key": "visitor_info_enabled", "type": "boolean", "default": true, "label": "显示底部访客气泡", "help": "显示访客出口地区与浏览器，点击展开设备、IP、运营商和访问时间。开启后访客浏览器会向 api.ip.sb 请求定位（失败时用 ipwho.is）；关闭后不发请求" },
+    { "key": "footer", "type": "string", "default": "", "label": "页脚文字 / 备案号" },
+    { "key": "footer_url", "type": "string", "default": "", "label": "页脚链接", "help": "仅接受 http/https 地址；无效时只显示文字" },
+    { "type": "title", "label": "高级" },
     { "key": "poll_interval", "type": "number", "default": 5, "min": 2, "max": 60, "label": "降级轮询间隔（秒）", "help": "WebSocket 不可用时轮询 /api/nodes 的间隔" }
   ]
 }
