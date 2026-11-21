@@ -23,6 +23,25 @@ https://github.com/dingding229/Monitor-DYS
 
 或者下载 Release 中的 `theme.tar.gz`，解压到 Hub 的 `--themes` 目录下 `dys/` 子目录。
 
+更新：在主题卡片上点「从 GitHub 更新」即可（读取 `theme.json` 的 `url`，拉取最新正式 Release）。
+
+## 路由
+
+| 路径 | 页面 |
+|---|---|
+| `/` | 节点列表 |
+| `/node/{id}` | 节点详情 |
+
+如果反向代理或 WAF 按路径放行，请把以上路由加入白名单。否则点击进入详情页正常，但刷新后会失败。
+
+## 站点设置
+
+安装后在面板主题卡片的「设置」中可调整：默认布局、默认配色、主题色、显示汇总、显示价格与到期、公告、页脚文字、降级轮询间隔。设置保存在 Hub 数据库中，升级主题不会丢失。
+
+## 发版
+
+`theme.json`、`package.json`、`package-lock.json` 三者版本保持一致后，推送 `v<version>` tag。GitHub Actions 会构建、测试、打包，并发布带 `theme.tar.gz` 的正式 Release。
+
 ## 本地开发
 
 ```bash

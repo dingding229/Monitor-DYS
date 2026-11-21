@@ -18,6 +18,7 @@
     uptime,
   } from "@/lib/format"
   import { rangeLabel, rangesFor } from "@/lib/ranges"
+  import { withAlpha } from "@/lib/color"
 
   type MetricPoint = {
     ts: number
@@ -497,7 +498,7 @@
                   label: "平均",
                   stroke: accent,
                   width: 1.5,
-                  fill: `${accent}1a`,
+                  fill: withAlpha(accent, 0.1),
                   value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
                 },
                 {
@@ -513,7 +514,7 @@
                   label: "CPU",
                   stroke: accent,
                   width: 1.5,
-                  fill: `${accent}1a`,
+                  fill: withAlpha(accent, 0.1),
                   value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
                 },
               ]}
@@ -536,7 +537,7 @@
                   label: "内存",
                   stroke: accent,
                   width: 1.5,
-                  fill: `${accent}1a`,
+                  fill: withAlpha(accent, 0.1),
                   value: (_u, v) => (v == null ? "—" : bytes(v)),
                 },
                 {
@@ -552,7 +553,7 @@
                   label: "内存",
                   stroke: accent,
                   width: 1.5,
-                  fill: `${accent}1a`,
+                  fill: withAlpha(accent, 0.1),
                   value: (_u, v) => (v == null ? "—" : bytes(v)),
                 },
               ]}
@@ -580,7 +581,7 @@
                   label: "下行均值",
                   stroke: accent,
                   width: 1.5,
-                  fill: `${accent}15`,
+                  fill: withAlpha(accent, 0.08),
                   value: (_u, v) => (v == null ? "—" : speed(v)),
                 },
                 {
@@ -609,7 +610,7 @@
                   label: "下行",
                   stroke: accent,
                   width: 1.5,
-                  fill: `${accent}15`,
+                  fill: withAlpha(accent, 0.08),
                   value: (_u, v) => (v == null ? "—" : speed(v)),
                 },
                 {
