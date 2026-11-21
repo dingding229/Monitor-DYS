@@ -1,4 +1,4 @@
-import { expect, test, type WebSocketRoute } from "@playwright/test"
+import { expect, test, type Locator, type Page, type WebSocketRoute } from "@playwright/test"
 import { rateDate, ratesPerCny } from "../fixtures/exchange-rates"
 import { mockUrl } from "../fixtures/mock-origins"
 import { ipsbResponse } from "../fixtures/visitor-geo"
@@ -224,15 +224,51 @@ test("v1.2: mobile hides the map but a country-list row applies the same filter"
   await expect(page.getByTestId("summary")).toContainText(/25(?:\.0+)?\s*GB/)
 })
 
-type CanvasLabel = { text: string; x: number; left: number; right: number; top: number; bottom: number }
-type CanvasProbeWindow = Window & { t10CanvasText?: WeakMap<HTMLCanvasElement, CanvasLabel[]> }
+type HistoryPoint = { ts: number }
+type History = { metrics: HistoryPoint[]; ping: HistoryPoint[] }
 
-test("v1.2: four points in a 30-day range draw unique MM-DD ticks without clipping the last label", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
+const dateTick = /^\d{2}-\d{2}$/
+const timeTick = /^\d{2}:\d{2}$/
+const isHistory = (url: URL, hours: number) =>
+  url.pathname === "/api/nodes/1/metrics" && url.searchParams.get("hours") === String(hours)
+const cpuPlot = (page: Page) => page.getByRole("img", { name: "CPU 使用率", exact: true })
+
+async function selectHistory(page: Page, hours: number, label: string): Promise<History> {
+  const response = page.waitForResponse((res) => {
+    const url = new URL(res.url())
+    return isHistory(url, hours) && url.searchParams.get("series") === "metrics"
+  })
+  const range = page.getByRole("group", { name: "时间范围" }).getByRole("button", { name: label, exact: true })
+  await range.click()
+  await expect(range).toHaveAttribute("aria-pressed", "true")
+  return await (await response).json() as History
+}
+
+async function expectXAxisTicks(plot: Locator, checkFormat: (ticks: string[]) => void): Promise<string[]> {
+  let ticks: string[] = []
+  await expect(async () => {
+    const raw = await plot.getAttribute("data-ticks")
+    expect(raw, "The canvas wrapper must expose its X-axis labels via data-ticks").not.toBeNull()
+    const parsed: unknown = JSON.parse(raw ?? "null")
+    if (!Array.isArray(parsed) || parsed.some((label) => typeof label !== "string")) {
+      throw new Error(`Invalid data-ticks JSON array: ${raw}`)
+    }
+    expect(parsed.length, `At least two X-axis labels: ${raw}`).toBeGreaterThanOrEqual(2)
+    expect(parsed, `Repeated X-axis labels: ${raw}`).toEqual([...new Set(parsed)])
+    checkFormat(parsed)
+    ticks = parsed
+  }).toPass({ timeout: 5000 })
+  return ticks
+}
+
+type CanvasLabel = { text: string; left: number; right: number; top: number; bottom: number }
+type CanvasProbeWindow = Window & { axisTextBounds?: WeakMap<HTMLCanvasElement, CanvasLabel[]> }
+
+async function recordAxisTextBounds(page: Page) {
   await page.addInitScript(() => {
     const labels = new WeakMap<HTMLCanvasElement, CanvasLabel[]>()
     const probe = window as CanvasProbeWindow
-    probe.t10CanvasText = labels
+    probe.axisTextBounds = labels
     const context = CanvasRenderingContext2D.prototype
     const originalClear = context.clearRect
     context.clearRect = function (x, y, width, height) {
@@ -241,16 +277,16 @@ test("v1.2: four points in a 30-day range draw unique MM-DD ticks without clippi
     }
     const originalFill = context.fillText
     context.fillText = function (text, x, y, maxWidth?) {
-      if (/\d{2}[-/:]\d{2}/.test(text)) {
+      if (/^\d{2}[-:]\d{2}$/.test(text)) {
         const metrics = this.measureText(text)
         const matrix = this.getTransform()
-        // TextMetrics are relative to the drawing origin with its current textAlign and baseline.
+        // Convert the measured glyph box (relative to textAlign/baseline) into canvas pixels.
         const corners = [x - metrics.actualBoundingBoxLeft, x + metrics.actualBoundingBoxRight].flatMap((tx) =>
           [y - metrics.actualBoundingBoxAscent, y + metrics.actualBoundingBoxDescent].map((ty) => matrix.transformPoint({ x: tx, y: ty })),
         )
         const marks = labels.get(this.canvas) ?? []
         marks.push({
-          text, x: matrix.transformPoint({ x, y }).x,
+          text,
           left: Math.min(...corners.map((point) => point.x)), right: Math.max(...corners.map((point) => point.x)),
           top: Math.min(...corners.map((point) => point.y)), bottom: Math.max(...corners.map((point) => point.y)),
         })
@@ -260,67 +296,63 @@ test("v1.2: four points in a 30-day range draw unique MM-DD ticks without clippi
       else originalFill.call(this, text, x, y, maxWidth)
     }
   })
-  const isMonthHistory = (url: URL) =>
-    url.pathname === "/api/nodes/1/metrics" && url.searchParams.get("hours") === "720"
-  async function selectThirtyDays() {
-    const response = page.waitForResponse((res) => {
-      const url = new URL(res.url())
-      return isMonthHistory(url) && url.searchParams.get("series") === "metrics"
-    })
-    await page.getByTestId("range-btn").filter({ hasText: /^30 天$/ }).click()
-    return await (await response).json() as { metrics: { ts: number }[] }
-  }
+}
 
-  const canvas = page.getByTestId("chart").filter({ hasText: "CPU 使用率" }).locator("canvas")
-  const draws = () => canvas.evaluate((element: HTMLCanvasElement) => ({
-    width: element.width, height: element.height,
-    labels: (window as CanvasProbeWindow).t10CanvasText?.get(element) ?? [],
-  }))
-  async function assertDateAxis(minTicks: number) {
-    await expect(canvas).toBeVisible()
-    await expect.poll(async () => (await draws()).labels.filter(({ text }) => /^\d{2}-\d{2}$/.test(text)).length)
-      .toBeGreaterThanOrEqual(minTicks)
-    const { labels, width, height } = await draws()
-    expect(labels.every(({ text }) => /^\d{2}-\d{2}$/.test(text))).toBe(true)
-    // No uPlot instance or DOM tick labels are exposed; read the actual draw of this chart.
-    const ticks = labels.map(({ text }) => text)
-    expect(ticks, `Repeated X-axis labels on the CPU chart: ${ticks.join(", ")}`).toEqual([...new Set(ticks)])
-    const last = [...labels].sort((a, b) => b.x - a.x)[0]
-    expect(last.right).toBeGreaterThan(last.left)
-    expect(last.bottom).toBeGreaterThan(last.top)
-    expect(last.left).toBeGreaterThanOrEqual(0)
-    expect(last.right).toBeLessThanOrEqual(width)
-    expect(last.top).toBeGreaterThanOrEqual(0)
-    expect(last.bottom).toBeLessThanOrEqual(height)
-  }
-
-  await test.step("four hourly points straddle local midnight regardless of when CI runs", async () => {
-    await page.goto(mockUrl("fewpoints", "/node/1"))
-    const start = await page.evaluate(() => new Date(2026, 10, 21, 22, 30).getTime() / 1000)
-    const origin = new URL(mockUrl("fewpoints")).origin
-    await page.route((url) => url.origin === origin && isMonthHistory(url), async (route) => {
-      // Use the real fewpoints response and preserve spacing, values and bucket count.
-      // Shift both series onto a known local midnight to avoid time-of-day flakiness.
-      const upstream = await route.fetch()
-      if (!upstream.ok()) return route.fulfill({ response: upstream })
-      const history = await upstream.json() as { metrics: { ts: number }[]; ping: { ts: number }[] }
-      const first = history.metrics[0] ?? history.ping[0]
-      if (first) {
-        const offset = start - first.ts
-        for (const point of [...history.metrics, ...history.ping]) point.ts += offset
-      }
-      await route.fulfill({ response: upstream, json: history })
-    })
-    const history = await selectThirtyDays()
-    expect(history.metrics).toHaveLength(4)
-    expect(history.metrics.at(-1)!.ts - history.metrics[0].ts).toBe(3 * 3600)
-    await assertDateAxis(1)
+test("v1.2: sparse 30-day selection uses time labels plus a midnight date and clips no final tick", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await recordAxisTextBounds(page)
+  await page.goto(mockUrl("fewpoints", "/node/1"))
+  const start = await page.evaluate(() => new Date(2026, 10, 21, 23).getTime() / 1000)
+  const origin = new URL(mockUrl("fewpoints")).origin
+  await page.route((url) => url.origin === origin && isHistory(url, 720), async (route) => {
+    // Keep the real four hourly samples and anchor them from 23:00 through 02:00 local time.
+    const upstream = await route.fetch()
+    if (!upstream.ok()) return route.fulfill({ response: upstream })
+    const history = await upstream.json() as History
+    const first = history.metrics[0] ?? history.ping[0]
+    if (first) {
+      const offset = start - first.ts
+      for (const point of [...history.metrics, ...history.ping]) point.ts += offset
+    }
+    await route.fulfill({ response: upstream, json: history })
   })
 
-  await test.step("a full 30-day chart renders multiple different date labels", async () => {
-    await page.goto(mockUrl("normal", "/node/1"))
-    const history = await selectThirtyDays()
-    expect(history.metrics.length).toBeGreaterThan(4)
-    await assertDateAxis(2)
+  const history = await selectHistory(page, 720, "30 天")
+  expect(history.metrics).toHaveLength(4)
+  expect(history.metrics.at(-1)!.ts - history.metrics[0].ts).toBe(3 * 3600)
+  const plot = cpuPlot(page)
+  const ticks = await expectXAxisTicks(plot, (labels) => {
+    expect(labels.filter((label) => dateTick.test(label))).toEqual(["11-22"])
+    expect(labels.filter((label) => label !== "11-22").every((label) => timeTick.test(label))).toBe(true)
+    // The rebased range ends on a tick; wait for it instead of reading the initial six-hour render.
+    expect(labels.at(-1)).toBe("02:00")
+  })
+
+  // The DOM supplies which label is last; Canvas is used only for its drawn glyph bounds.
+  const lastTick = ticks.at(-1)!
+  const canvas = plot.locator("canvas")
+  await expect(canvas).toBeVisible()
+  await expect(async () => {
+    const { last, width, height } = await canvas.evaluate((element: HTMLCanvasElement, tick) => ({
+      last: (window as CanvasProbeWindow).axisTextBounds?.get(element)?.find(({ text }) => text === tick),
+      width: element.width, height: element.height,
+    }), lastTick)
+    expect(last, `Canvas draw for final X-axis label ${lastTick}`).toBeDefined()
+    expect(last!.right).toBeGreaterThan(last!.left)
+    expect(last!.bottom).toBeGreaterThan(last!.top)
+    expect(last!.left).toBeGreaterThanOrEqual(0)
+    expect(last!.right).toBeLessThanOrEqual(width)
+    expect(last!.top).toBeGreaterThanOrEqual(0)
+    expect(last!.bottom).toBeLessThanOrEqual(height)
+  }).toPass({ timeout: 5000 })
+})
+
+test("v1.2: seven-day history with a span over 24 hours uses only unique MM-DD labels", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(mockUrl("normal", "/node/1"))
+  const history = await selectHistory(page, 168, "7 天")
+  expect(history.metrics.at(-1)!.ts - history.metrics[0].ts).toBeGreaterThan(24 * 3600)
+  await expectXAxisTicks(cpuPlot(page), (labels) => {
+    expect(labels.filter((label) => !dateTick.test(label))).toEqual([])
   })
 })
