@@ -1,0 +1,12 @@
+{
+  "config": {
+    "layout": "table",
+    "color_scheme": "dark",
+    "show_summary": false,
+    "show_billing": "false",
+    "accent": "notacolor",
+    "poll_interval": 999,
+    "announcement": "第一行：今晚维护\n第二行：<b>仅显示纯文本</b>",
+    "footer": "由 DYS Mock Hub 提供数据"
+  }
+}

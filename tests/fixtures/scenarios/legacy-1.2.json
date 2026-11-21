@@ -1,0 +1,10 @@
+{
+  "legacy": true,
+  "routeStatus": { "/api/themes/dys/config": 404 },
+  "omitNodeFields": ["group", "expires_in", "last_seen_ago", "public_remark"],
+  "omitHistoryFields": ["cpu_max", "net_rx_max", "net_tx_max", "minutes", "swap_used", "tcp", "udp", "procs"],
+  "nodeOverrides": {
+    "8": { "billing_cycle": "yearly", "currency": "SGD-old" },
+    "11": { "billing_cycle": "triennial" }
+  }
+}

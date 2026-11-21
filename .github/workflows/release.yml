@@ -1,0 +1,31 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: node scripts/check-version.mjs --tag "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check
+      - run: npm test
+      - run: npx playwright install --with-deps chromium && npm run test:e2e
+      - run: scripts/pack.sh
+      - run: node scripts/verify-package.mjs
+      - run: gh release create "$GITHUB_REF_NAME" theme.tar.gz theme.tar.gz.sha256 --generate-notes --latest
+        env:
+          GH_TOKEN: ${{ github.token }}

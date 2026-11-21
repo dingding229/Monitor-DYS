@@ -1,0 +1,7 @@
+{
+  "me": { "authed": false },
+  "nodeOverrides": {
+    "1": { "hostname": "tokyo.example.invalid", "ip": "192.0.2.1", "remark": "仅管理员可见" },
+    "12": { "public": false }
+  }
+}
