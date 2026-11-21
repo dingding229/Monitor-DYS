@@ -1,0 +1,40 @@
+{
+  "name": "DYS",
+  "short": "dys",
+  "description": "极简卡片风格的 Monitor 状态主题，Svelte 5 + uPlot",
+  "version": "1.0.0",
+  "author": "dingding229",
+  "url": "https://github.com/dingding229/Monitor-DYS",
+  "config": [
+    { "type": "title", "label": "外观" },
+    {
+      "key": "layout",
+      "type": "select",
+      "default": "grid",
+      "label": "默认布局",
+      "help": "访客可在页面上切换，自己的选择保存在浏览器",
+      "options": [
+        { "value": "grid", "label": "卡片" },
+        { "value": "table", "label": "列表" }
+      ]
+    },
+    {
+      "key": "color_scheme",
+      "type": "select",
+      "default": "auto",
+      "label": "默认配色",
+      "options": [
+        { "value": "auto", "label": "跟随系统" },
+        { "value": "light", "label": "浅色" },
+        { "value": "dark", "label": "深色" }
+      ]
+    },
+    { "key": "accent", "type": "string", "default": "#2563eb", "label": "主题色", "help": "CSS 颜色值，如 #2563eb；无效值回退默认" },
+    { "type": "title", "label": "内容" },
+    { "key": "show_summary", "type": "boolean", "default": true, "label": "显示汇总", "help": "节点列表上方的在线数、流量、网速" },
+    { "key": "show_billing", "type": "boolean", "default": true, "label": "显示价格与到期" },
+    { "key": "announcement", "type": "text", "default": "", "label": "公告", "help": "显示在页面顶部，按纯文本渲染" },
+    { "key": "footer", "type": "string", "default": "", "label": "页脚文字" },
+    { "key": "poll_interval", "type": "number", "default": 5, "min": 2, "max": 60, "label": "降级轮询间隔（秒）", "help": "WebSocket 不可用时轮询 /api/nodes 的间隔" }
+  ]
+}
