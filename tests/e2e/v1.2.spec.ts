@@ -4,7 +4,6 @@ import { mockUrl } from "../fixtures/mock-origins"
 import { ipsbResponse } from "../fixtures/visitor-geo"
 import { countRateRequests, fulfillGeo, mockGeo, mockRates } from "./helpers"
 
-// These contract tests are opt-in once the parallel v1.2 UI has landed.
 test.beforeEach(async ({ page }) => {
   await mockGeo(page, "fail")
   await mockRates(page, "fail")
@@ -21,7 +20,7 @@ const convertedCny = (Object.keys(original) as (keyof typeof original)[])
   .reduce((sum, code) => sum + original[code] / ratesPerCny[code], 0) / 30.4375
 
 for (const mode of ["open", "cdn"] as const) {
-  test.fixme(`v1.2: ${mode} rates include all currencies and display their quote date`, async ({ page }) => {
+  test(`v1.2: ${mode} rates include all currencies and display their quote date`, async ({ page }) => {
     const requests = countRateRequests(page)
     await mockRates(page, mode)
     await page.goto(mockUrl("normal"))
@@ -33,7 +32,7 @@ for (const mode of ["open", "cdn"] as const) {
   })
 }
 
-test.fixme("v1.2: hovering the value tile opens its original/converted currency breakdown", async ({ page }) => {
+test("v1.2: hovering the value tile opens its original/converted currency breakdown", async ({ page }) => {
   await mockRates(page, "open")
   await page.goto(mockUrl("normal"))
   const tile = page.getByTestId("summary-tile").filter({ hasText: "剩余价值" })
@@ -46,7 +45,7 @@ test.fixme("v1.2: hovering the value tile opens its original/converted currency 
   await expect(breakdown).toContainText(cny(original.CAD / 30.4375 / ratesPerCny.CAD))
 })
 
-test.fixme("v1.2: both failed rate providers leave only CNY and show 汇率不可用", async ({ page }) => {
+test("v1.2: both failed rate providers leave only CNY and show 汇率不可用", async ({ page }) => {
   const requests = countRateRequests(page)
   await page.goto(mockUrl("normal"))
   const tile = page.getByTestId("summary-tile").filter({ hasText: "剩余价值" })
@@ -56,7 +55,7 @@ test.fixme("v1.2: both failed rate providers leave only CNY and show 汇率不�
   expect(requests).toEqual({ open: 1, cdn: 1 })
 })
 
-test.fixme("v1.2: config disabling rates sends no request before or after config loads", async ({ page }) => {
+test("v1.2: config disabling rates sends no request before or after config loads", async ({ page }) => {
   const requests = countRateRequests(page)
   let release!: () => void
   const held = new Promise<void>((resolve) => { release = resolve })
@@ -77,7 +76,7 @@ test.fixme("v1.2: config disabling rates sends no request before or after config
   expect(requests).toEqual({ open: 0, cdn: 0 })
 })
 
-test.fixme("v1.2: card bottom has three equal-width columns without boxes or fills", async ({ page }) => {
+test("v1.2: card bottom has three equal-width columns without boxes or fills", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   const card = page.getByTestId("node-card").filter({ hasText: "东京 01" })
   const row = card.getByText("实时速率", { exact: true }).locator("xpath=../..")
@@ -102,14 +101,14 @@ test.fixme("v1.2: card bottom has three equal-width columns without boxes or fil
   }
 })
 
-test.fixme("v1.2: Debian and iStoreOS use their specified brand icon keys", async ({ page }) => {
+test("v1.2: Debian and iStoreOS use their specified brand icon keys", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   const cards = page.getByTestId("node-card")
   await expect(cards.filter({ hasText: "东京 01" }).locator('[data-testid="brand-icon"][data-key="debian"]')).toBeVisible()
   await expect(cards.filter({ hasText: "新加坡 01" }).locator('[data-testid="brand-icon"][data-key="openwrt"]')).toBeVisible()
 })
 
-test.fixme("v1.2: visitor bubble localizes Hong Kong and renders the browser icon", async ({ page }) => {
+test("v1.2: visitor bubble localizes Hong Kong and renders the browser icon", async ({ page }) => {
   await page.route("https://api.ip.sb/**", (route) => fulfillGeo(route, {
     ...ipsbResponse, country_code: "HK", country: "Hong Kong", region: "Kowloon", city: "Kowloon City",
   }))
@@ -122,7 +121,7 @@ test.fixme("v1.2: visitor bubble localizes Hong Kong and renders the browser ico
   await expect(page.getByTestId("visitor-panel")).toContainText("Kowloon City")
 })
 
-test.fixme("v1.2: no view toggle in either header; home toolbar toggles both layouts", async ({ page }) => {
+test("v1.2: no view toggle in either header; home toolbar toggles both layouts", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   const header = page.getByRole("banner")
   const viewNames = /^(?:切换为)?(?:卡片|列表)(?:视图)?$/
@@ -137,7 +136,7 @@ test.fixme("v1.2: no view toggle in either header; home toolbar toggles both lay
   await expect(header.getByRole("button", { name: viewNames })).toHaveCount(0)
 })
 
-test.fixme("v1.2: connection starts at 连接中 and switches to live only after a frame", async ({ page }) => {
+test("v1.2: connection starts at 连接中 and switches to live only after a frame", async ({ page }) => {
   const snapshot = await page.request.get(mockUrl("normal", "/api/nodes"))
   const frame = await snapshot.text()
   let socket: WebSocketRoute | undefined
@@ -156,7 +155,7 @@ test.fixme("v1.2: connection starts at 连接中 and switches to live only after
   await expect(status).toContainText("实时更新")
 })
 
-test.fixme("v1.2: node cards have native hrefs and ordinary clicks stay in the SPA document", async ({ page }) => {
+test("v1.2: node cards have native hrefs and ordinary clicks stay in the SPA document", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   const token = "t10-document-token"
   await page.evaluate((value) => document.documentElement.setAttribute("data-t10-document", value), token)
@@ -174,7 +173,7 @@ test.fixme("v1.2: node cards have native hrefs and ordinary clicks stay in the S
   expect(documentNavigations).toBe(0)
 })
 
-test.fixme("v1.2: map counts match the API and clicking a country filters cards and summary until cleared", async ({ page }) => {
+test("v1.2: map counts match the API and clicking a country filters cards and summary until cleared", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   const response = await page.request.get(mockUrl("normal", "/api/nodes"))
   expect(response.ok()).toBe(true)
@@ -202,20 +201,22 @@ test.fixme("v1.2: map counts match the API and clicking a country filters cards 
   await expect(cards).toHaveCount(2)
   await expect(cards).toContainText(["北京 01", "上海 01"])
   await expect(summary).toContainText(/85(?:\.0+)?\s*GB/)
-  const clear = chip.and(page.getByRole("button")).or(chip.getByRole("button"))
-  await clear.click()
+  await expect(chip).toHaveRole("button")
+  await chip.click()
   await expect(chip).toHaveCount(0)
   await expect(cards).toHaveCount(nodes.length)
   await expect(summary).toContainText(/680\s*GB/)
 })
 
-test.fixme("v1.2: mobile hides the map but a country-list row applies the same filter", async ({ page }) => {
+test("v1.2: mobile hides the map but a country-list row applies the same filter", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 850 })
   await page.goto(mockUrl("normal"))
   await expect(page.getByTestId("world-map")).toBeHidden()
   const list = page.getByTestId("country-list")
   await expect(list).toBeVisible()
-  await list.getByTestId("country-row").filter({ hasText: "香港" }).click()
+  const hongKong = list.getByTestId("country-row").and(page.locator('[data-country="HK"]'))
+  await expect(hongKong).toContainText("香港")
+  await hongKong.click()
   await expect(page.getByTestId("country-filter-chip")).toContainText("香港")
   const cards = page.getByTestId("node-card")
   await expect(cards).toHaveCount(1)
@@ -226,7 +227,7 @@ test.fixme("v1.2: mobile hides the map but a country-list row applies the same f
 type CanvasLabel = { text: string; x: number; left: number; right: number; top: number; bottom: number }
 type CanvasProbeWindow = Window & { t10CanvasText?: WeakMap<HTMLCanvasElement, CanvasLabel[]> }
 
-test.fixme("v1.2: four points in a 30-day range draw MM-DD ticks without clipping the last label", async ({ page }) => {
+test("v1.2: four points in a 30-day range draw unique MM-DD ticks without clipping the last label", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.addInitScript(() => {
     const labels = new WeakMap<HTMLCanvasElement, CanvasLabel[]>()
@@ -259,28 +260,67 @@ test.fixme("v1.2: four points in a 30-day range draw MM-DD ticks without clippin
       else originalFill.call(this, text, x, y, maxWidth)
     }
   })
-  await page.goto(mockUrl("fewpoints", "/node/1"))
-  const response = page.waitForResponse((res) => {
-    const url = new URL(res.url())
-    return url.pathname === "/api/nodes/1/metrics" && url.searchParams.get("hours") === "720" && url.searchParams.get("series") === "metrics"
-  })
-  await page.getByTestId("range-btn").filter({ hasText: /^30 天$/ }).click()
-  const { metrics } = await (await response).json() as { metrics: unknown[] }
-  expect(metrics).toHaveLength(4)
+  const isMonthHistory = (url: URL) =>
+    url.pathname === "/api/nodes/1/metrics" && url.searchParams.get("hours") === "720"
+  async function selectThirtyDays() {
+    const response = page.waitForResponse((res) => {
+      const url = new URL(res.url())
+      return isMonthHistory(url) && url.searchParams.get("series") === "metrics"
+    })
+    await page.getByTestId("range-btn").filter({ hasText: /^30 天$/ }).click()
+    return await (await response).json() as { metrics: { ts: number }[] }
+  }
+
   const canvas = page.getByTestId("chart").filter({ hasText: "CPU 使用率" }).locator("canvas")
-  await expect(canvas).toBeVisible()
   const draws = () => canvas.evaluate((element: HTMLCanvasElement) => ({
     width: element.width, height: element.height,
     labels: (window as CanvasProbeWindow).t10CanvasText?.get(element) ?? [],
   }))
-  await expect.poll(async () => (await draws()).labels.some(({ text }) => /^\d{2}-\d{2}$/.test(text))).toBe(true)
-  const { labels, width, height } = await draws()
-  expect(labels.every(({ text }) => /^\d{2}-\d{2}$/.test(text))).toBe(true)
-  const last = [...labels].sort((a, b) => b.x - a.x)[0]
-  expect(last.right).toBeGreaterThan(last.left)
-  expect(last.bottom).toBeGreaterThan(last.top)
-  expect(last.left).toBeGreaterThanOrEqual(0)
-  expect(last.right).toBeLessThanOrEqual(width)
-  expect(last.top).toBeGreaterThanOrEqual(0)
-  expect(last.bottom).toBeLessThanOrEqual(height)
+  async function assertDateAxis(minTicks: number) {
+    await expect(canvas).toBeVisible()
+    await expect.poll(async () => (await draws()).labels.filter(({ text }) => /^\d{2}-\d{2}$/.test(text)).length)
+      .toBeGreaterThanOrEqual(minTicks)
+    const { labels, width, height } = await draws()
+    expect(labels.every(({ text }) => /^\d{2}-\d{2}$/.test(text))).toBe(true)
+    // No uPlot instance or DOM tick labels are exposed; read the actual draw of this chart.
+    const ticks = labels.map(({ text }) => text)
+    expect(ticks, `Repeated X-axis labels on the CPU chart: ${ticks.join(", ")}`).toEqual([...new Set(ticks)])
+    const last = [...labels].sort((a, b) => b.x - a.x)[0]
+    expect(last.right).toBeGreaterThan(last.left)
+    expect(last.bottom).toBeGreaterThan(last.top)
+    expect(last.left).toBeGreaterThanOrEqual(0)
+    expect(last.right).toBeLessThanOrEqual(width)
+    expect(last.top).toBeGreaterThanOrEqual(0)
+    expect(last.bottom).toBeLessThanOrEqual(height)
+  }
+
+  await test.step("four hourly points straddle local midnight regardless of when CI runs", async () => {
+    await page.goto(mockUrl("fewpoints", "/node/1"))
+    const start = await page.evaluate(() => new Date(2026, 10, 21, 22, 30).getTime() / 1000)
+    const origin = new URL(mockUrl("fewpoints")).origin
+    await page.route((url) => url.origin === origin && isMonthHistory(url), async (route) => {
+      // Use the real fewpoints response and preserve spacing, values and bucket count.
+      // Shift both series onto a known local midnight to avoid time-of-day flakiness.
+      const upstream = await route.fetch()
+      if (!upstream.ok()) return route.fulfill({ response: upstream })
+      const history = await upstream.json() as { metrics: { ts: number }[]; ping: { ts: number }[] }
+      const first = history.metrics[0] ?? history.ping[0]
+      if (first) {
+        const offset = start - first.ts
+        for (const point of [...history.metrics, ...history.ping]) point.ts += offset
+      }
+      await route.fulfill({ response: upstream, json: history })
+    })
+    const history = await selectThirtyDays()
+    expect(history.metrics).toHaveLength(4)
+    expect(history.metrics.at(-1)!.ts - history.metrics[0].ts).toBe(3 * 3600)
+    await assertDateAxis(1)
+  })
+
+  await test.step("a full 30-day chart renders multiple different date labels", async () => {
+    await page.goto(mockUrl("normal", "/node/1"))
+    const history = await selectThirtyDays()
+    expect(history.metrics.length).toBeGreaterThan(4)
+    await assertDateAxis(2)
+  })
 })
