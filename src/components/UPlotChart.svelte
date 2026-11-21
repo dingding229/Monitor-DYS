@@ -99,23 +99,62 @@
           size: 22,
           gap: 3,
           font: "11px -apple-system, BlinkMacSystemFont, sans-serif",
-          // Per SPEC-v1.2 §6.d:
-          // - hours > 24: show date `MM-DD`
-          // - hours <= 24: show `HH:mm`, and when crossing day boundary show `MM-DD HH:mm` on the first tick
+          // Per SPEC-v1.2 §6.d & T13:
+          // - hours > 24: tick interval >= 1 day, aligned to local 00:00, label `MM-DD`
+          // - hours <= 24: label `HH:mm` (first tick `MM-DD HH:mm` when crossing day boundary)
+          // - Never allow two identical labels on the same chart
+          splits:
+            hours > 24
+              ? (_u, _axisIdx, scaleMin, scaleMax, _foundIncr, foundSpace) => {
+                  if (!Number.isFinite(scaleMin) || !Number.isFinite(scaleMax) || scaleMax <= scaleMin) {
+                    return []
+                  }
+                  const plotW = Math.max(120, width - 76)
+                  const maxTicks = Math.max(2, Math.floor(plotW / Math.max(48, foundSpace || 56)))
+                  const totalDays = Math.max(1, (scaleMax - scaleMin) / 86400)
+                  const daySteps = [1, 2, 3, 5, 7, 10, 14, 15, 21, 30, 60, 90]
+                  const stepDays = daySteps.find((s) => totalDays / s <= maxTicks) ?? Math.ceil(totalDays / maxTicks)
+
+                  const first = new Date(scaleMin * 1000)
+                  first.setHours(0, 0, 0, 0)
+                  if (first.getTime() < scaleMin * 1000) {
+                    first.setDate(first.getDate() + 1)
+                  }
+
+                  const out: number[] = []
+                  const cur = new Date(first.getTime())
+                  while (cur.getTime() <= scaleMax * 1000) {
+                    out.push(Math.floor(cur.getTime() / 1000))
+                    cur.setDate(cur.getDate() + stepDays)
+                  }
+                  return out
+                }
+              : undefined,
           values: (_u, splits) => {
             if (!splits.length) return []
             const dates = splits.map((s) => new Date(s * 1000))
+            let rawLabels: string[]
             if (hours > 24) {
-              return dates.map(fmtMMDD)
+              rawLabels = dates.map((d) =>
+                d.getHours() === 0 && d.getMinutes() === 0 ? fmtMMDD(d) : fmtHHMM(d),
+              )
+            } else {
+              const firstDay = dates[0].getDate()
+              const lastDay = dates[dates.length - 1].getDate()
+              const crossesDay =
+                firstDay !== lastDay || dates[0].getMonth() !== dates[dates.length - 1].getMonth()
+              rawLabels = dates.map((d, idx) => {
+                if (crossesDay && idx === 0) {
+                  return `${fmtMMDD(d)} ${fmtHHMM(d)}`
+                }
+                return fmtHHMM(d)
+              })
             }
-            const firstDay = dates[0].getDate()
-            const lastDay = dates[dates.length - 1].getDate()
-            const crossesDay = firstDay !== lastDay || dates[0].getMonth() !== dates[dates.length - 1].getMonth()
-            return dates.map((d, idx) => {
-              if (crossesDay && idx === 0) {
-                return `${fmtMMDD(d)} ${fmtHHMM(d)}`
-              }
-              return fmtHHMM(d)
+            const seen = new Set<string>()
+            return rawLabels.map((lbl) => {
+              if (!lbl || seen.has(lbl)) return ""
+              seen.add(lbl)
+              return lbl
             })
           },
         },
