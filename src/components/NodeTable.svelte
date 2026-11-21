@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { latencyText, lossText, latencyColor, lossColor, probeTitle, type PingStore } from "@/lib/ping.svelte"
   import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
   import type { Node } from "@/lib/api"
@@ -9,26 +10,29 @@
     expiry,
     priceShort,
     offlineFor,
-    osName,
     pair,
     percentNum,
     regionName,
     speed,
-    uptime,
   } from "@/lib/format"
   import { osKey } from "@/lib/icons"
 
   let {
-    nodes,
+    nodes, ping, showPing, snapshotOnly,
     showBilling = true,
     expiryWarningDays = 7,
     onSelect,
   }: {
+    ping: PingStore
+    snapshotOnly: boolean
+    showPing: boolean
     nodes: Node[]
     showBilling?: boolean
     expiryWarningDays?: number
     onSelect: (id: number) => void
   } = $props()
+
+  const observePing = (el: Element, id: number) => ping.observe(el, id)
 
   function monthUsage(n: Node): number {
     if (typeof n.month_used === "number") return n.month_used
@@ -65,9 +69,8 @@
 
 <div class="overflow-x-auto rounded-[8px] border border-neutral-200 bg-white">
   <table class="w-full border-collapse text-left text-[12px]">
-    <thead class="sticky top-0 z-10 bg-neutral-50/95 backdrop-blur">
+    <thead class="sticky top-0 z-10 bg-neutral-50">
       <tr class="border-b border-neutral-200 text-neutral-500">
-        <th class="whitespace-nowrap px-3 py-2.5 font-medium">状态</th>
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">名称</th>
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">地区</th>
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">CPU</th>
@@ -75,8 +78,13 @@
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">硬盘</th>
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">↑</th>
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">↓</th>
+        {#if showPing}
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">延迟</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">丢包</th>
+        {/if}
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">本期流量</th>
         <th class="whitespace-nowrap px-3 py-2.5 font-medium">到期</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">状态</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-neutral-100">
@@ -90,36 +98,11 @@
         {@const diskPct = m ? percentNum(m.disk_used, m.disk_total) : 0}
         {@const usedTraffic = monthUsage(node)}
         <tr
-          data-testid="node-row"
+          data-testid="node-row" use:observePing={showPing && node.online ? node.id : 0}
           onclick={() => onSelect(node.id)}
           class="cursor-pointer transition-colors hover:bg-neutral-50"
         >
-          <!-- 状态 -->
-          <td class="tnum whitespace-nowrap px-3 py-2.5">
-            <span class="inline-flex items-center gap-1.5">
-              <span
-                class="h-2 w-2 rounded-full"
-                style="background-color: {node.online ? 'var(--online)' : 'var(--offline)'};"
-              ></span>
-              {#if node.online}
-                <span class="text-neutral-700">{m ? uptime(m.uptime) : "在线"}</span>
-              {:else}
-                <span class="text-neutral-400">
-                  离线{offDur ? ` (${offDur})` : ""}
-                </span>
-              {/if}
-            </span>
-          </td>
-
-          <!-- 名称 (BrandIcon + <a href="/node/{id}">) -->
-          <td class="px-3 py-2.5">
-            <div class="flex items-center gap-1.5">
-              <BrandIcon
-                key={osKey(node.os)}
-                kind="os"
-                size={13}
-                title={node.os || "未知系统"}
-              />
+          <td class="whitespace-nowrap px-3 py-2.5">
               <a
                 href="/node/{node.id}" onfocus={prefetchDetail} onpointerenter={prefetchDetail}
                 onclick={(e) => handleLinkClick(e, node.id)}
@@ -127,13 +110,6 @@
               >
                 {node.name}
               </a>
-              {#if node.os}
-                <span class="text-[11px] text-neutral-400">{osName(node.os)}</span>
-              {/if}
-            </div>
-            {#if node.public_remark}
-              <div class="text-[11px] text-neutral-400">{node.public_remark}</div>
-            {/if}
           </td>
 
           <!-- 地区 -->
@@ -141,6 +117,7 @@
             <div class="inline-flex items-center gap-1.5">
               <CountryFlag code={node.country} />
               <span class="text-[11px]">{regionName(node.country) || "—"}</span>
+              <BrandIcon key={osKey(node.os)} size={14} title={node.os || "未知系统"} />
             </div>
           </td>
 
@@ -209,6 +186,13 @@
             {m ? speed(m.net_rx) : "0 B/s"}
           </td>
 
+          {#if showPing}
+            {@const sample = ping.get(node.id)}
+            {@const latency = node.online ? sample?.latency : null}
+            {@const loss = node.online ? sample?.loss : null}
+            <td class="tnum whitespace-nowrap px-3 py-2.5 {latencyColor(latency)}" data-testid="node-ping" data-latency={latency ?? ""} data-loss={loss ?? ""} title={node.online ? probeTitle(sample) : "离线"}>{latencyText(latency)}</td>
+            <td class="tnum whitespace-nowrap px-3 py-2.5 {lossColor(loss)}" title={node.online ? probeTitle(sample) : "离线"}>{lossText(loss)}</td>
+          {/if}
           <!-- 本期流量 -->
           <td class="tnum whitespace-nowrap px-3 py-2.5 text-neutral-700">
             {node.traffic_limit > 0
@@ -237,6 +221,25 @@
               </div>
             {/if}
           </td>
+          <!-- 状态 -->
+          <td class="tnum whitespace-nowrap px-3 py-2.5">
+            <span class="inline-flex items-center gap-1.5">
+              <span
+                class="h-2 w-2 rounded-full"
+                style="background-color: {!snapshotOnly && node.online ? 'var(--online)' : 'var(--offline)'};"
+              ></span>
+              {#if snapshotOnly}
+                <span class="text-neutral-500">状态待确认</span>
+              {:else if node.online}
+                <span class="text-neutral-700">在线</span>
+              {:else}
+                <span class="text-neutral-400">
+                  离线{offDur ? ` ${offDur}` : ""}
+                </span>
+              {/if}
+            </span>
+          </td>
+
         </tr>
       {/each}
     </tbody>

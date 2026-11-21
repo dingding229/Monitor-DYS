@@ -315,13 +315,13 @@
 <div
   data-testid="chart"
   data-ticks={currentTicksJson}
-  class="glass-panel relative rounded-[8px] border border-neutral-200 bg-white p-[12px]"
+  class="panel relative rounded-[8px] border border-neutral-200 bg-white p-[12px]"
 >
   <!-- Title on the left, compact series legend on the right -->
   <div class="mb-1.5 flex flex-wrap items-center justify-between gap-1.5">
     <div class="flex items-baseline gap-1.5">
       <h4 class="text-[12px] font-semibold text-neutral-800">{title}</h4>
-      {#if noLoss}<span class="online-pill" data-testid="no-loss">无丢包</span>{/if}
+      {#if noLoss}<span class="no-loss-pill" data-testid="no-loss">无丢包</span>{/if}
       {#if subtitle}
         <span class="tnum text-[11px] text-neutral-400">{subtitle}</span>
       {/if}
@@ -360,7 +360,7 @@
     <div bind:this={canvasHost} data-ticks={currentTicksJson} class="h-full w-full"></div>
     {#if hoverIdx !== null && hoverTimeStr}
       <div
-        class="pointer-events-none absolute z-20 rounded-md border border-neutral-200 bg-white/95 px-2 py-1 text-[11px] shadow-xs backdrop-blur"
+        class="pointer-events-none absolute z-20 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] shadow-xs"
         style="top: 4px; {hoverLeft > containerWidth * 0.55
           ? `right: ${Math.max(4, Math.round(containerWidth - hoverLeft + 10))}px;`
           : `left: ${Math.max(4, Math.round(hoverLeft + 10))}px;`}"

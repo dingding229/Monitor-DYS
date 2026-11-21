@@ -139,6 +139,7 @@ function positiveInt(value, fallback) {
 function history(seed, query) {
   const { id } = seed;
   const hours = Math.min(positiveInt(query.get('hours'), 6), (me.history_days ?? 7) * 24);
+  // Homepage ping may request 12, but Hub history keeps the 60–1440 point clamp.
   const points = Math.max(60, Math.min(1440, positiveInt(query.get('points'), 1440)));
   const series = query.get('series');
   const duration = hours * 3600;
@@ -168,7 +169,7 @@ function history(seed, query) {
     omit(point, scenario.omitHistoryFields);
     return point;
   });
-  if (series === 'metrics') return { ...(scenario.legacy ? {} : { step }), metrics, ping: [], probes: {} };
+  if (series === 'metrics' || scenario.noPing) return { ...(scenario.legacy ? {} : { step }), metrics, ping: [], probes: {} };
   const ping = probes.flatMap(([task_id], probe) => times.map((ts, i) => {
     if (scenario.lossy && i % 37 === 7) return { task_id, ts, latency: null, loss: 100 };
     const latency = 16 + probe * 42 + (i % 9);

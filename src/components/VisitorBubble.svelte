@@ -59,7 +59,7 @@
     {#if expanded}
       <div
         data-testid="visitor-panel"
-        class="visitor-popover w-72 max-w-[90vw] rounded-[8px] border border-neutral-200 bg-white/98 p-3 text-[12px] shadow-md backdrop-blur"
+        class="visitor-popover w-72 max-w-[90vw] rounded-[8px] border border-neutral-200 bg-white p-3 text-[12px] shadow-md"
       >
         <div class="flex items-center justify-between border-b border-neutral-100 pb-2">
           <span class="font-bold text-neutral-900">访客连接信息</span>
@@ -123,7 +123,7 @@
       tabindex="0"
       onclick={() => (expanded = !expanded)}
       onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), (expanded = !expanded))}
-      class="mx-auto inline-flex cursor-pointer items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-1 text-[11px] font-medium text-neutral-700 shadow-xs backdrop-blur transition-colors hover:border-neutral-300 sm:text-[12px]"
+      class="mx-auto inline-flex cursor-pointer items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-medium text-neutral-700 shadow-xs transition-colors hover:border-neutral-300 sm:text-[12px]"
     >
       {#if geo && (geo.countryCode || bubbleRegionText)}
         <span class="inline-flex items-center gap-1.5">

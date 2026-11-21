@@ -11,7 +11,7 @@
     bytes,
     cpuName,
     expiry,
-    priceShort,
+    priceFull,
     offlineFor,
     pair,
     percentNum,
@@ -56,7 +56,7 @@
   }
 
   let {
-    node,
+    node, showPing,
     orderedNodes = [],
     groupLabel = "全部节点",
     historyDays = 7,
@@ -67,6 +67,7 @@
     onSelectNode,
   }: {
     node: Node
+    showPing: boolean
     orderedNodes?: Node[]
     groupLabel?: string
     historyDays?: number
@@ -115,7 +116,7 @@
     const pts = computePoints()
     Promise.all([
       api<MetricsResponse>(`/nodes/${nodeId}/metrics?hours=${hours}&points=${pts}&series=metrics`),
-      api<MetricsResponse>(`/nodes/${nodeId}/metrics?hours=${hours}&points=${pts}&series=ping`),
+      showPing ? api<MetricsResponse>(`/nodes/${nodeId}/metrics?hours=${hours}&points=${pts}&series=ping`) : null,
     ])
       .then(([mRes, pRes]) => {
         if (token !== reqToken) return
@@ -322,7 +323,7 @@
 
     const latencyMatrix: (number | null)[][] = taskIds.map(() => Array(timestamps.length).fill(null))
     const lossMatrix: (number | null)[][] = taskIds.map(() => Array(timestamps.length).fill(null))
-    let hasLossSample = false
+    let hasLossSample = pingResp?.loss != null
     let hasLossPoints = false
 
     const taskIndex = new Map<number, number>()
@@ -420,35 +421,76 @@
   </div>
 
   <!-- 2. Header: Flag + Name + Online Status Capsule + Subtext (地区 · 分组 · 最近上报 N 秒前) -->
-  <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
-    <div class="flex flex-wrap items-center gap-2.5">
-      <CountryFlag code={node.country} />
-      <h1 class="text-lg font-bold text-neutral-900">{node.name}</h1>
-      <span
-        class="tnum inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium {node.online
-          ? 'bg-emerald-50 text-emerald-700'
-          : 'bg-neutral-100 text-neutral-600'}"
-      >
-        <span
-          class="h-2 w-2 rounded-full"
-          style="background-color: {node.online ? 'var(--online)' : 'var(--offline)'};"
-        ></span>
-        {#if node.online}
-          在线
-        {:else}
-          离线{offDur ? ` · ${offDur}` : ""}
+  <div class="panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
+    <div class="node-identity">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <CountryFlag code={node.country} />
+          <h1 class="text-lg font-bold text-neutral-900">{node.name}</h1>
+          <span
+            class="tnum inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium {node.online
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-neutral-100 text-neutral-600'}"
+          >
+            <span
+              class="h-2 w-2 rounded-full"
+              style="background-color: {node.online ? 'var(--online)' : 'var(--offline)'};"
+            ></span>
+            {#if node.online}
+              在线
+            {:else}
+              离线{offDur ? ` · ${offDur}` : ""}
+            {/if}
+          </span>
+        </div>
+
+        <p class="tnum mt-1 text-[12px] text-neutral-500">
+          {[
+            regionName(node.country) || "未知地区",
+            node.group || "未分组",
+            lastSeenSec === null ? "从未上报" : `最近上报 ${lastSeenSec} 秒前`,
+          ].join(" · ")}
+        </p>
+      </div>
+      <div data-testid="detail-stats" class="detail-stats tnum">
+        <div>
+          <span class="text-neutral-400">负载 1/5/15m</span>
+          <span class="ml-1.5 font-semibold text-neutral-800">
+            {m ? m.load.map((v) => v.toFixed(2)).join(" / ") : "—"}
+          </span>
+        </div>
+        {#if hasSwap}
+          <div>
+            <span class="text-neutral-400">Swap</span>
+            <span class="ml-1.5 font-semibold text-neutral-800">
+              {m && typeof m.swap_used === "number" && typeof m.swap_total === "number"
+                ? pair(m.swap_used, m.swap_total)
+                : bytes(node.swap_total ?? 0)}
+            </span>
+          </div>
         {/if}
-      </span>
+        {#if m && typeof m.procs === "number"}
+          <div>
+            <span class="text-neutral-400">进程</span>
+            <span class="ml-1.5 font-semibold text-neutral-800">{m.procs}</span>
+          </div>
+        {/if}
+        {#if m && (typeof m.tcp === "number" || typeof m.udp === "number")}
+          <div>
+            <span class="text-neutral-400">TCP / UDP</span>
+            <span class="ml-1.5 font-semibold text-neutral-800">
+              {m.tcp ?? "—"} / {m.udp ?? "—"}
+            </span>
+          </div>
+        {/if}
+        <div>
+          <span class="text-neutral-400">系统运行</span>
+          <span class="ml-1.5 font-semibold text-neutral-800">
+            {m ? uptime(m.uptime) : "—"}
+          </span>
+        </div>
+      </div>
     </div>
-
-    <p class="tnum mt-1 text-[12px] text-neutral-500">
-      {[
-        regionName(node.country) || "未知地区",
-        node.group || "未分组",
-        lastSeenSec === null ? "从未上报" : `最近上报 ${lastSeenSec} 秒前`,
-      ].join(" · ")}
-    </p>
-
     {#if isCorrupt}
       <div
         data-testid="status-unavailable"
@@ -469,7 +511,7 @@
   <!-- 3. 4 Stat Cards: CPU (核数、负载) / 内存 (总量) / 磁盘 (总量) / 网络速率 (↑↓) -->
   <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
     <!-- CPU Card -->
-    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
+    <div class="panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">CPU</span>
         <span class="tnum">{node.cpu_cores ? `${node.cpu_cores} 核` : "—"}</span>
@@ -491,7 +533,7 @@
     </div>
 
     <!-- Memory Card -->
-    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
+    <div class="panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">内存</span>
         <span class="tnum">{bytes(m?.mem_total || node.mem_total)}</span>
@@ -513,7 +555,7 @@
     </div>
 
     <!-- Disk Card -->
-    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
+    <div class="panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">磁盘</span>
         <span class="tnum">{bytes(m?.disk_total || node.disk_total)}</span>
@@ -535,59 +577,19 @@
     </div>
 
     <!-- Network Speed Card -->
-    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
+    <div class="panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">网络速率</span>
         <span>实时吞吐</span>
       </div>
       <div class="tnum mt-1.5 space-y-1 text-[13px] font-bold">
-        <div class="truncate rounded bg-sky-50/70 px-2 py-0.5 text-sky-700">
+        <div class="truncate rounded bg-sky-50 px-2 py-0.5 text-sky-700">
           ↓ {m ? speed(m.net_rx) : "0 B/s"}
         </div>
-        <div class="truncate rounded bg-emerald-50/70 px-2 py-0.5 text-emerald-700">
+        <div class="truncate rounded bg-emerald-50 px-2 py-0.5 text-emerald-700">
           ↑ {m ? speed(m.net_tx) : "0 B/s"}
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- 4. Info Bar: 负载 1/5/15、Swap、进程、TCP/UDP、运行时长 -->
-  <div class="detail-info tnum grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-x-6 gap-y-2 glass-panel rounded-[8px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px]">
-    <div>
-      <span class="text-neutral-400">负载 1/5/15m</span>
-      <span class="ml-1.5 font-semibold text-neutral-800">
-        {m ? m.load.map((v) => v.toFixed(2)).join(" / ") : "—"}
-      </span>
-    </div>
-    {#if hasSwap}
-      <div>
-        <span class="text-neutral-400">Swap</span>
-        <span class="ml-1.5 font-semibold text-neutral-800">
-          {m && typeof m.swap_used === "number" && typeof m.swap_total === "number"
-            ? pair(m.swap_used, m.swap_total)
-            : bytes(node.swap_total ?? 0)}
-        </span>
-      </div>
-    {/if}
-    {#if m && typeof m.procs === "number"}
-      <div>
-        <span class="text-neutral-400">进程</span>
-        <span class="ml-1.5 font-semibold text-neutral-800">{m.procs}</span>
-      </div>
-    {/if}
-    {#if m && (typeof m.tcp === "number" || typeof m.udp === "number")}
-      <div>
-        <span class="text-neutral-400">TCP / UDP</span>
-        <span class="ml-1.5 font-semibold text-neutral-800">
-          {m.tcp ?? "—"} / {m.udp ?? "—"}
-        </span>
-      </div>
-    {/if}
-    <div>
-      <span class="text-neutral-400">系统运行</span>
-      <span class="ml-1.5 font-semibold text-neutral-800">
-        {m ? uptime(m.uptime) : "—"}
-      </span>
     </div>
   </div>
 
@@ -649,11 +651,11 @@
     </div>
 
     {#if fetchError}
-      <div class="glass-panel rounded-[8px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600">
+      <div class="panel rounded-[8px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600">
         读取历史数据失败：{fetchError}
       </div>
     {:else if loading && !processedMetrics && !processedPing}
-      <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-10 text-center text-[12px] text-neutral-400">
+      <div class="panel rounded-[8px] border border-neutral-200 bg-white p-10 text-center text-[12px] text-neutral-400">
         正在加载图表数据…
       </div>
     {:else}
@@ -879,7 +881,7 @@
       {/if}
 
       <!-- Ping Latency & Loss below (Per SPEC-v1.2 §6.e: remove subtitle on Ping Latency, remove '丢包' from Ping Loss legend labels) -->
-      {#if processedPing}
+      {#if showPing && processedPing}
         <div class="grid grid-cols-1 items-start gap-3 {processedPing.hasLossPoints ? 'lg:grid-cols-2' : ''}">
           <UPlotChart
             title="Ping 延迟"
@@ -922,7 +924,7 @@
   <!-- 6. Bottom Two-Column Panels: 「硬件与系统」 & 「流量与费用」 -->
   <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
     <!-- Left Panel: 硬件与系统 -->
-    <section class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
+    <section class="panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
       <h3 class="text-[13px] font-bold text-neutral-900">硬件与系统</h3>
       <p class="text-[11px] text-neutral-400">主控提供的节点资料</p>
 
@@ -1003,13 +1005,13 @@
     </section>
 
     <!-- Right Panel: 流量与费用 -->
-    <section class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
+    <section class="panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
       <h3 class="text-[13px] font-bold text-neutral-900">流量与费用</h3>
       <p class="text-[11px] text-neutral-400">按主控计费规则与当前节点配置展示</p>
 
       <div class="mt-3 space-y-2 text-[12px]">
         <!-- 当期计费流量进度 -->
-        <div class="rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
+        <div class="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
           <div class="flex items-center justify-between">
             <span class="text-neutral-600">当期计费流量</span>
             <span class="tnum font-bold text-neutral-900">
@@ -1018,7 +1020,7 @@
                 : `${bytes(periodUsed)} / ${FOREVER}`}
             </span>
           </div>
-          <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-200/70">
+          <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
             <div
               class="h-full rounded-full transition-[width] duration-300"
               style="width: {node.traffic_limit > 0 ? Math.min(100, trafficPct) : 0}%; background-color: var(--accent);"
@@ -1053,7 +1055,7 @@
               <div class="text-[11px] text-neutral-400">录入标价</div>
               <div class="tnum mt-0.5 font-semibold text-neutral-800">
                 {#if typeof node.price === "number" && node.price > 0}
-                  {priceShort(node.price, node.currency || "CNY", node.billing_cycle)}
+                  {priceFull(node.price, node.currency || "CNY", node.billing_cycle)}
                 {:else}
                   免费 / 未设
                 {/if}
@@ -1083,6 +1085,13 @@
 </div>
 
 <style>
+  .node-identity { display: grid; align-items: center; gap: 10px; }
+  .detail-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 14px; font-size: 12px; }
+  .detail-stats > div { white-space: nowrap; }
+  @media (min-width: 900px) {
+    .node-identity { grid-template-columns: minmax(0, 1fr) auto; }
+    .detail-stats { flex-wrap: nowrap; justify-content: flex-end; }
+  }
   .mobile-peak, .refresh-icon { display: none; }
 
   @media (width < 640px) {

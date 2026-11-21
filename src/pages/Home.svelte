@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PingStore } from "@/lib/ping.svelte"
   import NodeCard from "@/components/NodeCard.svelte"
   import NodeTable from "@/components/NodeTable.svelte"
   import Summary from "@/components/Summary.svelte"
@@ -8,7 +9,7 @@
   import type { SortKey } from "@/lib/prefs"
 
   let {
-    nodes, loading = false,
+    ping, showPing, snapshotOnly, nodes, loading = false,
     accent = "#10b981",
     layout = "grid",
     cardSize = "compact",
@@ -27,6 +28,9 @@
     onSelectNode,
     onUpdateOrderedNodes,
   }: {
+    ping: PingStore
+    snapshotOnly: boolean
+    showPing: boolean
     nodes: Node[]
     loading?: boolean
     accent?: string
@@ -226,7 +230,7 @@
               <span>{tab.label}</span>
               <span
                 class="tnum rounded-full px-1.5 text-[11px] {isActive
-                  ? 'bg-white/25 text-white'
+                  ? 'bg-white text-neutral-800'
                   : 'bg-neutral-100 text-neutral-500'}"
               >
                 {tab.count}
@@ -341,28 +345,28 @@
   <!-- 3. Node Grid or Table -->
   {#if loading}
     <div data-testid="skeleton" aria-label="正在加载节点" aria-busy="true" class="node-grid" class:standard={cardSize === 'standard'}>
-      {#each Array(10) as _}<div class="glass-panel card-placeholder" aria-hidden="true"><i class="bone"></i><i class="bone"></i><div class="ghost-meters"></div><i class="bone"></i></div>{/each}
+      {#each Array(10) as _}<div class="panel card-placeholder" aria-hidden="true"><i class="bone"></i><i class="bone"></i><div class="ghost-meters"></div><i class="bone"></i></div>{/each}
     </div>
   {:else if displayedNodes.length === 0}
-    <div data-testid="empty-state" class="glass-panel py-12 text-center">
+    <div data-testid="empty-state" class="panel py-12 text-center">
       <svg aria-hidden="true" class="mx-auto mb-3 text-neutral-400" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg>
       <p class="font-semibold">没有匹配的节点</p>
       <button type="button" class="primary mt-3" onclick={() => {selectedGroup = ALL_GROUP; selectedCountry = null; searchQuery = ""}}>清除筛选</button>
     </div>
   {:else if layout === "table"}
     <NodeTable
-      nodes={displayedNodes}
+      {ping} {showPing} {snapshotOnly} nodes={displayedNodes}
       {showBilling}
       {expiryWarningDays}
       onSelect={onSelectNode}
     />
   {:else}
     <div
-      class="node-grid" class:standard={cardSize === "standard"} class:dense={displayedNodes.length > 40}
+      class="node-grid" class:standard={cardSize === "standard"}
     >
       {#each displayedNodes as node (node.id)}
         <NodeCard
-          {node}
+          {node} {ping} {showPing} {snapshotOnly}
           {showBilling}
           {expiryWarningDays}
           onSelect={onSelectNode}

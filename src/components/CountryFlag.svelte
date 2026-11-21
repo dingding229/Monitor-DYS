@@ -21,7 +21,7 @@
 {#if upper}
   {#if src}
     <img
-      {src} width="21" height="14" loading="lazy"
+      {src} width="21" height="14"
       alt={upper}
       title={upper}
       class="h-[14px] w-[21px] shrink-0 rounded-[2px] border border-neutral-200 object-cover"

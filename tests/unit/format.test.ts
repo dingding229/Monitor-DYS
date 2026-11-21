@@ -89,8 +89,8 @@ describe("priceShort", () => {
     expect(priceShort(1188, "CNY", cycle)).toBe(`¥1,188${suffix}`)
   })
 
-  it("labels one-time pricing without a recurring suffix", () => {
-    expect(priceShort(629, "CNY", "once")).toMatch(/^¥629[\s·]*一次性$/u)
+  it("uses the same slash separator for one-time pricing", () => {
+    expect(priceShort(629, "CNY", "once")).toBe("¥629/一次性")
   })
 
   it.each([[86.4, "US$86.40/季"], [86.45, "US$86.45/季"]] as const)("keeps two decimals for a fractional USD price of %s", (amount, expected) => {

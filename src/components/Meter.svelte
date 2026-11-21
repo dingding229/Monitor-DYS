@@ -45,7 +45,7 @@
 </script>
 
 <div class="min-w-0">
-  <div class="flex items-center justify-between gap-1 text-[12px]">
+  <div class="flex items-center justify-between gap-1 truncate text-[12px]">
     <span class="inline-flex min-w-0 items-center gap-1 truncate text-neutral-500">
       {#if icon === "cpu"}
         <svg class="h-3.5 w-3.5 shrink-0 text-sky-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">

@@ -15,6 +15,8 @@ export type NodeStoreOptions = {
   pollIntervalMs?: number
   staleTimeoutMs?: number
   reconnectBaseMs?: number
+  cachedNodes?: Node[] | null
+  onHttpSnapshot?: (nodes: Node[]) => void
   autoStart?: boolean
 }
 
@@ -49,7 +51,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   const staleMs = opts.staleTimeoutMs ?? 10_000
   const baseRetryMs = opts.reconnectBaseMs ?? 2000
 
-  let nodes = $state<Node[] | null>(null)
+  let nodes = $state<Node[] | null>(opts.cachedNodes ?? null)
   let error = $state<string | null>(null)
   let closed = $state<boolean>(false)
   let connected = $state<boolean>(false)
@@ -83,6 +85,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
       .then((d) => {
         if (started === epoch && d && Array.isArray(d.nodes)) {
           receive(d.nodes)
+          opts.onHttpSnapshot?.(d.nodes)
         }
       })
       .catch((e: unknown) => {

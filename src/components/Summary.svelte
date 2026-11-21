@@ -34,7 +34,7 @@
     {#if showSummary}
       <div class="tiles">
         {#each tiles as tile (tile.label)}
-          <div class="glass-overview tile" data-testid="summary-tile">
+          <div class="panel tile" data-testid="summary-tile">
             <div data-testid={tile.id}>
               <div class="tile-label">{tile.label}<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><path d={tile.icon}/></svg></div>
               {#if loading}<div class="bone mt-2 h-6 w-2/3"></div>
@@ -47,12 +47,12 @@
     {/if}
     {#if mapModule}
       {#snippet placeholder()}
-        <div class="glass-overview map-placeholder" aria-label="加载地区分布"><span class="bone block h-4 w-1/4"></span></div>
+        <div class="panel map-placeholder" aria-label="加载地区分布"><span class="bone block h-4 w-1/4"></span></div>
       {/snippet}
       {#await mapModule}{@render placeholder()}
       {:then { default: WorldMap }}
         {#if loading}{@render placeholder()}{:else}<WorldMap nodes={mapNodes} {accent} bind:selectedCountry />{/if}
-      {:catch}<div class="glass-overview p-4">地图加载失败，请刷新重试。</div>{/await}
+      {:catch}<div class="panel p-4">地图加载失败，请刷新重试。</div>{/await}
     {/if}
   </section>
 {/if}

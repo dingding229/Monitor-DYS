@@ -129,14 +129,33 @@ export function cycleMonths(cycle?: string | null): number {
 
 const SHORT_CYCLES: Record<number, string> = { 1: "月", 3: "季", 6: "半年", 12: "年", 24: "2年", 36: "3年" }
 
-export function priceShort(amount: number, currency: string, cycle?: string | null): string {
-  const price = formatMoney(amount, currency, Number.isInteger(amount) ? 0 : 2)
+const SHORT_SYMBOLS = new Map(Object.entries({
+  CNY: "¥", USD: "US$", EUR: "€", GBP: "£", JPY: "JP¥", HKD: "HK$",
+  SGD: "S$", CAD: "C$", AUD: "A$", TWD: "NT$", KRW: "₩", RUB: "₽",
+}))
+const wholePrice = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 })
+const fractionalPrice = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+function cycleSuffix(cycle?: string | null): string {
   const raw = typeof cycle === "string" ? cycle.trim() : ""
-  if (!raw) return price
+  if (!raw) return ""
   const months = cycleMonths(raw)
-  if (months === 0) return `${price} 一次性`
-  if (!Number.isFinite(months)) return `${price}/${raw}`
-  return `${price}/${raw.endsWith("m") ? `${months}月` : SHORT_CYCLES[months]}`
+  if (months === 0) return "/一次性"
+  if (!Number.isFinite(months)) return `/${raw}`
+  return `/${raw.endsWith("m") ? `${months}月` : SHORT_CYCLES[months]}`
+}
+
+export function priceShort(amount: number, currency: string, cycle?: string | null): string {
+  const code = currency.trim().toUpperCase()
+  const prefix = SHORT_SYMBOLS.get(code) ?? (code ? `${code} ` : "")
+  const value = Number.isFinite(amount) ? amount : 0
+  const format = Number.isInteger(value) ? wholePrice : fractionalPrice
+  return `${prefix}${format.format(value)}${cycleSuffix(cycle)}`
+}
+
+// The detail page retains the locale's full currency notation.
+export function priceFull(amount: number, currency: string, cycle?: string | null): string {
+  return formatMoney(amount, currency, Number.isInteger(amount) ? 0 : 2) + cycleSuffix(cycle)
 }
 
 export function cycleLabel(cycle?: string | null): string {

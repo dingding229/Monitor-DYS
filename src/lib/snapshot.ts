@@ -1,0 +1,46 @@
+import { safeNodes, type Node, type Metrics } from "./api"
+
+const KEY = "dys:snap:v1", LIMIT = 200_000, TTL = 24 * 60 * 60 * 1000
+const metricKeys = ['uptime','cpu','mem_total','mem_used','swap_total','swap_used','disk_total','disk_used','net_rx','net_tx','total_rx','total_tx','month_rx','month_tx','tcp','udp','procs'] as const
+const strings = ['name','country','os','group','currency','billing_cycle','traffic_mode'] as const
+const numbers = ['price','expires_in','traffic_limit','traffic_reset_day'] as const
+const isObject = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x)
+
+// Project both reads and writes: never persist private/admin metadata or arbitrary metrics keys.
+function project(raw: unknown) {
+  if (!isObject(raw) || raw.public === false || typeof raw.id !== 'number' || !Number.isSafeInteger(raw.id) || typeof raw.name !== 'string') return null
+  const m = raw.metrics
+  let metrics: Partial<Metrics> | null = null
+  if (isObject(m) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(Number.isFinite)) {
+    metrics = { load: [m.load[0], m.load[1], m.load[2]] }
+    for (const key of metricKeys) if (typeof m[key] === 'number' && Number.isFinite(m[key])) metrics[key] = m[key]
+  }
+  return { id: raw.id, ...Object.fromEntries(strings.map(k => [k, typeof raw[k] === 'string' ? raw[k] : ''])),
+    ...Object.fromEntries(numbers.map(k => [k, Number.isFinite(raw[k]) ? raw[k] : null])), metrics }
+}
+export function clearSnapshot() { try { localStorage.removeItem(KEY) } catch { /* storage unavailable */ } }
+export function saveSnapshot(nodes: Node[]) {
+  try {
+    const data = JSON.stringify({ ts: Date.now(), nodes: nodes.map(project).filter(Boolean) })
+    if (new TextEncoder().encode(data).byteLength <= LIMIT) localStorage.setItem(KEY, data)
+    else clearSnapshot()
+  } catch { /* quota/private browsing must not interrupt live updates */ }
+}
+export function readSnapshot(): Node[] | null {
+  try {
+    const data = localStorage.getItem(KEY)
+    if (!data) return null
+    if (data.length <= LIMIT && new TextEncoder().encode(data).byteLength <= LIMIT) {
+      const { ts, nodes } = JSON.parse(data)
+      const age = Date.now() - ts
+      if (typeof ts === 'number' && age >= 0 && age < TTL && Array.isArray(nodes)) {
+        const list = nodes.map(project)
+        if (list.every(Boolean) && new Set(list.map(n => n!.id)).size === list.length) {
+          // Snapshot is a display seed only. The first HTTP read supplies live status and full metadata.
+          return safeNodes(list.map((n, sort) => ({ ...n, sort, online: n!.metrics !== null })) as Node[])
+        }
+      }
+    }
+  } catch { /* discard corrupt / inaccessible storage */ }
+  clearSnapshot(); return null
+}

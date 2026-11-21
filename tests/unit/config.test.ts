@@ -12,7 +12,7 @@ describe("resolveConfig", () => {
     vi.stubGlobal("CSS", { supports })
     const valid = {
       layout: "table", card_size: "standard", accent: "  rebeccapurple  ",
-      show_summary: false, show_map: false, show_search: false, show_sort: false, show_billing: false,
+      show_summary: false, show_map: false, show_search: false, show_sort: false, show_billing: false, show_ping: false,
       expiry_warning_days: 3, visitor_info_enabled: false,
       announcement: "第一行\n第二行", footer: "A footer", footer_url: "https://example.invalid/about", poll_interval: 2,
     }
@@ -27,7 +27,7 @@ describe("resolveConfig", () => {
     const fields = [...manifest.config, { type: "title", label: "Test title", key: "heading", default: "ignored" }]
     expect(resolveConfig(fields, {
       layout: "unknown", card_size: 3, color_scheme: "dark", accent: "notacolor", show_summary: "false", show_billing: 1,
-      show_map: "false", show_search: null, show_sort: 1, expiry_warning_days: 366,
+      show_map: "false", show_search: null, show_sort: 1, show_ping: "false", expiry_warning_days: 366,
       visitor_info_enabled: "false", announcement: null, footer: ["not a string"], footer_url: "ftp://example.invalid",
       poll_interval: "5", heading: "not a setting", secret: "undeclared",
     })).toEqual(defaults)

@@ -146,12 +146,12 @@
 </script>
 
 <div
-  class="glass-overview map-card flex flex-col justify-between overflow-hidden rounded-[8px] border border-neutral-200 bg-white p-3"
+  class="panel map-card flex flex-col justify-between overflow-hidden rounded-[8px] border border-neutral-200 bg-white p-3"
 >
   <!-- Top status header -->
   <div class="z-10 flex items-center justify-between gap-2">
     <div class="flex items-center gap-1.5">
-      <span class="tnum inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white/95 px-2.5 py-0.5 text-[12px] font-semibold text-neutral-800">
+      <span class="tnum inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[12px] font-semibold text-neutral-800">
         <span class="h-2 w-2 rounded-full" style="background-color: var(--online);"></span>
         {onlineTotal} 在线
       </span>
@@ -234,7 +234,7 @@
               onblur={() => {
                 if (hovered?.code === m.code) hovered = null
               }}
-              class="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 inline-flex cursor-pointer items-center gap-1 rounded-full bg-white/95 py-0.5 pr-1 pl-0.5 shadow-xs ring-1 transition-transform hover:z-20 hover:scale-110 {isSelected
+              class="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 inline-flex cursor-pointer items-center gap-1 rounded-full bg-white py-0.5 pr-1 pl-0.5 shadow-xs ring-1 transition-transform hover:z-20 hover:scale-110 {isSelected
                 ? 'z-20 ring-2 ring-neutral-900'
                 : 'ring-neutral-200'}"
               style="left: {leftPct.toFixed(1)}%; top: {topPct.toFixed(1)}%;"
@@ -255,7 +255,7 @@
           {@const shownNames = hovered.nodeNames.slice(0, 6)}
           {@const hasMore = hovered.nodeNames.length > 6}
           <div
-            class="pointer-events-none absolute top-1 left-1 z-30 max-w-[230px] rounded-lg border border-neutral-200 bg-white/98 p-2 text-[11px] shadow-md backdrop-blur"
+            class="pointer-events-none absolute top-1 left-1 z-30 max-w-[230px] rounded-lg border border-neutral-200 bg-white p-2 text-[11px] shadow-md"
           >
             <div class="flex items-center justify-between gap-2 font-bold text-neutral-900">
               <span class="inline-flex items-center gap-1">
@@ -297,8 +297,8 @@
               if (hovered?.code === c.code) hovered = null
             }}
             class="flex w-full shrink-0 cursor-pointer items-center justify-between gap-1.5 rounded-md border px-2 py-1 text-left text-[11.5px] transition-colors {isSelected
-              ? 'border-neutral-900 bg-neutral-900/5 font-semibold text-neutral-900'
-              : 'border-transparent bg-neutral-50/80 text-neutral-700 hover:bg-neutral-100'}"
+              ? 'border-neutral-900 bg-neutral-100 font-semibold text-neutral-900'
+              : 'border-transparent bg-neutral-50 text-neutral-700 hover:bg-neutral-100'}"
           >
             <span class="inline-flex min-w-0 items-center gap-1.5 truncate">
               <CountryFlag code={c.code} />

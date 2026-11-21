@@ -154,12 +154,22 @@ try {
     assert.equal(long.probes['9'], '东京探测');
     assert.ok(long.ping.length > 0 && long.ping.every(({ loss, latency }) => loss === 0 && latency !== null));
     assert.ok(Object.values(long.loss).every((loss) => loss === 0));
+    const homePing = get(base, '/api/nodes/1/metrics?hours=1&points=12&series=ping');
+    assert.equal(homePing.step, 60);
+    assert.deepEqual(homePing.metrics, []);
+    assert.deepEqual(homePing.probes, { 9: '东京探测', 2: '法兰克福探测' });
+    assert.deepEqual(homePing.loss, { 9: 0, 2: 0 });
+    for (const id of [9, 2]) {
+      const points = homePing.ping.filter(({ task_id }) => task_id === id);
+      assert.equal(points.length, 60);
+      assert.ok(points.every((point, i) => point.loss === 0 && Number.isFinite(point.latency) && (!i || point.ts - points[i - 1].ts === 60)));
+    }
     const full = get(base, '/api/nodes/1/metrics');
     assert.equal(full.step, 60);
     assert.ok(full.metrics.length && full.ping.length);
     const streams = await Promise.all([frames(base, { count: 2 }), frames(base, { query: '?gzip=0', gzip: true, count: 2 })]);
     assert.ok(streams.flat().every(({ nodes, admin }) => nodes.length === 16 && admin === false));
-    return '16 nodes / 12 countries; OS, CAD/GBP billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; Ping loss=0; text + gzip pushes ≈2s apart';
+    return '16 nodes / 12 countries; OS, CAD/GBP billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; homepage ping (hours=1, points=12): 60 minute samples per probe, loss=0; text + gzip pushes ≈2s apart';
   });
   await scenario('nogroups', (base) => {
     assert.ok(get(base, '/api/nodes').nodes.every(({ group }) => group === ''));
@@ -261,6 +271,15 @@ try {
     assert.ok(short.metrics.at(-1).ts - short.metrics[0].ts < 3600);
     return '30-day history has 4 hourly buckets over 3 hours; partial last bucket and aligned probes';
   });
+  await scenario('noping', (base) => {
+    const ping = get(base, '/api/nodes/1/metrics?series=ping&hours=1&points=12');
+    assert.deepEqual(ping, { step: 60, metrics: [], ping: [], probes: {} });
+    const all = get(base, '/api/nodes/1/metrics');
+    assert.ok(all.metrics.length > 0);
+    assert.deepEqual(all.ping, []);
+    assert.deepEqual(all.probes, {});
+    return 'homepage ping returns empty ping/probes; resource history remains available';
+  });
   await scenario('lossy', (base) => {
     const data = get(base, '/api/nodes/1/metrics?hours=6&series=ping');
     assert.ok(data.ping.some(({ loss }) => loss === 25));
@@ -294,6 +313,7 @@ try {
     assert.equal(config.layout, 'table');
     assert.equal(config.show_summary, false);
     assert.equal(config.visitor_info_enabled, false);
+    assert.equal(config.show_ping, false);
     assert.equal(config.expiry_warning_days, 3);
     assert.equal(config.accent, 'notacolor');
     assert.equal(config.poll_interval, 999);

@@ -20,6 +20,7 @@ export type ThemeConfig = {
   card_size: "compact" | "standard"
   accent: string
   show_summary: boolean
+  show_ping: boolean
   show_map: boolean
   show_search: boolean
   show_sort: boolean

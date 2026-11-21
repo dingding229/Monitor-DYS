@@ -1,19 +1,7 @@
 /**
  * OS and Browser brand icon key mapping & individually bundled SVG assets per SPEC-v1.2 §2 & §4.
  */
-import siDebian from "simple-icons/icons/debian.svg?no-inline"
-import siUbuntu from "simple-icons/icons/ubuntu.svg?no-inline"
-import siCentos from "simple-icons/icons/centos.svg?no-inline"
-import siRockylinux from "simple-icons/icons/rockylinux.svg?no-inline"
-import siAlmalinux from "simple-icons/icons/almalinux.svg?no-inline"
-import siFedora from "simple-icons/icons/fedora.svg?no-inline"
-import siAlpinelinux from "simple-icons/icons/alpinelinux.svg?no-inline"
-import siArchlinux from "simple-icons/icons/archlinux.svg?no-inline"
-import siOpensuse from "simple-icons/icons/opensuse.svg?no-inline"
-import siOpenwrt from "simple-icons/icons/openwrt.svg?no-inline"
-import siFreebsd from "simple-icons/icons/freebsd.svg?no-inline"
-import siMacos from "simple-icons/icons/macos.svg?no-inline"
-import siLinux from "simple-icons/icons/linux.svg?no-inline"
+import { siDebian, siUbuntu, siCentos, siRockylinux, siAlmalinux, siFedora, siAlpinelinux, siArchlinux, siOpensuse, siOpenwrt, siFreebsd, siMacos, siLinux } from "simple-icons"
 import siGooglechrome from "simple-icons/icons/googlechrome.svg?no-inline"
 import siFirefoxbrowser from "simple-icons/icons/firefoxbrowser.svg?no-inline"
 import siSafari from "simple-icons/icons/safari.svg?no-inline"
@@ -118,21 +106,21 @@ const NEUTRAL_GLOBE_PATHS = [
 
 
 const OS_ICON_MAP: Record<OsKey, IconDef> = {
-  debian: { src: siDebian, color: "#A81D33" },
-  ubuntu: { src: siUbuntu, color: "#E95420" },
-  centos: { src: siCentos, color: "#262577" },
-  rocky: { src: siRockylinux, color: "#10B981" },
-  almalinux: { src: siAlmalinux, color: "#0f4266" },
-  fedora: { src: siFedora, color: "#51A2DA" },
-  alpine: { src: siAlpinelinux, color: "#0D597F" },
-  arch: { src: siArchlinux, color: "#1793D1" },
-  opensuse: { src: siOpensuse, color: "#73BA25" },
-  openwrt: { src: siOpenwrt, color: "#00B5E2" },
-  freebsd: { src: siFreebsd, color: "#AB2B28" },
-  macos: { src: siMacos, color: "#374151" },
+  debian: { paths: [siDebian.path], color: "#A81D33" },
+  ubuntu: { paths: [siUbuntu.path], color: "#E95420" },
+  centos: { paths: [siCentos.path], color: "#262577" },
+  rocky: { paths: [siRockylinux.path], color: "#10B981" },
+  almalinux: { paths: [siAlmalinux.path], color: "#0f4266" },
+  fedora: { paths: [siFedora.path], color: "#51A2DA" },
+  alpine: { paths: [siAlpinelinux.path], color: "#0D597F" },
+  arch: { paths: [siArchlinux.path], color: "#1793D1" },
+  opensuse: { paths: [siOpensuse.path], color: "#73BA25" },
+  openwrt: { paths: [siOpenwrt.path], color: "#00B5E2" },
+  freebsd: { paths: [siFreebsd.path], color: "#AB2B28" },
+  macos: { paths: [siMacos.path], color: "#374151" },
   // Per SPEC-v1.2 §2: icons missing from simple-icons (e.g. windows) use Tux (siLinux)
-  windows: { src: siLinux, color: "#4b5563" },
-  linux: { src: siLinux, color: "#4b5563" },
+  windows: { paths: [siLinux.path], color: "#4b5563" },
+  linux: { paths: [siLinux.path], color: "#4b5563" },
   unknown: { color: "#6b7280", paths: NEUTRAL_SERVER_PATHS },
 }
 
