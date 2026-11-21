@@ -1,6 +1,8 @@
 <script lang="ts">
+  import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
-  import { countryName } from "@/lib/geo"
+  import { regionName } from "@/lib/format"
+  import { browserKey, osKey } from "@/lib/icons"
   import {
     dismissVisitorBubble,
     fetchVisitor,
@@ -38,9 +40,10 @@
     }
   })
 
-  let locationText = $derived.by(() => {
+  // Per SPEC-v1.2 §4: Bubble shows Chinese region name from countryCode (city only in expanded panel)
+  let bubbleRegionText = $derived.by(() => {
     if (!geo) return ""
-    return geo.city || geo.region || countryName(geo.countryCode) || geo.country || ""
+    return regionName(geo.countryCode) || geo.country || ""
   })
 
   let deviceLabel = $derived(
@@ -77,12 +80,16 @@
         <dl class="mt-2 space-y-1.5 text-[11.5px]">
           <div class="flex items-center justify-between gap-2">
             <dt class="text-neutral-400">设备 / 系统</dt>
-            <dd class="font-medium text-neutral-800">{deviceLabel} · {uaInfo.os}</dd>
+            <dd class="inline-flex items-center gap-1.5 font-medium text-neutral-800">
+              <BrandIcon key={osKey(uaInfo.os)} kind="os" size={13} title={uaInfo.os} />
+              <span>{deviceLabel} · {uaInfo.os}</span>
+            </dd>
           </div>
           <div class="flex items-center justify-between gap-2">
             <dt class="text-neutral-400">浏览器版本</dt>
-            <dd class="tnum font-medium text-neutral-800">
-              {uaInfo.browser}{uaInfo.version ? ` ${uaInfo.version}` : ""}
+            <dd class="tnum inline-flex items-center gap-1.5 font-medium text-neutral-800">
+              <BrandIcon key={browserKey(uaInfo.browser)} kind="browser" size={13} title={uaInfo.browser} />
+              <span>{uaInfo.browser}{uaInfo.version ? ` ${uaInfo.version}` : ""}</span>
             </dd>
           </div>
           {#if geo}
@@ -90,12 +97,12 @@
               <dt class="text-neutral-400">出口 IP</dt>
               <dd class="tnum truncate font-medium text-neutral-800" title={geo.ip}>{geo.ip}</dd>
             </div>
-            {#if locationText}
+            {#if bubbleRegionText || geo.city}
               <div class="flex items-center justify-between gap-2">
-                <dt class="text-neutral-400">地区</dt>
+                <dt class="text-neutral-400">地区 / 城市</dt>
                 <dd class="inline-flex items-center gap-1 font-medium text-neutral-800">
                   <CountryFlag code={geo.countryCode} />
-                  <span>{[countryName(geo.countryCode) || geo.country, geo.city].filter(Boolean).join(" · ")}</span>
+                  <span>{[bubbleRegionText, geo.city].filter(Boolean).join(" · ")}</span>
                 </dd>
               </div>
             {/if}
@@ -122,20 +129,16 @@
       onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), (expanded = !expanded))}
       class="mx-auto inline-flex cursor-pointer items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-1 text-[11px] font-medium text-neutral-700 shadow-xs backdrop-blur transition-colors hover:border-neutral-300 sm:text-[12px]"
     >
-      {#if geo && (geo.countryCode || locationText)}
+      {#if geo && (geo.countryCode || bubbleRegionText)}
         <span class="inline-flex items-center gap-1.5">
           <CountryFlag code={geo.countryCode} />
-          <span class="max-w-[110px] truncate">{locationText}</span>
+          <span class="max-w-[110px] truncate">{bubbleRegionText}</span>
         </span>
         <span class="text-neutral-300">|</span>
       {/if}
 
-      <span class="inline-flex items-center gap-1">
-        <span
-          class="inline-flex h-4 w-4 items-center justify-center rounded-full bg-neutral-100 text-[10px] font-bold text-neutral-600"
-        >
-          {uaInfo.browser.slice(0, 1).toUpperCase()}
-        </span>
+      <span class="inline-flex items-center gap-1.5">
+        <BrandIcon key={browserKey(uaInfo.browser)} kind="browser" size={13} title={uaInfo.browser} />
         <span>{uaInfo.browser}</span>
       </span>
 

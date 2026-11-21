@@ -50,6 +50,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   let error = $state<string | null>(null)
   let closed = $state<boolean>(false)
   let connected = $state<boolean>(false)
+  let polling = $state<boolean>(false)
   let lastUpdated = $state<number | null>(null)
 
   let socket: WebSocket | null = null
@@ -93,12 +94,14 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   }
 
   function startPolling() {
+    polling = true
     if (!pollTimer) {
       pollTimer = setInterval(fetchOnce, pollMs)
     }
   }
 
   function stopPolling() {
+    polling = false
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = null
@@ -265,6 +268,9 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     },
     get connected() {
       return connected
+    },
+    get polling() {
+      return polling
     },
     get lastUpdated() {
       return lastUpdated

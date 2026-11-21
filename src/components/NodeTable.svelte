@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
   import type { Node } from "@/lib/api"
   import { remainingValue } from "@/lib/finance"
@@ -11,10 +12,11 @@
     osName,
     pair,
     percentNum,
+    regionName,
     speed,
     uptime,
   } from "@/lib/format"
-  import { countryName } from "@/lib/geo"
+  import { osKey } from "@/lib/icons"
 
   let {
     nodes,
@@ -49,6 +51,16 @@
     if (pct >= 80) return "var(--warn)"
     return "var(--accent)"
   }
+
+  function handleLinkClick(e: MouseEvent, id: number) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      e.stopPropagation()
+      return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+    onSelect(id)
+  }
 </script>
 
 <div class="overflow-x-auto rounded-[10px] border border-neutral-200 bg-white">
@@ -80,10 +92,7 @@
         {@const remVal = remainingValue(node)}
         <tr
           data-testid="node-row"
-          role="button"
-          tabindex="0"
           onclick={() => onSelect(node.id)}
-          onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(node.id))}
           class="cursor-pointer transition-colors hover:bg-neutral-50"
         >
           <!-- 状态 -->
@@ -103,10 +112,22 @@
             </span>
           </td>
 
-          <!-- 名称 -->
+          <!-- 名称 (BrandIcon + <a href="/node/{id}">) -->
           <td class="px-3 py-2.5">
             <div class="flex items-center gap-1.5">
-              <span class="font-semibold text-neutral-900">{node.name}</span>
+              <BrandIcon
+                key={osKey(node.os)}
+                kind="os"
+                size={13}
+                title={node.os || "未知系统"}
+              />
+              <a
+                href="/node/{node.id}"
+                onclick={(e) => handleLinkClick(e, node.id)}
+                class="font-semibold text-neutral-900 hover:underline"
+              >
+                {node.name}
+              </a>
               {#if node.os}
                 <span class="text-[11px] text-neutral-400">{osName(node.os)}</span>
               {/if}
@@ -120,7 +141,7 @@
           <td class="whitespace-nowrap px-3 py-2.5 text-neutral-600">
             <div class="inline-flex items-center gap-1.5">
               <CountryFlag code={node.country} />
-              <span class="text-[11px]">{countryName(node.country) || "—"}</span>
+              <span class="text-[11px]">{regionName(node.country) || "—"}</span>
             </div>
           </td>
 

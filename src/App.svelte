@@ -8,6 +8,7 @@
   import { loadConfig, resolveConfig, type ThemeConfig } from "@/lib/config"
   import { createNodeStore } from "@/lib/nodes.svelte"
   import { loadPrefs, savePref, type SortKey, type VisitorPrefs } from "@/lib/prefs"
+  import { fetchRates, type Rates } from "@/lib/rates"
   import { createRouter } from "@/lib/router.svelte"
 
   const router = createRouter()
@@ -20,11 +21,14 @@
   let configLoaded = $state<boolean>(false)
   let visitorPrefs = $state<VisitorPrefs>(loadPrefs())
   let selectedGroup = $state<GroupKey>(ALL_GROUP)
+  let selectedCountry = $state<string | null>(null)
   let sortKey = $state<SortKey>(loadPrefs().sort ?? "default")
   let searchQuery = $state<string>("")
   let orderedNodes = $state<Node[]>([])
+  let rates = $state<Rates | null>(null)
+  let ratesBaseFetched = $state<string>("")
 
-  // Effective layout per SPEC §5.13 & v1.1:
+  // Effective layout per SPEC §5.13 & v1.2:
   // theme.json default < Hub config < visitor localStorage (only layout and sort)
   let effectiveLayout = $derived<"grid" | "table">(visitorPrefs.layout ?? siteConfig.layout)
 
@@ -35,6 +39,23 @@
       document.documentElement.style.setProperty("--accent", accentColor)
       document.documentElement.style.setProperty("--accent-glow", withAlpha(accentColor, 0.07))
     }
+  })
+
+  // Fetch exchange rates ONLY after configLoaded and when exchange_rate_enabled === true and show_billing === true
+  $effect(() => {
+    if (!configLoaded) return
+    if (!siteConfig.exchange_rate_enabled || !siteConfig.show_billing) {
+      rates = null
+      return
+    }
+    const base = siteConfig.finance_currency || "CNY"
+    if (ratesBaseFetched === base) return
+    ratesBaseFetched = base
+    void fetchRates(base).then((res) => {
+      if (ratesBaseFetched === base) {
+        rates = res
+      }
+    })
   })
 
   // Sync poll_interval from siteConfig to nodeStore
@@ -52,10 +73,6 @@
   function setLayout(next: "grid" | "table") {
     visitorPrefs = { ...visitorPrefs, layout: next }
     savePref("layout", next)
-  }
-
-  function toggleLayout() {
-    setLayout(effectiveLayout === "grid" ? "table" : "grid")
   }
 
   function setSort(next: SortKey) {
@@ -109,9 +126,23 @@
 
   let lastUpdateTitle = $derived.by(() => {
     const ts = nodeStore.lastUpdated
-    if (!ts) return "等待更新"
+    if (!ts) return "等待数据连接"
     const hhmmss = new Date(ts).toLocaleTimeString("zh-CN", { hour12: false })
     return `最后更新 ${hhmmss}`
+  })
+
+  // Per SPEC-v1.2 §6.a:
+  // Before first data arrives or before WS finishes handshake (while not degraded to polling), show grey dot '连接中'
+  // When WS connected: green dot '实时更新'
+  // Only when genuinely degraded to polling: amber dot '轮询更新'
+  let connState = $derived.by(() => {
+    if (nodeStore.connected) {
+      return { color: "var(--online)", text: "实时更新" }
+    }
+    if (!nodeStore.nodes || !nodeStore.polling) {
+      return { color: "var(--offline)", text: "连接中" }
+    }
+    return { color: "var(--warn)", text: "轮询更新" }
   })
 
   let groupLabel = $derived(
@@ -157,13 +188,14 @@
   </div>
 {:else}
   <div class="flex min-h-svh flex-col">
-    <!-- Top Header per SPEC-v1.1 §B -->
+    <!-- Top Header per SPEC-v1.1 §B & SPEC-v1.2 §5 (view toggle button removed from top bar) -->
     <header class="sticky top-0 z-20 border-b border-neutral-200/80 bg-white/85 backdrop-blur">
       <div class="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-[16px] py-2.5">
         <!-- Left: /favicon.svg + site_name -->
         <a
           href="/"
           onclick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
             e.preventDefault()
             router.navigate("/")
           }}
@@ -173,7 +205,7 @@
           <span>{siteName}</span>
         </a>
 
-        <!-- Right: conn-status + view toggle + admin-link (ONLY when me.authed === true) -->
+        <!-- Right: conn-status + admin-link (ONLY when me.authed === true) -->
         <div class="flex items-center gap-2">
           <div
             data-testid="conn-status"
@@ -182,24 +214,10 @@
           >
             <span
               class="h-2 w-2 rounded-full"
-              style="background-color: {nodeStore.connected ? 'var(--online)' : 'var(--warn)'};"
+              style="background-color: {connState.color};"
             ></span>
-            <span>{nodeStore.connected ? "实时更新" : "轮询更新"}</span>
+            <span>{connState.text}</span>
           </div>
-
-          <button
-            type="button"
-            onclick={toggleLayout}
-            title={effectiveLayout === "grid" ? "切换为列表视图" : "切换为卡片视图"}
-            aria-label={effectiveLayout === "grid" ? "切换为列表视图" : "切换为卡片视图"}
-            class="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
-          >
-            {#if effectiveLayout === "grid"}
-              <span>列表</span>
-            {:else}
-              <span>卡片</span>
-            {/if}
-          </button>
 
           {#if me?.authed === true}
             <a
@@ -295,6 +313,7 @@
         {:else}
           <Home
             nodes={sortedNodes}
+            accent={siteConfig.accent}
             layout={effectiveLayout}
             cardSize={siteConfig.card_size}
             showSummary={siteConfig.show_summary}
@@ -303,8 +322,11 @@
             showSort={siteConfig.show_sort}
             showBilling={siteConfig.show_billing}
             financeCurrency={siteConfig.finance_currency}
+            exchangeRateEnabled={siteConfig.exchange_rate_enabled}
+            {rates}
             expiryWarningDays={siteConfig.expiry_warning_days}
             bind:selectedGroup
+            bind:selectedCountry
             bind:sortKey
             bind:searchQuery
             onChangeLayout={setLayout}

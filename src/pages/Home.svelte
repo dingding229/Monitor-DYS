@@ -3,12 +3,13 @@
   import NodeTable from "@/components/NodeTable.svelte"
   import Summary from "@/components/Summary.svelte"
   import { ALL_GROUP, UNGROUPED, groupsOf, type GroupKey, type Node } from "@/lib/api"
-  import { expiry, percentNum } from "@/lib/format"
-  import { countryName } from "@/lib/geo"
+  import { expiry, percentNum, regionName } from "@/lib/format"
   import type { SortKey } from "@/lib/prefs"
+  import type { Rates } from "@/lib/rates"
 
   let {
     nodes,
+    accent = "#10b981",
     layout = "grid",
     cardSize = "compact",
     showSummary = true,
@@ -17,8 +18,11 @@
     showSort = true,
     showBilling = true,
     financeCurrency = "CNY",
+    exchangeRateEnabled = true,
+    rates = null,
     expiryWarningDays = 7,
     selectedGroup = $bindable<GroupKey>(ALL_GROUP),
+    selectedCountry = $bindable<string | null>(null),
     sortKey = $bindable<SortKey>("default"),
     searchQuery = $bindable<string>(""),
     onChangeLayout,
@@ -27,6 +31,7 @@
     onUpdateOrderedNodes,
   }: {
     nodes: Node[]
+    accent?: string
     layout?: "grid" | "table"
     cardSize?: "compact" | "standard"
     showSummary?: boolean
@@ -35,8 +40,11 @@
     showSort?: boolean
     showBilling?: boolean
     financeCurrency?: string
+    exchangeRateEnabled?: boolean
+    rates?: Rates | null
     expiryWarningDays?: number
     selectedGroup?: GroupKey
+    selectedCountry?: string | null
     sortKey?: SortKey
     searchQuery?: string
     onChangeLayout?: (layout: "grid" | "table") => void
@@ -64,21 +72,28 @@
     }
   })
 
-  // 1. Group filtered nodes (Summary numbers follow current group per SPEC §C.1 & §5.7)
+  // 1. Group filtered nodes
   let groupFilteredNodes = $derived.by(() => {
     if (activeGroup === ALL_GROUP) return nodes
     if (activeGroup === UNGROUPED) return nodes.filter((n) => !n.group)
     return nodes.filter((n) => n.group === activeGroup)
   })
 
-  // 2. Search filtered nodes (matches name, country, os, public_remark case-insensitively)
+  // 2. Country filtered nodes (Summary numbers follow group + country filter per SPEC-v1.2 §7)
+  let countryFilteredNodes = $derived.by(() => {
+    if (!selectedCountry) return groupFilteredNodes
+    const target = selectedCountry.toUpperCase()
+    return groupFilteredNodes.filter((n) => (n.country || "").trim().toUpperCase() === target)
+  })
+
+  // 3. Search filtered nodes (matches name, country, os, public_remark case-insensitively)
   let searchFilteredNodes = $derived.by(() => {
     const q = (searchQuery || "").trim().toLowerCase()
-    if (!q || !showSearch) return groupFilteredNodes
-    return groupFilteredNodes.filter((n) => {
+    if (!q || !showSearch) return countryFilteredNodes
+    return countryFilteredNodes.filter((n) => {
       const name = (n.name || "").toLowerCase()
       const country = (n.country || "").toLowerCase()
-      const cName = countryName(n.country).toLowerCase()
+      const cName = regionName(n.country).toLowerCase()
       const os = (n.os || "").toLowerCase()
       const remark = (n.public_remark || "").toLowerCase()
       return (
@@ -91,7 +106,7 @@
     })
   })
 
-  // 3. Sorted nodes
+  // 4. Sorted nodes
   let displayedNodes = $derived.by(() => {
     const list = [...searchFilteredNodes]
     const defaultCmp = (a: Node, b: Node) => (a.sort ?? 0) - (b.sort ?? 0) || a.id - b.id
@@ -177,17 +192,22 @@
 <div class="space-y-3">
   <!-- 1. Overview Section (Summary 3x2 + WorldMap) -->
   <Summary
-    nodes={groupFilteredNodes}
+    nodes={searchFilteredNodes}
+    mapNodes={groupFilteredNodes}
+    {accent}
     {showSummary}
     {showMap}
     {showBilling}
     {financeCurrency}
+    {exchangeRateEnabled}
+    {rates}
+    bind:selectedCountry
   />
 
-  <!-- 2. Toolbar: Group Tabs + Layout Switch + Sort Select + Search Input -->
-  {#if tabs.length > 0 || showSort || showSearch}
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <!-- Left: Group Tabs -->
+  <!-- 2. Toolbar: Group Tabs + Country Filter Chip + Layout Switch + Sort Select + Search Input -->
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <!-- Left: Group Tabs & Country Filter Chip -->
+    <div class="flex flex-wrap items-center gap-1.5">
       {#if tabs.length > 0}
         <div
           role="tablist"
@@ -218,95 +238,107 @@
             </button>
           {/each}
         </div>
-      {:else}
-        <div></div>
       {/if}
 
-      <!-- Right: View switcher + Sort dropdown + Search box -->
-      <div class="flex flex-wrap items-center gap-2">
-        <!-- View Switcher (Grid / Table) -->
-        <div class="inline-flex rounded-lg border border-neutral-200 bg-white p-0.5">
-          <button
-            type="button"
-            onclick={() => onChangeLayout?.("grid")}
-            title="卡片视图"
-            aria-label="卡片视图"
-            aria-pressed={layout === "grid"}
-            class="cursor-pointer rounded-md px-2 py-1 text-[12px] transition-colors {layout === 'grid'
-              ? 'bg-neutral-100 font-medium text-neutral-900'
-              : 'text-neutral-500 hover:text-neutral-800'}"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="2" y="2" width="5" height="5" rx="1" />
-              <rect x="9" y="2" width="5" height="5" rx="1" />
-              <rect x="2" y="9" width="5" height="5" rx="1" />
-              <rect x="9" y="9" width="5" height="5" rx="1" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onclick={() => onChangeLayout?.("table")}
-            title="列表视图"
-            aria-label="列表视图"
-            aria-pressed={layout === "table"}
-            class="cursor-pointer rounded-md px-2 py-1 text-[12px] transition-colors {layout === 'table'
-              ? 'bg-neutral-100 font-medium text-neutral-900'
-              : 'text-neutral-500 hover:text-neutral-800'}"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-              <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
-              <path d="M2 6.5h12M2 10h12" />
-            </svg>
-          </button>
-        </div>
-
-        {#if showSort}
-          <select
-            data-testid="sort-select"
-            aria-label="排序方式"
-            value={sortKey}
-            onchange={(e) => {
-              const next = (e.currentTarget as HTMLSelectElement).value as SortKey
-              sortKey = next
-              onChangeSort?.(next)
-            }}
-            class="h-7 cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 text-[12px] text-neutral-700 outline-none focus:border-neutral-400"
-          >
-            <option value="default">默认顺序</option>
-            <option value="name">名称</option>
-            <option value="cpu">CPU</option>
-            <option value="mem">内存</option>
-            <option value="disk">硬盘</option>
-            <option value="tx">上行</option>
-            <option value="rx">下行</option>
-            <option value="expiry">到期</option>
-          </select>
-        {/if}
-
-        {#if showSearch}
-          <div class="relative flex items-center">
-            <svg
-              class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-neutral-400"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <circle cx="7" cy="7" r="4.5" />
-              <path d="M10.5 10.5L14 14" />
-            </svg>
-            <input
-              type="search"
-              data-testid="search-input"
-              placeholder="搜索名称、地区、系统…"
-              bind:value={searchQuery}
-              class="h-7 w-44 rounded-lg border border-neutral-200 bg-white pr-2.5 pl-7 text-[12px] text-neutral-800 placeholder:text-neutral-400 outline-none focus:border-neutral-400 sm:w-52"
-            />
-          </div>
-        {/if}
-      </div>
+      {#if selectedCountry}
+        <button
+          type="button"
+          data-testid="country-filter-chip"
+          onclick={() => (selectedCountry = null)}
+          class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-neutral-300 bg-neutral-900 px-2.5 py-1 text-[12px] font-medium text-white transition-opacity hover:opacity-85"
+        >
+          <span>地区：{regionName(selectedCountry)}</span>
+          <span class="ml-0.5 text-neutral-300">×</span>
+        </button>
+      {/if}
     </div>
-  {/if}
+
+    <!-- Right: View switcher + Sort dropdown + Search box -->
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- View Switcher (Grid / Table) -->
+      <div class="inline-flex rounded-lg border border-neutral-200 bg-white p-0.5">
+        <button
+          type="button"
+          onclick={() => onChangeLayout?.("grid")}
+          title="卡片视图"
+          aria-label="卡片视图"
+          aria-pressed={layout === "grid"}
+          class="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[12px] transition-colors {layout === 'grid'
+            ? 'bg-neutral-100 font-medium text-neutral-900'
+            : 'text-neutral-500 hover:text-neutral-800'}"
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="2" width="5" height="5" rx="1" />
+            <rect x="9" y="2" width="5" height="5" rx="1" />
+            <rect x="2" y="9" width="5" height="5" rx="1" />
+            <rect x="9" y="9" width="5" height="5" rx="1" />
+          </svg>
+          <span>卡片</span>
+        </button>
+        <button
+          type="button"
+          onclick={() => onChangeLayout?.("table")}
+          title="列表视图"
+          aria-label="列表视图"
+          aria-pressed={layout === "table"}
+          class="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[12px] transition-colors {layout === 'table'
+            ? 'bg-neutral-100 font-medium text-neutral-900'
+            : 'text-neutral-500 hover:text-neutral-800'}"
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+            <path d="M2 6.5h12M2 10h12" />
+          </svg>
+          <span>列表</span>
+        </button>
+      </div>
+
+      {#if showSort}
+        <select
+          data-testid="sort-select"
+          aria-label="排序方式"
+          value={sortKey}
+          onchange={(e) => {
+            const next = (e.currentTarget as HTMLSelectElement).value as SortKey
+            sortKey = next
+            onChangeSort?.(next)
+          }}
+          class="h-7 cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 text-[12px] text-neutral-700 outline-none focus:border-neutral-400"
+        >
+          <option value="default">默认顺序</option>
+          <option value="name">名称</option>
+          <option value="cpu">CPU</option>
+          <option value="mem">内存</option>
+          <option value="disk">硬盘</option>
+          <option value="tx">上行</option>
+          <option value="rx">下行</option>
+          <option value="expiry">到期</option>
+        </select>
+      {/if}
+
+      {#if showSearch}
+        <div class="relative flex items-center">
+          <svg
+            class="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-neutral-400"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <circle cx="7" cy="7" r="4.5" />
+            <path d="M10.5 10.5L14 14" />
+          </svg>
+          <input
+            type="search"
+            data-testid="search-input"
+            placeholder="搜索名称、地区、系统…"
+            bind:value={searchQuery}
+            class="h-7 w-44 rounded-lg border border-neutral-200 bg-white pr-2.5 pl-7 text-[12px] text-neutral-800 placeholder:text-neutral-400 outline-none focus:border-neutral-400 sm:w-52"
+          />
+        </div>
+      {/if}
+    </div>
+  </div>
 
   <!-- 3. Node Grid or Table -->
   {#if displayedNodes.length === 0}

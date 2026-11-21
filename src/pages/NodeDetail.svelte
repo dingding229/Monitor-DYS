@@ -1,5 +1,6 @@
 <script lang="ts">
   import type uPlot from "uplot"
+  import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
   import UPlotChart from "@/components/UPlotChart.svelte"
   import { api, type Node } from "@/lib/api"
@@ -17,10 +18,11 @@
     offlineFor,
     pair,
     percentNum,
+    regionName,
     speed,
     uptime,
   } from "@/lib/format"
-  import { countryName } from "@/lib/geo"
+  import { osKey } from "@/lib/icons"
   import { rangeLabel, rangesFor } from "@/lib/ranges"
 
   type MetricPoint = {
@@ -198,6 +200,7 @@
     }
   })
 
+  // Per SPEC-v1.2 §6.b: No grey background bands for minutes < step/60; plot partial buckets normally, only break line when minutes === 0 or data is missing
   let processedMetrics = $derived.by(() => {
     const rows = [...(metricsResp?.metrics ?? [])].sort((a, b) => a.ts - b.ts)
     if (rows.length === 0) return null
@@ -218,7 +221,6 @@
     const tcp: (number | null)[] = []
     const udp: (number | null)[] = []
     const procs: (number | null)[] = []
-    const partialBuckets: { from: number; to: number }[] = []
 
     let hasCpuMax = false
     let hasNetMax = false
@@ -247,9 +249,6 @@
       }
 
       const isZeroMinutes = typeof r.minutes === "number" && expectedMinutes > 0 && r.minutes <= 0
-      if (typeof r.minutes === "number" && expectedMinutes > 0 && r.minutes < expectedMinutes) {
-        partialBuckets.push({ from: r.ts, to: r.ts + step })
-      }
 
       ts.push(r.ts)
       cpu.push(isZeroMinutes ? null : r.cpu)
@@ -301,7 +300,6 @@
       tcp,
       udp,
       procs,
-      partialBuckets,
     }
   })
 
@@ -446,7 +444,7 @@
 
     <p class="tnum mt-1 text-[12px] text-neutral-500">
       {[
-        countryName(node.country) || "未知地区",
+        regionName(node.country) || "未知地区",
         node.group || "未分组",
         lastSeenSec === null ? "从未上报" : `最近上报 ${lastSeenSec} 秒前`,
       ].join(" · ")}
@@ -594,7 +592,7 @@
     </div>
   </div>
 
-  <!-- 5. Resource Trends Section: Range buttons + Dropdown + Show Peak checkbox + Refresh button + 4 side-by-side charts -->
+  <!-- 5. Resource Trends Section: Range buttons + Show Peak checkbox + Refresh button + 4 side-by-side charts -->
   <div class="space-y-2.5">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
@@ -659,7 +657,7 @@
           <UPlotChart
             title="CPU 使用率"
             subtitle={m ? `${m.cpu.toFixed(1)}%` : ""}
-            partialBuckets={processedMetrics.partialBuckets}
+            hours={selectedHours}
             data={showPeak && processedMetrics.hasCpuMax
               ? [processedMetrics.ts, processedMetrics.cpu, processedMetrics.cpuMax]
               : [processedMetrics.ts, processedMetrics.cpu]}
@@ -698,7 +696,7 @@
           <UPlotChart
             title="内存用量"
             subtitle={processedMetrics.memTotalVal ? bytes(processedMetrics.memTotalVal) : ""}
-            partialBuckets={processedMetrics.partialBuckets}
+            hours={selectedHours}
             data={processedMetrics.memTotalVal > 0
               ? [processedMetrics.ts, processedMetrics.mem, processedMetrics.memCap]
               : [processedMetrics.ts, processedMetrics.mem]}
@@ -737,7 +735,7 @@
           <UPlotChart
             title="磁盘用量"
             subtitle={processedMetrics.diskTotalVal ? bytes(processedMetrics.diskTotalVal) : ""}
-            partialBuckets={processedMetrics.partialBuckets}
+            hours={selectedHours}
             data={processedMetrics.diskTotalVal > 0
               ? [processedMetrics.ts, processedMetrics.disk, processedMetrics.diskCap]
               : [processedMetrics.ts, processedMetrics.disk]}
@@ -776,7 +774,7 @@
           <UPlotChart
             title="网络速率"
             subtitle={m ? `↓ ${speed(m.net_rx)} ↑ ${speed(m.net_tx)}` : ""}
-            partialBuckets={processedMetrics.partialBuckets}
+            hours={selectedHours}
             data={showPeak && processedMetrics.hasNetMax
               ? [
                   processedMetrics.ts,
@@ -840,7 +838,7 @@
           <UPlotChart
             title="TCP / UDP / 进程数"
             height={180}
-            partialBuckets={processedMetrics.partialBuckets}
+            hours={selectedHours}
             data={[
               processedMetrics.ts,
               processedMetrics.tcp,
@@ -873,15 +871,13 @@
         {/if}
       {/if}
 
-      <!-- Ping Latency & Loss below -->
+      <!-- Ping Latency & Loss below (Per SPEC-v1.2 §6.e: remove subtitle on Ping Latency, remove '丢包' from Ping Loss legend labels) -->
       {#if processedPing}
         <div class="grid grid-cols-1 gap-3 {processedPing.hasLossPoints ? 'lg:grid-cols-2' : ''}">
           <UPlotChart
             title="Ping 延迟"
             height={180}
-            subtitle={processedPing.probeInfos
-              .map((p) => (p.totalLoss !== null && p.totalLoss > 0 ? `${p.name} 丢包 ${p.totalLoss.toFixed(1)}%` : `${p.name}`))
-              .join(" · ")}
+            hours={selectedHours}
             data={processedPing.latencyData}
             yMin={0}
             yFormat={(v) => `${Math.round(v)} ms`}
@@ -897,12 +893,13 @@
             <UPlotChart
               title="Ping 丢包率"
               height={180}
+              hours={selectedHours}
               data={processedPing.lossData}
               yMin={0}
               yMax={100}
               yFormat={(v) => `${Math.round(v)}%`}
               series={processedPing.probeInfos.map((p) => ({
-                label: `${p.name} 丢包`,
+                label: p.name,
                 stroke: p.color,
                 width: 1.25,
                 value: (_u, v) => (v == null ? "0%" : `${v.toFixed(1)}%`),
@@ -942,7 +939,10 @@
 
         <div class="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2">
           <span class="text-neutral-500">系统</span>
-          <span class="font-medium text-neutral-800">{node.os || "—"}</span>
+          <span class="inline-flex items-center gap-1.5 font-medium text-neutral-800">
+            <BrandIcon key={osKey(node.os)} kind="os" size={14} title={node.os || "未知系统"} />
+            <span>{node.os || "—"}</span>
+          </span>
         </div>
 
         <div class="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2">

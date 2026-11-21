@@ -11,7 +11,7 @@
     yMin = 0,
     yMax,
     height = 160,
-    partialBuckets = [],
+    hours = 6,
   }: {
     title: string
     subtitle?: string
@@ -21,7 +21,7 @@
     yMin?: number
     yMax?: number
     height?: number
-    partialBuckets?: { from: number; to: number }[]
+    hours?: number
   } = $props()
 
   let container: HTMLDivElement | undefined = $state()
@@ -32,13 +32,9 @@
   let hoverLeft = $state<number>(0)
   let containerWidth = $state<number>(320)
 
-  const HHMM = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" })
-  const MDHHMM = new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+  const pad2 = (n: number) => String(n).padStart(2, "0")
+  const fmtHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  const fmtMMDD = (d: Date) => `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 
   function seriesColor(s: uPlot.Series): string {
     return typeof s.stroke === "string" ? s.stroke : "var(--accent)"
@@ -64,11 +60,15 @@
   function buildOptions(width: number): uPlot.Options {
     const axisColor = "#6b7280"
     const gridColor = "rgba(0,0,0,0.05)"
+    const pointCount = Array.isArray(data[0]) ? data[0].length : 0
+    // Per SPEC-v1.2 §6.f: Show point circles only when there are fewer than 30 points
+    const showPoints = pointCount > 0 && pointCount < 30
 
     return {
       width: Math.max(180, width),
       height,
-      padding: [8, 10, 0, 0],
+      // Per SPEC-v1.2 §6.c: right padding 24px so the last X-axis tick label is never clipped
+      padding: [8, 24, 0, 0],
       cursor: {
         drag: { x: false, y: false },
       },
@@ -96,11 +96,24 @@
           grid: { stroke: gridColor, width: 1 },
           ticks: { stroke: gridColor, width: 1, size: 3 },
           font: "10.5px -apple-system, BlinkMacSystemFont, sans-serif",
+          // Per SPEC-v1.2 §6.d:
+          // - hours > 24: show date `MM-DD`
+          // - hours <= 24: show `HH:mm`, and when crossing day boundary show `MM-DD HH:mm` on the first tick
           values: (_u, splits) => {
             if (!splits.length) return []
-            const span = (splits[splits.length - 1] ?? 0) - (splits[0] ?? 0)
-            const fmt = span > 86400 * 1.2 ? MDHHMM : HHMM
-            return splits.map((s) => fmt.format(s * 1000))
+            const dates = splits.map((s) => new Date(s * 1000))
+            if (hours > 24) {
+              return dates.map(fmtMMDD)
+            }
+            const firstDay = dates[0].getDate()
+            const lastDay = dates[dates.length - 1].getDate()
+            const crossesDay = firstDay !== lastDay || dates[0].getMonth() !== dates[dates.length - 1].getMonth()
+            return dates.map((d, idx) => {
+              if (crossesDay && idx === 0) {
+                return `${fmtMMDD(d)} ${fmtHHMM(d)}`
+              }
+              return fmtHHMM(d)
+            })
           },
         },
         {
@@ -114,22 +127,6 @@
         },
       ],
       hooks: {
-        drawAxes: [
-          (u) => {
-            if (!partialBuckets.length) return
-            const ctx = u.ctx
-            ctx.save()
-            ctx.fillStyle = "rgba(0,0,0,0.035)"
-            for (const b of partialBuckets) {
-              const x0 = Math.max(u.bbox.left, u.valToPos(b.from, "x", true))
-              const x1 = Math.min(u.bbox.left + u.bbox.width, u.valToPos(b.to, "x", true))
-              if (x1 > x0) {
-                ctx.fillRect(x0, u.bbox.top, x1 - x0, u.bbox.height)
-              }
-            }
-            ctx.restore()
-          },
-        ],
         setCursor: [
           (u) => {
             const idx = u.cursor.idx
@@ -146,7 +143,14 @@
         {
           label: "时间",
         },
-        ...series,
+        ...series.map((s) => ({
+          ...s,
+          points: {
+            show: showPoints,
+            size: 4,
+            ...(s.points ?? {}),
+          },
+        })),
       ],
     }
   }
@@ -184,6 +188,7 @@
     void data
     void series
     void yMax
+    void hours
     if (container) {
       renderChart()
     }

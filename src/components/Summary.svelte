@@ -3,19 +3,30 @@
   import type { Node } from "@/lib/api"
   import { summarizeValue } from "@/lib/finance"
   import { bytes, money, percentNum, speed } from "@/lib/format"
+  import { convert, type Rates } from "@/lib/rates"
 
   let {
     nodes,
+    mapNodes,
+    accent = "#10b981",
     showSummary = true,
     showMap = true,
     showBilling = true,
     financeCurrency = "CNY",
+    exchangeRateEnabled = true,
+    rates = null,
+    selectedCountry = $bindable<string | null>(null),
   }: {
     nodes: Node[]
+    mapNodes?: Node[]
+    accent?: string
     showSummary?: boolean
     showMap?: boolean
     showBilling?: boolean
     financeCurrency?: string
+    exchangeRateEnabled?: boolean
+    rates?: Rates | null
+    selectedCountry?: string | null
   } = $props()
 
   function splitValUnit(formatted: string): { val: string; unit: string } {
@@ -45,7 +56,27 @@
   let diskPct = $derived(percentNum(diskUsed, diskTotal))
   let diskUsedParts = $derived(splitValUnit(bytes(diskUsed)))
 
-  let valueSum = $derived(summarizeValue(nodes, financeCurrency))
+  let effectiveRates = $derived(exchangeRateEnabled ? rates : null)
+  let valueSum = $derived(summarizeValue(nodes, financeCurrency, effectiveRates))
+
+  let currencyBreakdownList = $derived.by(() => {
+    const entries = Object.entries(valueSum.byCurrency)
+    return entries.map(([curr, origAmt]) => {
+      const convAmt =
+        curr === financeCurrency
+          ? origAmt
+          : effectiveRates
+            ? convert(origAmt, curr, financeCurrency, effectiveRates)
+            : null
+      return {
+        curr,
+        origText: money(origAmt, curr),
+        convText: convAmt !== null ? money(convAmt, financeCurrency) : null,
+      }
+    })
+  })
+
+  let showBreakdown = $state<boolean>(false)
 
   let nowTx = $derived(
     nodes.reduce((acc, n) => acc + (n.online && n.metrics ? n.metrics.net_tx : 0), 0),
@@ -91,7 +122,7 @@
 
     {#if showSummary}
       <div
-        class="grid grid-cols-2 gap-3 sm:grid-cols-3 {showMap ? 'min-[900px]:col-span-7' : ''}"
+        class="grid grid-cols-2 gap-3 sm:grid-cols-3 {showMap ? 'min-[900px]:col-span-6' : ''}"
       >
         <!-- 1. 内存用量 -->
         <div
@@ -119,10 +150,17 @@
           </div>
         </div>
 
-        <!-- 2. 剩余价值 -->
+        <!-- 2. 剩余价值 (with exchange rate conversion & breakdown popover) -->
+        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_no_noninteractive_tabindex -->
         <div
           data-testid="summary-tile"
-          class="flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3"
+          onmouseenter={() => (showBreakdown = true)}
+          onmouseleave={() => (showBreakdown = false)}
+          onclick={() => (showBreakdown = !showBreakdown)}
+          onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), (showBreakdown = !showBreakdown))}
+          role={showBilling && currencyBreakdownList.length > 0 ? "button" : undefined}
+          tabindex={showBilling && currencyBreakdownList.length > 0 ? 0 : undefined}
+          class="relative flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3 {showBilling && currencyBreakdownList.length > 0 ? 'cursor-pointer' : ''}"
         >
           <div class="flex items-center justify-between text-[12px] text-neutral-500">
             <span>剩余价值</span>
@@ -143,13 +181,57 @@
             >
               {valueSum.counted > 0 ? money(valueSum.amount, financeCurrency) : "—"}
             </div>
-            <div class="tnum mt-1 text-[11px] text-neutral-500">
-              {valueSum.skipped > 0
-                ? `${valueSum.skipped} 台未计入`
-                : valueSum.counted > 0
-                  ? `已计入 ${valueSum.counted} 台 (${financeCurrency})`
-                  : "暂无计费节点"}
+            <div class="tnum mt-1 truncate text-[11px] text-neutral-500">
+              {#if valueSum.converted && effectiveRates}
+                <span data-testid="rate-date">按 {effectiveRates.date} 汇率折算</span>
+                {#if valueSum.skipped > 0}
+                  <span> · {valueSum.skipped} 台未计入</span>
+                {/if}
+              {:else if valueSum.skipped > 0}
+                {#if exchangeRateEnabled && !effectiveRates}
+                  <span>{valueSum.skipped} 台未计入 · 汇率不可用</span>
+                {:else}
+                  <span>{valueSum.skipped} 台未计入</span>
+                {/if}
+              {:else if valueSum.counted > 0}
+                {#if effectiveRates}
+                  <span data-testid="rate-date">按 {effectiveRates.date} 汇率折算</span>
+                {:else}
+                  <span>已计入 {valueSum.counted} 台 ({financeCurrency})</span>
+                {/if}
+              {:else}
+                <span>暂无计费节点</span>
+              {/if}
             </div>
+
+            {#if showBreakdown && currencyBreakdownList.length > 0}
+              <div
+                data-testid="value-breakdown"
+                class="absolute top-full left-0 z-30 mt-1.5 w-60 rounded-lg border border-neutral-200 bg-white/98 p-2.5 text-[11.5px] shadow-md backdrop-blur"
+              >
+                <div class="mb-1.5 flex items-center justify-between border-b border-neutral-100 pb-1 font-semibold text-neutral-800">
+                  <span>币种原值与折算 ({financeCurrency})</span>
+                  {#if effectiveRates}
+                    <span class="tnum text-[10px] font-normal text-neutral-400">{effectiveRates.date}</span>
+                  {/if}
+                </div>
+                <div class="space-y-1">
+                  {#each currencyBreakdownList as item (item.curr)}
+                    <div class="tnum flex items-center justify-between gap-2 text-neutral-700">
+                      <span class="font-medium text-neutral-500">{item.curr}</span>
+                      <span>
+                        {item.origText}
+                        {#if item.curr !== financeCurrency}
+                          <span class="text-neutral-400">
+                            → {item.convText ?? "未换算"}
+                          </span>
+                        {/if}
+                      </span>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           {/if}
         </div>
 
@@ -245,8 +327,12 @@
     {/if}
 
     {#if showMap}
-      <div class={showSummary ? "min-[900px]:col-span-5 flex flex-col [&>*]:flex-1" : ""}>
-        <WorldMap {nodes} />
+      <div class={showSummary ? "min-[900px]:col-span-6 flex flex-col [&>*]:flex-1" : ""}>
+        <WorldMap
+          nodes={mapNodes ?? nodes}
+          {accent}
+          bind:selectedCountry
+        />
       </div>
     {/if}
   </section>

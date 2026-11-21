@@ -1,7 +1,8 @@
 /**
- * Financial & remaining value pure functions per SPEC-v1.1 §E.
+ * Financial & remaining value pure functions per SPEC-v1.1 §E and SPEC-v1.2 §1.
  */
 import { cycleMonths, daysUntil } from "@/lib/format"
+import { convert, type Rates } from "@/lib/rates"
 
 export type FinanceNodeInput = {
   price?: number | null
@@ -48,31 +49,60 @@ export type ValueSummary = {
   amount: number
   counted: number
   skipped: number
+  converted: boolean
+  byCurrency: Record<string, number>
 }
 
 /**
- * Accumulates remaining value only for nodes whose `currency` matches target `currency` (case-insensitive).
- * Other nodes that have a non-null remainingValue are counted in `skipped`.
+ * Accumulates remaining value in target `currency`.
+ * - `byCurrency` stores the original subtotal per currency (before conversion).
+ * - Any node that can be converted (or matches `currency` directly) is added to `amount` and `counted`.
+ * - `converted` is true when at least one non-target currency node was converted using `rates`.
+ * - When `rates` is omitted/null, behaves identically to v1.1 (only matching currency is counted; others go to `skipped`).
  */
-export function summarizeValue(nodes: FinanceNodeInput[], currency = "CNY"): ValueSummary {
+export function summarizeValue(
+  nodes: FinanceNodeInput[],
+  currency = "CNY",
+  rates?: Rates | null,
+): ValueSummary {
   const target = (currency || "CNY").trim().toUpperCase()
   let amount = 0
   let counted = 0
   let skipped = 0
+  let converted = false
+  const byCurrency: Record<string, number> = {}
 
-  if (!Array.isArray(nodes)) return { amount: 0, counted: 0, skipped: 0 }
+  if (!Array.isArray(nodes)) {
+    return { amount: 0, counted: 0, skipped: 0, converted: false, byCurrency }
+  }
 
   for (const node of nodes) {
     const val = remainingValue(node)
     if (val === null) continue
     const nodeCurr = (node.currency || "").trim().toUpperCase()
+    if (!nodeCurr) {
+      skipped++
+      continue
+    }
+
+    byCurrency[nodeCurr] = (byCurrency[nodeCurr] ?? 0) + val
+
     if (nodeCurr === target) {
       amount += val
       counted++
+    } else if (rates) {
+      const conv = convert(val, nodeCurr, target, rates)
+      if (conv !== null) {
+        amount += conv
+        counted++
+        converted = true
+      } else {
+        skipped++
+      }
     } else {
       skipped++
     }
   }
 
-  return { amount, counted, skipped }
+  return { amount, counted, skipped, converted, byCurrency }
 }

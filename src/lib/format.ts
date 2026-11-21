@@ -4,7 +4,13 @@
 
 const UNITS = ["B", "KB", "MB", "GB", "TB", "PB"]
 
-const unitOf = (n: number) => Math.min(Math.floor(Math.log(n) / Math.log(1024)), UNITS.length - 1)
+const unitOf = (n: number) => {
+  let i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), UNITS.length - 1)
+  if (i < UNITS.length - 1 && n / 1024 ** i >= 1000) {
+    i++
+  }
+  return i
+}
 
 export function bytes(n: number, digits?: number): string {
   if (typeof n !== "number" || !Number.isFinite(n) || n < 1) return "0 B"
@@ -215,4 +221,28 @@ export function cpuName(name?: string | null): string {
     .replace(/\s+\d+-Core\b/g, "")
     .replace(/\s+/g, " ")
     .trim()
+}
+
+let regionDisplayNames: Intl.DisplayNames | null = null
+
+export function regionName(code?: string | null): string {
+  if (!code || typeof code !== "string") return ""
+  const upper = code.trim().toUpperCase()
+  if (!upper) return ""
+  if (upper === "HK") return "香港"
+  if (upper === "MO") return "澳门"
+  if (upper === "TW") return "台湾"
+  if (!/^[A-Z]{2}$/.test(upper)) return upper
+  try {
+    if (!regionDisplayNames && typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+      regionDisplayNames = new Intl.DisplayNames("zh-CN", { type: "region" })
+    }
+    const name = regionDisplayNames?.of(upper)
+    if (name && name !== upper) {
+      return name.replace(/^中国/, "") || name
+    }
+    return upper
+  } catch {
+    return upper
+  }
 }

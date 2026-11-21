@@ -1,6 +1,16 @@
 /**
- * Country centroids (ISO 3166-1 alpha-2 -> [lon, lat]), country names, and compressed world dot-matrix map per SPEC-v1.1 §C.1.
+ * Country centroids (ISO 3166-1 alpha-2 -> [lon, lat]), country names, and Natural Earth 110m dot-matrix decoding per SPEC-v1.2 §7.
  */
+import { regionName } from "@/lib/format"
+import {
+  MAP_GRID_COLS,
+  MAP_GRID_MAX_LAT,
+  MAP_GRID_MAX_LON,
+  MAP_GRID_MIN_LAT,
+  MAP_GRID_MIN_LON,
+  MAP_GRID_ROWS,
+  MAP_LAND_RLE,
+} from "@/lib/map-data"
 
 export const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
   AD: [1.6, 42.5],
@@ -119,72 +129,6 @@ export const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
   ZA: [24.5, -29.0],
 }
 
-export const COUNTRY_NAMES: Record<string, string> = {
-  AD: "安道尔",
-  AE: "阿联酋",
-  AR: "阿根廷",
-  AT: "奥地利",
-  AU: "澳大利亚",
-  BE: "比利时",
-  BG: "保加利亚",
-  BR: "巴西",
-  CA: "加拿大",
-  CH: "瑞士",
-  CL: "智利",
-  CN: "中国",
-  CO: "哥伦比亚",
-  CZ: "捷克",
-  DE: "德国",
-  DK: "丹麦",
-  EE: "爱沙尼亚",
-  EG: "埃及",
-  ES: "西班牙",
-  FI: "芬兰",
-  FR: "法国",
-  GB: "英国",
-  GR: "希腊",
-  HK: "香港",
-  HU: "匈牙利",
-  ID: "印度尼西亚",
-  IE: "爱尔兰",
-  IL: "以色列",
-  IN: "印度",
-  IT: "意大利",
-  JP: "日本",
-  KH: "柬埔寨",
-  KR: "韩国",
-  KZ: "哈萨克斯坦",
-  LT: "立陶宛",
-  LU: "卢森堡",
-  LV: "拉脱维亚",
-  MO: "澳门",
-  MX: "墨西哥",
-  MY: "马来西亚",
-  NG: "尼日利亚",
-  NL: "荷兰",
-  NO: "挪威",
-  NZ: "新西兰",
-  PH: "菲律宾",
-  PK: "巴基斯坦",
-  PL: "波兰",
-  PT: "葡萄牙",
-  RO: "罗马尼亚",
-  RS: "塞尔维亚",
-  RU: "俄罗斯",
-  SA: "沙特",
-  SE: "瑞典",
-  SG: "新加坡",
-  SI: "斯洛文尼亚",
-  SK: "斯洛伐克",
-  TH: "泰国",
-  TR: "土耳其",
-  TW: "台湾",
-  UA: "乌克兰",
-  US: "美国",
-  VN: "越南",
-  ZA: "南非",
-}
-
 export function countryCentroid(code?: string | null): [number, number] | null {
   if (!code || typeof code !== "string") return null
   const upper = code.trim().toUpperCase()
@@ -192,14 +136,12 @@ export function countryCentroid(code?: string | null): [number, number] | null {
 }
 
 export function countryName(code?: string | null): string {
-  if (!code || typeof code !== "string") return ""
-  const upper = code.trim().toUpperCase()
-  return COUNTRY_NAMES[upper] ?? upper
+  return regionName(code)
 }
 
 /**
  * Project [lon, lat] onto the map SVG coordinate system.
- * Default map viewBox is `width = 360, height = 160` covering lon [-170..180], lat [-56..78].
+ * Default map viewBox is `width = 360, height = 160` covering lon [MAP_GRID_MIN_LON..MAP_GRID_MAX_LON], lat [MAP_GRID_MIN_LAT..MAP_GRID_MAX_LAT].
  */
 export function projectGeo(
   lon: number,
@@ -207,10 +149,10 @@ export function projectGeo(
   width = 360,
   height = 160,
 ): { x: number; y: number } {
-  const minLon = -170
-  const maxLon = 180
-  const minLat = -56
-  const maxLat = 78
+  const minLon = MAP_GRID_MIN_LON
+  const maxLon = MAP_GRID_MAX_LON
+  const minLat = MAP_GRID_MIN_LAT
+  const maxLat = MAP_GRID_MAX_LAT
   const clampedLon = Math.min(maxLon, Math.max(minLon, lon))
   const clampedLat = Math.min(maxLat, Math.max(minLat, lat))
   const x = ((clampedLon - minLon) / (maxLon - minLon)) * width
@@ -218,65 +160,33 @@ export function projectGeo(
   return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) }
 }
 
-/**
- * Compact RLE world land mask on a 72x32 grid (5° lon × ~4.2° lat).
- * Each row lists `[startCol, endCol]` inclusive pairs encoded as `"start-end,start-end"`.
- */
-const WORLD_LAND_RLE: string[] = [
-  "10-18,22-29,46-54", // 75N: N.Canada, Greenland, N.Siberia
-  "3-30,36-70", // 71N: Alaska, Canada, Greenland, Scandinavia, Russia
-  "2-27,36-69", // 67N: Alaska, Canada, Scandinavia, Russia
-  "4-24,35-66", // 63N: Alaska, Canada, Iceland/Nordics, Russia
-  "7-25,33-64", // 59N: Canada, UK/Nordics, Russia
-  "8-25,32-63", // 55N: Canada, UK/Europe, Russia
-  "9-25,33-64", // 51N: Canada/USA, Europe, Russia/Kazakhstan, Sakhalin
-  "9-24,33-63", // 47N: USA/Canada, France-China-Japan
-  "9-23,32-63", // 43N: USA, Spain-Italy-Balkans-CentralAsia-Japan
-  "10-22,32-62", // 39N: USA, Iberia-Greece-Turkey-China-Korea-Japan
-  "11-21,33-61", // 35N: USA, N.Africa-MiddleEast-China-Japan
-  "12-20,32-59", // 31N: USA/Mexico, N.Africa-Arabia-India-China
-  "13-19,31-58", // 27N: Mexico/Florida, Sahara-Arabia-India-China
-  "14-21,31-58", // 23N: Mexico/Caribbean, Sahara-Arabia-India-SE.Asia-Taiwan
-  "15-21,31-50,53-59", // 19N: Mexico/Caribbean, W.Africa-Arabia-India-Indochina-Philippines
-  "16-21,31-49,53-59", // 15N: CentralAmerica, Sahel-Yemen-India-SE.Asia-Philippines
-  "17-24,31-47,53-59", // 11N: CentralAmerica/Venezuela, W.Africa-Horn-S.India-SE.Asia
-  "18-25,32-46,53-59", // 7N: Colombia/Venezuela, W.Africa-Ethiopia-SriLanka-Malaysia
-  "18-26,34-45,53-60", // 3N: Colombia/Brazil, Cameroon-Kenya, Sumatra-Borneo
-  "18-27,35-44,54-62", // 1S: Ecuador/Brazil, Congo-Kenya, Indonesia-Papua
-  "18-28,36-44,55-63", // 5S: Peru/Brazil, Congo-Tanzania, Indonesia-Papua
-  "19-28,36-44,46-47,56-63", // 9S: Peru/Brazil, Angola-Mozambique, Java-Timor
-  "19-27,36-43,46-47,58-63", // 13S: Peru/Bolivia/Brazil, Angola-Mozambique, Madagascar, N.Australia
-  "20-27,36-42,46-47,57-64", // 17S: Chile/Brazil, Namibia-Zimbabwe, Madagascar, Australia
-  "20-26,36-41,46-47,56-65", // 21S: Chile/Argentina/Brazil, Namibia-Mozambique, Madagascar, Australia
-  "20-25,37-41,56-65", // 25S: Chile/Argentina/Brazil, S.Africa, Australia
-  "20-24,37-40,56-65", // 29S: Chile/Argentina, S.Africa, Australia
-  "20-23,37-39,57-64", // 33S: Chile/Argentina, Cape, S.Australia
-  "20-23,60-63,68-69", // 37S: Chile/Argentina, SE.Australia, New Zealand
-  "20-22,61-62,67-69", // 41S: Patagonia, Tasmania, New Zealand
-  "20-22,67-68", // 45S: Patagonia, S.New Zealand
-  "20-22", // 49S: Southern Patagonia
-]
+export const MAP_COLS = MAP_GRID_COLS
+export const MAP_ROWS = MAP_GRID_ROWS
 
-export const MAP_COLS = 72
-export const MAP_ROWS = WORLD_LAND_RLE.length
+export type MapDot = {
+  x: number
+  y: number
+  country: string
+}
 
-export function getWorldLandDots(width = 360, height = 160): { x: number; y: number }[] {
-  const dots: { x: number; y: number }[] = []
-  const stepX = width / MAP_COLS
-  const stepY = height / MAP_ROWS
+export function getWorldLandDots(width = 360, height = 160): MapDot[] {
+  const dots: MapDot[] = []
+  const stepX = width / MAP_GRID_COLS
+  const stepY = height / MAP_GRID_ROWS
 
-  for (let row = 0; row < MAP_ROWS; row++) {
-    const rle = WORLD_LAND_RLE[row]
+  for (let row = 0; row < MAP_LAND_RLE.length; row++) {
+    const rle = MAP_LAND_RLE[row]
     if (!rle) continue
-    const y = Number(((row + 0.5) * stepY).toFixed(1))
+    const y = Number(((row + 0.5) * stepY).toFixed(2))
     const segments = rle.split(",")
     for (const seg of segments) {
-      const [sStr, eStr] = seg.split("-")
-      const start = Number(sStr)
-      const end = eStr !== undefined ? Number(eStr) : start
-      for (let col = start; col <= end; col++) {
-        const x = Number(((col + 0.5) * stepX).toFixed(1))
-        dots.push({ x, y })
+      const [col36, len36, code] = seg.split(".")
+      if (!col36 || !len36 || !code) continue
+      const start = Number.parseInt(col36, 36)
+      const len = Number.parseInt(len36, 36)
+      for (let c = start; c < start + len; c++) {
+        const x = Number(((c + 0.5) * stepX).toFixed(2))
+        dots.push({ x, y, country: code })
       }
     }
   }

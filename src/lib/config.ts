@@ -25,7 +25,8 @@ export type ThemeConfig = {
   show_sort: boolean
   announcement: string
   show_billing: boolean
-  finance_currency: "CNY" | "USD" | "EUR" | "HKD" | "JPY"
+  finance_currency: "CNY" | "USD" | "EUR" | "HKD" | "JPY" | "GBP" | "CAD" | "SGD"
+  exchange_rate_enabled: boolean
   expiry_warning_days: number
   visitor_info_enabled: boolean
   footer: string

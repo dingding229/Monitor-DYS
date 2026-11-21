@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
   import Meter from "@/components/Meter.svelte"
   import type { Node } from "@/lib/api"
@@ -11,12 +12,12 @@
     expiry,
     money,
     offlineFor,
-    osName,
     pair,
     percentNum,
     speed,
     uptime,
   } from "@/lib/format"
+  import { osKey } from "@/lib/icons"
 
   let {
     node,
@@ -86,44 +87,25 @@
     return `${formattedPrice} / ${label.replace(/付$/, "")}`
   })
 
-  let osShort = $derived.by(() => {
-    const clean = osName(node.os)
-    if (!clean) return ""
-    const low = clean.toLowerCase()
-    if (low.includes("debian")) return "D"
-    if (low.includes("ubuntu")) return "U"
-    if (low.includes("alpine")) return "A"
-    if (low.includes("centos")) return "C"
-    if (low.includes("rocky")) return "R"
-    if (low.includes("alma")) return "A"
-    if (low.includes("arch")) return "A"
-    if (low.includes("fedora")) return "F"
-    if (low.includes("windows")) return "W"
-    return clean.slice(0, 1).toUpperCase()
-  })
-
-  let osBadgeColor = $derived.by(() => {
-    const low = (node.os || "").toLowerCase()
-    if (low.includes("debian")) return "bg-rose-50 text-rose-600 border-rose-200"
-    if (low.includes("ubuntu")) return "bg-orange-50 text-orange-600 border-orange-200"
-    if (low.includes("alpine") || low.includes("arch")) return "bg-sky-50 text-sky-600 border-sky-200"
-    if (low.includes("rocky") || low.includes("alma")) return "bg-emerald-50 text-emerald-600 border-emerald-200"
-    return "bg-neutral-100 text-neutral-600 border-neutral-200"
-  })
-
   let publicRemark = $derived(typeof node.public_remark === "string" ? node.public_remark.trim() : "")
+
+  function handleClick(e: MouseEvent) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      return
+    }
+    e.preventDefault()
+    onSelect(node.id)
+  }
 </script>
 
-<div
+<a
+  href="/node/{node.id}"
   data-testid="node-card"
-  role="button"
-  tabindex="0"
-  onclick={() => onSelect(node.id)}
-  onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(node.id))}
-  class="group flex min-w-0 cursor-pointer flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-[12px] transition-colors hover:border-neutral-400"
+  onclick={handleClick}
+  class="group flex min-w-0 cursor-pointer flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-[12px] text-inherit no-underline transition-colors hover:border-neutral-400"
 >
   <div>
-    <!-- 1. Title Row: Status dot + Name + OS initial badge + Flag -->
+    <!-- 1. Title Row: Status dot + Name + OS BrandIcon + Flag -->
     <div class="flex items-center justify-between gap-2">
       <div class="flex min-w-0 items-center gap-2">
         <span class="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
@@ -144,14 +126,12 @@
       </div>
 
       <div class="flex shrink-0 items-center gap-1.5">
-        {#if osShort}
-          <span
-            title={[osName(node.os), node.virt && node.virt !== "none" ? node.virt : "", node.arch].filter(Boolean).join(" · ")}
-            class="inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px] font-bold {osBadgeColor}"
-          >
-            {osShort}
-          </span>
-        {/if}
+        <BrandIcon
+          key={osKey(node.os)}
+          kind="os"
+          size={14}
+          title={node.os || "未知系统"}
+        />
         <CountryFlag code={node.country} />
       </div>
     </div>
@@ -230,35 +210,35 @@
     {/if}
   </div>
 
-  <!-- 4. Bottom 3 Mini Tiles: 实时速率 / 当期流量 / 到期与价值 -->
-  <div class="mt-3 grid grid-cols-3 gap-1.5 text-[11px]">
-    <!-- Box 1: 实时速率 -->
-    <div class="rounded-lg border border-neutral-100 bg-neutral-50/80 p-1.5">
-      <div class="text-[10px] text-neutral-400">实时速率</div>
-      <div class="tnum mt-0.5 truncate font-medium text-emerald-600" title="上行速率">
+  <!-- 4. Bottom 3 Columns (Per SPEC-v1.2 §3: no border/bg boxes, separated by 1px border-t, 12px grey label + 2 rows of 13px tabular-nums values) -->
+  <div class="mt-3 grid grid-cols-3 gap-2 border-t border-neutral-200 pt-2.5 text-left">
+    <!-- Col 1: 实时速率 -->
+    <div class="min-w-0">
+      <div class="text-[12px] text-neutral-400">实时速率</div>
+      <div class="tnum mt-0.5 truncate text-[13px] font-medium text-emerald-600" title="上行速率">
         ↑ {m ? speed(m.net_tx) : "0 B/s"}
       </div>
-      <div class="tnum truncate font-medium text-sky-600" title="下行速率">
+      <div class="tnum truncate text-[13px] font-medium text-sky-600" title="下行速率">
         ↓ {m ? speed(m.net_rx) : "0 B/s"}
       </div>
     </div>
 
-    <!-- Box 2: 当期流量 -->
-    <div class="rounded-lg border border-neutral-100 bg-neutral-50/80 p-1.5">
-      <div class="text-[10px] text-neutral-400">当期流量</div>
-      <div class="tnum mt-0.5 truncate font-medium text-neutral-700" title="本期上行">
+    <!-- Col 2: 当期流量 -->
+    <div class="min-w-0">
+      <div class="text-[12px] text-neutral-400">当期流量</div>
+      <div class="tnum mt-0.5 truncate text-[13px] font-medium text-neutral-700" title="本期上行">
         ↑ {bytes(node.month_tx ?? m?.month_tx ?? 0)}
       </div>
-      <div class="tnum truncate font-medium text-neutral-700" title="本期下行">
+      <div class="tnum truncate text-[13px] font-medium text-neutral-700" title="本期下行">
         ↓ {bytes(node.month_rx ?? m?.month_rx ?? 0)}
       </div>
     </div>
 
-    <!-- Box 3: 到期与价值 -->
-    <div class="rounded-lg border border-neutral-100 bg-neutral-50/80 p-1.5">
-      <div class="text-[10px] text-neutral-400">{showBilling ? "到期与价值" : "到期"}</div>
+    <!-- Col 3: 到期与价值 -->
+    <div class="min-w-0">
+      <div class="text-[12px] text-neutral-400">{showBilling ? "到期与价值" : "到期"}</div>
       <div
-        class="tnum mt-0.5 truncate font-medium {exp.level === 'expired'
+        class="tnum mt-0.5 truncate text-[13px] font-medium {exp.level === 'expired'
           ? 'text-red-600'
           : exp.level === 'soon'
             ? 'text-amber-600'
@@ -276,7 +256,7 @@
       {#if showBilling}
         <div
           data-testid="remaining-value"
-          class="tnum truncate font-medium text-neutral-600"
+          class="tnum truncate text-[13px] font-medium text-neutral-600"
           title="剩余价值"
         >
           {remVal !== null ? money(remVal, node.currency || "CNY") : "—"}
@@ -284,4 +264,4 @@
       {/if}
     </div>
   </div>
-</div>
+</a>
