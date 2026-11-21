@@ -1,7 +1,7 @@
 {
   "name": "DYS",
   "short": "dys",
-  "description": "紧凑毛玻璃风格 Monitor 状态主题：流量总览、国家地图、搜索排序、访客气泡，Svelte 5 + uPlot",
+  "description": "紧凑卡片风格 Monitor 状态主题：流量总览、国家地图、延迟丢包、搜索排序、访客气泡，Svelte 5 + uPlot",
   "version": "1.3.0",
   "author": "dingding229",
   "url": "https://github.com/dingding229/Monitor-DYS",
@@ -68,6 +68,13 @@
       "default": true,
       "label": "显示节点地图",
       "help": "点阵世界地图，按国家标出节点与在线数"
+    },
+    {
+      "key": "show_ping",
+      "type": "boolean",
+      "default": true,
+      "label": "首页显示延迟与丢包",
+      "help": "按需请求可见节点最近 1 小时的 Ping 汇总，每 60 秒刷新；关闭后不发请求"
     },
     {
       "key": "show_search",
