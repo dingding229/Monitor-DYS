@@ -70,6 +70,28 @@ afterEach(() => {
 const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms)
 
 describe("node store", () => {
+  it("consumes the supplied startup snapshot once and reports connected before the first WS frame", async () => {
+    const { store, sockets, fetcher } = harness()
+    const startup = deferred<ReturnType<typeof snapshot>>()
+    store.start(startup.promise)
+    expect(store.connectionState).toBe("connecting")
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(sockets).toHaveLength(0)
+
+    startup.resolve(snapshot("HTTP startup"))
+    await tick()
+    expect(store.nodes?.[0].name).toBe("HTTP startup")
+    expect(store.connectionState).toBe("connected")
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(sockets).toHaveLength(1)
+
+    sockets[0].message(JSON.stringify(snapshot("live")))
+    await tick()
+    expect(store.connectionState).toBe("live")
+    sockets[0].close()
+    expect(store.connectionState).toBe("polling")
+  })
+
   it("decodes a gated gzip frame before a later text frame and commits both in order", async () => {
     vi.useRealTimers()
     // JSDOM's Blob has no stream(); use Node's Blob + native gzip decompression.

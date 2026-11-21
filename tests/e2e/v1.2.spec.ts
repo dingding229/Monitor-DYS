@@ -1,79 +1,10 @@
 import { expect, test, type Locator, type Page, type WebSocketRoute } from "@playwright/test"
-import { rateDate, ratesPerCny } from "../fixtures/exchange-rates"
 import { mockUrl } from "../fixtures/mock-origins"
 import { ipsbResponse } from "../fixtures/visitor-geo"
-import { countRateRequests, fulfillGeo, mockGeo, mockRates } from "./helpers"
+import { fulfillGeo, mockGeo } from "./helpers"
 
 test.beforeEach(async ({ page }) => {
   await mockGeo(page, "fail")
-  await mockRates(page, "fail")
-})
-
-const cny = (amount: number) => new Intl.NumberFormat("zh-CN", {
-  style: "currency", currency: "CNY", maximumFractionDigits: 2,
-}).format(amount)
-
-// Original-currency numerator of remaining value (monthly fee × remaining days)
-// for the 11 estimable normal Mock Hub plans; expired and one-time plans are excluded.
-const original = { CNY: 180, USD: 960, EUR: 1940, JPY: 34900, GBP: 150, CAD: 225, SGD: (120.5 / 18) * 5, KRW: 60_000 }
-const convertedCny = (Object.keys(original) as (keyof typeof original)[])
-  .reduce((sum, code) => sum + original[code] / ratesPerCny[code], 0) / 30.4375
-
-for (const mode of ["open", "cdn"] as const) {
-  test(`v1.2: ${mode} rates include all currencies and display their quote date`, async ({ page }) => {
-    const requests = countRateRequests(page)
-    await mockRates(page, mode)
-    await page.goto(mockUrl("normal"))
-    const tile = page.getByTestId("summary-tile").filter({ hasText: "剩余价值" })
-    await expect(tile.getByTestId("remaining-value")).toHaveText(cny(convertedCny))
-    await expect(tile.getByTestId("rate-date")).toContainText(`按 ${rateDate} 汇率折算`)
-    await expect(tile).not.toContainText(/未计入|汇率不可用/)
-    expect(requests).toEqual({ open: 1, cdn: mode === "cdn" ? 1 : 0 })
-  })
-}
-
-test("v1.2: hovering the value tile opens its original/converted currency breakdown", async ({ page }) => {
-  await mockRates(page, "open")
-  await page.goto(mockUrl("normal"))
-  const tile = page.getByTestId("summary-tile").filter({ hasText: "剩余价值" })
-  await expect(tile.getByTestId("rate-date")).toBeVisible()
-  const breakdown = page.getByTestId("value-breakdown")
-  await expect(breakdown).toBeHidden()
-  await tile.getByTestId("remaining-value").hover()
-  await expect(breakdown).toBeVisible()
-  for (const code of ["CNY", "CAD", "GBP", "USD"]) await expect(breakdown).toContainText(code)
-  await expect(breakdown).toContainText(cny(original.CAD / 30.4375 / ratesPerCny.CAD))
-})
-
-test("v1.2: both failed rate providers leave only CNY and show 汇率不可用", async ({ page }) => {
-  const requests = countRateRequests(page)
-  await page.goto(mockUrl("normal"))
-  const tile = page.getByTestId("summary-tile").filter({ hasText: "剩余价值" })
-  await expect(tile).toContainText(/10\s*台未计入\s*·\s*汇率不可用/)
-  await expect(tile.getByTestId("remaining-value")).toHaveText(cny(original.CNY / 30.4375))
-  await expect(tile.getByTestId("rate-date")).toHaveCount(0)
-  expect(requests).toEqual({ open: 1, cdn: 1 })
-})
-
-test("v1.2: config disabling rates sends no request before or after config loads", async ({ page }) => {
-  const requests = countRateRequests(page)
-  let release!: () => void
-  const held = new Promise<void>((resolve) => { release = resolve })
-  await page.route("**/api/themes/dys/config", async (route) => {
-    await held
-    await route.continue()
-  })
-  const config = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/themes/dys/config")
-  try {
-    await page.goto(mockUrl("config"))
-    await expect(page.getByTestId("node-card")).toHaveCount(16)
-    expect(requests).toEqual({ open: 0, cdn: 0 })
-  } finally { release() }
-  expect(await (await config).json()).toMatchObject({ exchange_rate_enabled: false })
-  await expect(page.getByTestId("node-row")).toHaveCount(16)
-  // Intentional observation window for a negative network assertion.
-  await page.waitForTimeout(1_000)
-  expect(requests).toEqual({ open: 0, cdn: 0 })
 })
 
 test("v1.2: card bottom has three equal-width columns without boxes or fills", async ({ page }) => {
@@ -82,7 +13,7 @@ test("v1.2: card bottom has three equal-width columns without boxes or fills", a
   const row = card.getByText("实时速率", { exact: true }).locator("xpath=../..")
   const columns = row.locator(":scope > *")
   await expect(columns).toHaveCount(3)
-  await expect(columns).toContainText(["实时速率", "当期流量", "到期与价值"])
+  await expect(columns).toContainText(["实时速率", "当期流量", "到期"])
   const { container, cells } = await row.evaluate((element) => {
     const styles = (target: Element) => {
       const css = getComputedStyle(target)

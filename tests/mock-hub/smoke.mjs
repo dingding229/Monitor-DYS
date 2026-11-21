@@ -27,8 +27,8 @@ function get(base, path) {
   return JSON.parse(body);
 }
 
-async function scenario(name, test) {
-  const child = spawn(process.execPath, [join(root, 'server.mjs'), '--port', '0', '--scenario', name, '--dist', tmp], {
+async function scenario(name, test, extraArgs = []) {
+  const child = spawn(process.execPath, [join(root, 'server.mjs'), '--port', '0', '--scenario', name, '--dist', tmp, ...extraArgs], {
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   const exit = once(child, 'exit');
@@ -152,13 +152,14 @@ try {
     assert.deepEqual(long.metrics, []);
     assert.deepEqual([...new Set(long.ping.map(({ task_id }) => task_id))], [9, 2]);
     assert.equal(long.probes['9'], '东京探测');
-    assert.ok(long.ping.some(({ latency }) => latency === null));
+    assert.ok(long.ping.length > 0 && long.ping.every(({ loss, latency }) => loss === 0 && latency !== null));
+    assert.ok(Object.values(long.loss).every((loss) => loss === 0));
     const full = get(base, '/api/nodes/1/metrics');
     assert.equal(full.step, 60);
     assert.ok(full.metrics.length && full.ping.length);
     const streams = await Promise.all([frames(base, { count: 2 }), frames(base, { query: '?gzip=0', gzip: true, count: 2 })]);
     assert.ok(streams.flat().every(({ nodes, admin }) => nodes.length === 16 && admin === false));
-    return '16 nodes / 12 countries; OS, CAD/GBP billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; text + gzip pushes ≈2s apart';
+    return '16 nodes / 12 countries; OS, CAD/GBP billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; Ping loss=0; text + gzip pushes ≈2s apart';
   });
   await scenario('nogroups', (base) => {
     assert.ok(get(base, '/api/nodes').nodes.every(({ group }) => group === ''));
@@ -260,12 +261,39 @@ try {
     assert.ok(short.metrics.at(-1).ts - short.metrics[0].ts < 3600);
     return '30-day history has 4 hourly buckets over 3 hours; partial last bucket and aligned probes';
   });
+  await scenario('lossy', (base) => {
+    const data = get(base, '/api/nodes/1/metrics?hours=6&series=ping');
+    assert.ok(data.ping.some(({ loss }) => loss === 25));
+    assert.ok(data.ping.some(({ loss, latency }) => loss === 100 && latency === null));
+    assert.ok(Object.values(data.loss).some((loss) => loss > 0));
+    return 'positive loss, timed-out buckets and per-probe loss totals';
+  });
+  for (const [name, slowPath, fastPath, expectedMs, overrides] of [
+    ['slowconfig', '/api/themes/dys/config', '/api/nodes', 600, []],
+    ['slownodes', '/api/nodes', '/api/themes/dys/config', 1000, []],
+    ['normal', '/api/themes/dys/config', '/api/nodes', 150, ['--delay-config', '150', '--delay-nodes', '0']],
+  ]) {
+    await scenario(name, async (base) => {
+      const start = performance.now();
+      const order = [];
+      const request = async (path) => {
+        const response = await fetch(base + path, { signal: AbortSignal.timeout(5000) });
+        assert.equal(response.status, 200);
+        await response.json();
+        order.push(path);
+        return performance.now() - start;
+      };
+      const [slow] = await Promise.all([request(slowPath), request(fastPath)]);
+      assert.deepEqual(order, [fastPath, slowPath]);
+      assert.ok(slow >= expectedMs - 5, `${slowPath}: expected ${expectedMs} ms, received ${slow} ms`);
+      return `${slowPath} delayed ${Math.round(slow)} ms; ${fastPath} answered first${overrides.length ? ' (CLI flags)' : ''}`;
+    }, overrides);
+  }
   await scenario('config', (base) => {
     const config = get(base, '/api/themes/dys/config');
     assert.equal(config.layout, 'table');
     assert.equal(config.show_summary, false);
     assert.equal(config.visitor_info_enabled, false);
-    assert.equal(config.exchange_rate_enabled, false);
     assert.equal(config.expiry_warning_days, 3);
     assert.equal(config.accent, 'notacolor');
     assert.equal(config.poll_interval, 999);

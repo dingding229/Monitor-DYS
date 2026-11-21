@@ -1,10 +1,9 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
-import { mockGeo, mockRates } from "./helpers"
+import { mockGeo } from "./helpers"
 
 test.beforeEach(async ({ page }) => {
   await mockGeo(page, "fail")
-  await mockRates(page, "fail")
 })
 
 test("corrupt: bad CPU and load are unavailable; a healthy node still shows metrics", async ({ page }) => {

@@ -24,6 +24,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: node scripts/check-size.mjs
       - run: npx playwright install --with-deps chromium && npm run test:e2e
       - run: scripts/pack.sh
       - run: node scripts/verify-package.mjs

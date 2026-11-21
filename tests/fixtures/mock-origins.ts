@@ -12,6 +12,9 @@ export const mockPorts = {
   config: 19921,
   admin: 19922,
   fewpoints: 19923,
+  slowconfig: 19924,
+  slownodes: 19925,
+  lossy: 19926,
 } as const
 
 export const mockUrl = (scenario: keyof typeof mockPorts, path = "/") =>

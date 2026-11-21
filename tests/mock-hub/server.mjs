@@ -4,6 +4,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 import { gzipSync } from 'node:zlib';
 
@@ -11,6 +12,8 @@ const { values: args } = parseArgs({ options: {
   port: { type: 'string', default: '9911' },
   scenario: { type: 'string', default: 'normal' },
   dist: { type: 'string', default: 'dist' },
+  'delay-config': { type: 'string' },
+  'delay-nodes': { type: 'string' },
 } });
 const port = Number(args.port);
 if (!/^\d+$/.test(args.port) || port > 65535) throw new Error('--port 必须是 0–65535 的整数');
@@ -22,6 +25,13 @@ function fixture(name) {
 
 const normal = fixture('normal');
 const scenario = args.scenario === 'normal' ? normal : fixture(args.scenario);
+function responseDelay(flag, fallback = 0) {
+  const value = args[flag] ?? String(fallback);
+  if (!/^\d+$/.test(value) || Number(value) > 60_000) throw new Error(`--${flag} 必须是 0–60000 的整数毫秒数`);
+  return Number(value);
+}
+const configDelay = responseDelay('delay-config', scenario.delayConfigMs);
+const nodesDelay = responseDelay('delay-nodes', scenario.delayNodesMs);
 const me = { ...normal.me, ...scenario.me };
 if (scenario.legacy) delete me.history_days;
 const dist = resolve(args.dist);
@@ -160,12 +170,16 @@ function history(seed, query) {
   });
   if (series === 'metrics') return { ...(scenario.legacy ? {} : { step }), metrics, ping: [], probes: {} };
   const ping = probes.flatMap(([task_id], probe) => times.map((ts, i) => {
-    if (i % 37 === 7) return { task_id, ts, latency: null, loss: 100 };
+    if (scenario.lossy && i % 37 === 7) return { task_id, ts, latency: null, loss: 100 };
     const latency = 16 + probe * 42 + (i % 9);
-    return { task_id, ts, latency, band: [latency - 2, latency + 3], ...(i % 19 === 9 ? { loss: 25 } : {}) };
+    return { task_id, ts, latency, band: [latency - 2, latency + 3], loss: scenario.lossy && i % 19 === 9 ? 25 : 0 };
   }));
   if (scenario.legacy) ping.sort((a, b) => a.ts - b.ts);
-  return { ...(scenario.legacy ? {} : { step }), metrics, ping, probes: Object.fromEntries(probes) };
+  const loss = Object.fromEntries(probes.map(([task]) => {
+    const points = ping.filter(({ task_id }) => task_id === task);
+    return [task, points.reduce((sum, point) => sum + point.loss, 0) / points.length];
+  }));
+  return { ...(scenario.legacy ? {} : { step }), metrics, ping, probes: Object.fromEntries(probes), loss };
 }
 
 const errors = {
@@ -231,8 +245,16 @@ async function handle(req, res) {
     if (status) return error(res, status);
     if (req.method !== 'GET' && req.method !== 'HEAD') return error(res, 405);
     if (path === '/api/me') return json(res, me);
-    if (path === '/api/nodes') return json(res, snapshot());
-    if (path === '/api/themes/dys/config') return json(res, scenario.config ?? normal.config);
+    if (path === '/api/nodes') {
+      if (nodesDelay) await delay(nodesDelay);
+      if (!res.destroyed) json(res, snapshot());
+      return;
+    }
+    if (path === '/api/themes/dys/config') {
+      if (configDelay) await delay(configDelay);
+      if (!res.destroyed) json(res, scenario.config ?? normal.config);
+      return;
+    }
     if (path === '/api/ws') return error(res, 426);
     const match = /^\/api\/nodes\/(\d+)\/metrics$/.exec(path);
     if (match) {

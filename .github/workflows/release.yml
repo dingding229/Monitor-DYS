@@ -21,6 +21,7 @@ jobs:
       - run: node scripts/check-version.mjs --tag "$GITHUB_REF_NAME"
       - run: npm ci
       - run: npm run build
+      - run: node scripts/check-size.mjs
       - run: npm run check
       - run: npm test
       - run: npx playwright install --with-deps chromium && npm run test:e2e

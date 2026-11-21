@@ -1,10 +1,9 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
-import { mockGeo, mockRates } from "./helpers"
+import { mockGeo } from "./helpers"
 
 test.beforeEach(async ({ page }) => {
   await mockGeo(page, "fail")
-  await mockRates(page, "fail")
 })
 
 const longRanges = ["1 小时", "6 小时", "1 天", "7 天", "30 天", "90 天"]
@@ -16,7 +15,7 @@ test("normal: 16 cards, first-seen groups, and ungrouped filtering", async ({ pa
   const summary = page.getByTestId("summary")
   await expect(cards).toHaveCount(16)
   await expect(tabs).toHaveText(["全部 16", "亚太 4", "欧洲 4", "美洲 4", "未分组 4"])
-  await expect(summary).toContainText("14 / 16")
+  await expect(summary).toContainText(/\b14\s*\/\s*16\b/)
   await expect(summary).toContainText(/680\s*GB/)
 
   const ungrouped = page.getByRole("tab", { name: /^未分组/ })
@@ -24,7 +23,7 @@ test("normal: 16 cards, first-seen groups, and ungrouped filtering", async ({ pa
   await expect(ungrouped).toHaveAttribute("aria-selected", "true")
   await expect(cards).toHaveCount(4)
   await expect(cards).toContainText(["北京 01", "悉尼 01", "首尔 01", "东京 02"])
-  await expect(summary).toContainText("4 / 4")
+  await expect(summary).toContainText(/\b4\s*\/\s*4\b/)
   await expect(summary).toContainText(/195\s*GB/)
 })
 

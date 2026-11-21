@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
 import { ipsbResponse, ipwhoResponse } from "../fixtures/visitor-geo"
-import { countGeoRequests, fulfillGeo, mockGeo, mockRates } from "./helpers"
+import { countGeoRequests, fulfillGeo, mockGeo } from "./helpers"
 
 test.beforeEach(async ({ page }) => {
   await mockGeo(page, "fail")
-  await mockRates(page, "fail")
 })
 
 test("v1.1: public visitors see neither an admin link nor login text; admins see /admin", async ({ page }) => {
@@ -147,24 +146,6 @@ for (const [width, minimum] of [[1280, 4], [1440, 5]] as const) {
       const first = Math.min(...tops)
       return tops.filter((top) => Math.abs(top - first) < 1).length
     })).toBeGreaterThanOrEqual(minimum)
-  })
-}
-
-for (const { currency, amount, skipped } of [
-  { currency: "CNY", amount: 60 * 3 / 30.4375, skipped: 10 },
-  { currency: "USD", amount: (360 / 60 * 60 + 120 / 3 * 15) / 30.4375, skipped: 9 },
-]) {
-  test(`v1.1: six summary tiles and remaining value only in ${currency}`, async ({ page }) => {
-    await page.route("**/api/themes/dys/config", (route) => route.fulfill({
-      json: { finance_currency: currency, exchange_rate_enabled: false },
-    }))
-    await page.goto(mockUrl("normal"))
-    const tiles = page.getByTestId("summary-tile")
-    await expect(tiles).toHaveCount(6)
-    const value = tiles.filter({ hasText: "剩余价值" })
-    const formatted = new Intl.NumberFormat("zh-CN", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount)
-    await expect(value).toContainText(formatted)
-    await expect(value).toContainText(new RegExp(`${skipped}\\s*台未计入`))
   })
 }
 
