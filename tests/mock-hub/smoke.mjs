@@ -99,8 +99,12 @@ try {
     assert.equal(offlineAges[1], null);
     assert.ok(nodes.some(({ billing_cycle }) => /^\d+m$/.test(billing_cycle)));
     assert.ok(nodes.some(({ billing_cycle }) => billing_cycle === 'once'));
+    const operatingSystems = new Set(nodes.map(({ os }) => os));
+    for (const name of ['Debian 12', 'Debian 13', 'Ubuntu 24.04', 'CentOS 7', 'Rocky 9', 'Alpine 3.20', 'Arch', 'iStoreOS 25.12.6', 'Windows Server 2022', 'FreeBSD 14']) {
+      assert.ok(operatingSystems.has(name), name);
+    }
     const currencies = new Set(nodes.map(({ currency }) => currency));
-    for (const code of ['CNY', 'USD', 'EUR', 'JPY', 'HKD']) assert.ok(currencies.has(code));
+    for (const code of ['CNY', 'USD', 'EUR', 'JPY', 'HKD', 'CAD', 'GBP']) assert.ok(currencies.has(code));
     assert.ok(nodes.some(({ traffic_limit }) => traffic_limit === 0));
     assert.deepEqual([...new Set(nodes.map(({ traffic_mode }) => traffic_mode))].sort(), ['down', 'max', 'sum', 'up']);
     for (const node of nodes) {
@@ -154,7 +158,7 @@ try {
     assert.ok(full.metrics.length && full.ping.length);
     const streams = await Promise.all([frames(base, { count: 2 }), frames(base, { query: '?gzip=0', gzip: true, count: 2 })]);
     assert.ok(streams.flat().every(({ nodes, admin }) => nodes.length === 16 && admin === false));
-    return '16 nodes / 12 countries; billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; text + gzip pushes ≈2s apart';
+    return '16 nodes / 12 countries; OS, CAD/GBP billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; text + gzip pushes ≈2s apart';
   });
   await scenario('nogroups', (base) => {
     assert.ok(get(base, '/api/nodes').nodes.every(({ group }) => group === ''));
@@ -239,11 +243,29 @@ try {
     }
     return 'all five reads return 502 text/html';
   });
+  await scenario('fewpoints', (base) => {
+    for (const points of [60, 1440]) {
+      const data = get(base, `/api/nodes/1/metrics?hours=720&points=${points}`);
+      assert.equal(data.step, 3600);
+      const times = data.metrics.map(({ ts }) => ts);
+      assert.equal(times.length, 4);
+      assert.equal(times.at(-1) - times[0], 3 * 3600);
+      assert.equal(data.metrics.at(-1).minutes, 1);
+      for (const id of [9, 2]) {
+        assert.deepEqual(data.ping.filter(({ task_id }) => task_id === id).map(({ ts }) => ts), times);
+      }
+    }
+    const short = get(base, '/api/nodes/1/metrics?hours=1&points=60&series=metrics');
+    assert.ok(short.metrics.length <= 60);
+    assert.ok(short.metrics.at(-1).ts - short.metrics[0].ts < 3600);
+    return '30-day history has 4 hourly buckets over 3 hours; partial last bucket and aligned probes';
+  });
   await scenario('config', (base) => {
     const config = get(base, '/api/themes/dys/config');
     assert.equal(config.layout, 'table');
     assert.equal(config.show_summary, false);
     assert.equal(config.visitor_info_enabled, false);
+    assert.equal(config.exchange_rate_enabled, false);
     assert.equal(config.expiry_warning_days, 3);
     assert.equal(config.accent, 'notacolor');
     assert.equal(config.poll_interval, 999);

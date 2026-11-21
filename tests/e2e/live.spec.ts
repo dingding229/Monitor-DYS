@@ -1,8 +1,11 @@
 import { expect, test, type Response } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
-import { mockGeo } from "./helpers"
+import { mockGeo, mockRates } from "./helpers"
 
-test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
+test.beforeEach(async ({ page }) => {
+  await mockGeo(page, "fail")
+  await mockRates(page, "fail")
+})
 
 const isNodes = (url: string) => new URL(url).pathname === "/api/nodes"
 const isSocket = (url: string) => new URL(url).pathname === "/api/ws"

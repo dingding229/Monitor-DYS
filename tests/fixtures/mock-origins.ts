@@ -11,6 +11,7 @@ export const mockPorts = {
   proxy502: 19920,
   config: 19921,
   admin: 19922,
+  fewpoints: 19923,
 } as const
 
 export const mockUrl = (scenario: keyof typeof mockPorts, path = "/") =>

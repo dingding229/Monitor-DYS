@@ -3,6 +3,7 @@
     "layout": "table",
     "card_size": "standard",
     "visitor_info_enabled": false,
+    "exchange_rate_enabled": false,
     "expiry_warning_days": 3,
     "show_summary": false,
     "show_billing": "false",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { monthlyCost, remainingValue, summarizeValue } from "@/lib/finance"
+import { rateDate, ratesPerCny } from "../fixtures/exchange-rates"
 
 const paid = { price: 120, billing_cycle: "monthly", currency: "CNY" }
 
@@ -63,7 +64,40 @@ describe("summarizeValue", () => {
   })
 
   it("does not convert currencies when no node matches; empty input has no skipped nodes", () => {
-    expect(summarizeValue(nodes, "JPY")).toEqual({ amount: 0, counted: 0, skipped: 4 })
-    expect(summarizeValue([], "CNY")).toEqual({ amount: 0, counted: 0, skipped: 0 })
+    expect(summarizeValue(nodes, "JPY")).toMatchObject({ amount: 0, counted: 0, skipped: 4 })
+    expect(summarizeValue([], "CNY")).toMatchObject({ amount: 0, counted: 0, skipped: 0 })
+  })
+})
+
+describe("summarizeValue with v1.2 exchange rates", () => {
+  const divisor = 30.4375
+  const nodes = [
+    { ...paid, expires_in: 3 },
+    { ...paid, price: 60, billing_cycle: "quarterly", expires_in: 20 },
+    { ...paid, currency: "USD", expires_in: 30 },
+    { ...paid, currency: "CAD", expires_in: 30 },
+    { ...paid, currency: "GBP", expires_in: 60 },
+    { ...paid, currency: "JPY", expires_in: -3 },
+    { ...paid, billing_cycle: "once", currency: "EUR", expires_in: 30 },
+  ]
+  const rates = { base: "CNY", date: rateDate, rates: ratesPerCny }
+
+  it("counts every estimable plan and keeps byCurrency in the original denominations", () => {
+    const result = summarizeValue(nodes, "CNY", rates)
+    expect(result).toMatchObject({ counted: 5, skipped: 0, converted: true })
+    expect(result.amount).toBeCloseTo((760 + 3600 / ratesPerCny.USD + 3600 / ratesPerCny.CAD + 7200 / ratesPerCny.GBP) / divisor, 8)
+    expect(Object.keys(result.byCurrency).sort()).toEqual(["CAD", "CNY", "GBP", "USD"])
+    for (const [currency, amount] of Object.entries({ CAD: 3600, CNY: 760, GBP: 7200, USD: 3600 })) {
+      expect(result.byCurrency[currency]).toBeCloseTo(amount / divisor, 8)
+    }
+  })
+
+  it("preserves the v1.1 amount and counts with no rates and does not claim conversion", () => {
+    for (const value of [undefined, null]) {
+      const result = summarizeValue(nodes, "CNY", value)
+      expect(result).toMatchObject({ counted: 2, skipped: 3, converted: false })
+      expect(result.amount).toBeCloseTo(760 / divisor, 8)
+    }
+    expect(summarizeValue(nodes.slice(0, 2), "CNY", rates).converted).toBe(false)
   })
 })

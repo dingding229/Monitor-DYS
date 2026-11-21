@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
-import { mockGeo } from "./helpers"
+import { mockGeo, mockRates } from "./helpers"
 
-test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
+test.beforeEach(async ({ page }) => {
+  await mockGeo(page, "fail")
+  await mockRates(page, "fail")
+})
 
 test("corrupt: bad CPU and load are unavailable; a healthy node still shows metrics", async ({ page }) => {
   await page.goto(mockUrl("corrupt"))
@@ -89,7 +92,7 @@ test("config: applies valid settings, falls back for an invalid accent, and rend
   await expect(page.locator('img[src="x"]')).toHaveCount(0) // country flags are real images elsewhere
   expect(dialogs).toEqual([])
 
-  await page.getByRole("button", { name: /^(?:切换为)?卡片(?:视图)?$/ }).first().click()
+  await page.locator("main").getByRole("button", { name: "卡片视图" }).click()
   await page.reload()
   await expect(page.getByTestId("announcement")).toBeVisible()
   await expect(page.getByTestId("node-card")).toHaveCount(16)

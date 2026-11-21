@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
-import { mockGeo } from "./helpers"
+import { mockGeo, mockRates } from "./helpers"
 
-test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
+test.beforeEach(async ({ page }) => {
+  await mockGeo(page, "fail")
+  await mockRates(page, "fail")
+})
 
 const longRanges = ["1 小时", "6 小时", "1 天", "7 天", "30 天", "90 天"]
 
@@ -28,7 +31,7 @@ test("normal: 16 cards, first-seen groups, and ungrouped filtering", async ({ pa
 test("normal: table layout is restored after a reload", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   await expect(page.getByTestId("node-card")).toHaveCount(16)
-  await page.getByRole("button", { name: /^(?:切换为)?列表(?:视图)?$/ }).first().click()
+  await page.locator("main").getByRole("button", { name: "列表视图" }).click()
   await expect(page.getByTestId("node-row")).toHaveCount(16)
   await page.reload()
   await expect(page.getByTestId("node-row")).toHaveCount(16)

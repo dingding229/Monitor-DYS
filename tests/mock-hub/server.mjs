@@ -107,7 +107,7 @@ function snapshot() {
     const node = {
       public: true, public_remark: '', ...adminFields, ...seed, online, sort: index, metrics,
       last_seen: age === null ? 0 : now - age, last_seen_ago: age,
-      os: id % 3 ? 'Debian GNU/Linux 12' : 'Ubuntu 24.04 LTS', kernel: '6.1.0',
+      os: seed.os ?? (id % 3 ? 'Debian GNU/Linux 12' : 'Ubuntu 24.04 LTS'), kernel: '6.1.0',
       arch: id % 4 ? 'x86_64' : 'aarch64', virt: id % 5 ? 'kvm' : 'lxc',
       cpu_name: seed.cpu_name ?? 'AMD EPYC 7B13', cpu_cores: seed.cpu_cores ?? (2 + (id % 4) * 2), ...storage,
       agent_version: '1.4.3', expires_at: seed.expires_in === null ? null : dateAfter(seed.expires_in),
@@ -133,10 +133,18 @@ function history(seed, query) {
   const series = query.get('series');
   const duration = hours * 3600;
   const quantum = hours <= 168 ? 60 : 3600;
-  const step = Math.ceil(duration / (points * quantum)) * quantum;
+  const retention = scenario.recentHistoryHours ? scenario.recentHistoryHours * 3600 : null;
+  const window = Math.min(duration, retention ?? duration);
+  const step = Math.ceil(window / (points * quantum)) * quantum;
   const end = Math.floor(Date.now() / 60000) * 60;
   const start = end - duration;
-  const times = Array.from({ length: Math.ceil(duration / step) }, (_, i) => start + i * step);
+  // For sparse history include the latest recorded minute (a partial bucket) and
+  // work backwards; do not fill up the unobserved weeks of the requested range.
+  const latest = end - 60;
+  const sparseBuckets = Math.min(points, Math.floor((latest - Math.max(start, latest - window)) / step) + 1);
+  const times = retention === null
+    ? Array.from({ length: Math.ceil(duration / step) }, (_, i) => start + i * step)
+    : Array.from({ length: sparseBuckets }, (_, i) => latest - (sparseBuckets - 1 - i) * step);
   const storage = storageFor(seed);
   const metrics = series === 'ping' ? [] : times.map((ts, i) => {
     const available = Math.min(step, end - ts) / 60;

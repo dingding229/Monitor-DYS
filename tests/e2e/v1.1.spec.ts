@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
 import { ipsbResponse, ipwhoResponse } from "../fixtures/visitor-geo"
-import { countGeoRequests, fulfillGeo, mockGeo } from "./helpers"
+import { countGeoRequests, fulfillGeo, mockGeo, mockRates } from "./helpers"
 
-test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
+test.beforeEach(async ({ page }) => {
+  await mockGeo(page, "fail")
+  await mockRates(page, "fail")
+})
 
 test("v1.1: public visitors see neither an admin link nor login text; admins see /admin", async ({ page }) => {
   await page.goto(mockUrl("normal"))
@@ -32,17 +35,20 @@ test("v1.1: IP.SB visitor location, expandable panel and same-session cache", as
   await mockGeo(page, "ipsb")
   await page.goto(mockUrl("normal"))
   const bubble = page.getByTestId("visitor-bubble")
-  await expect(bubble).toContainText(ipsbResponse.city)
+  // v1.2 moves the city into the panel; either bubble label still proves the lookup worked.
+  const location = bubble.getByText("日本", { exact: true }).or(bubble.getByText(ipsbResponse.city, { exact: true }))
+  await expect(location).toBeVisible()
   await expect(bubble).toContainText(/Chrome/i)
   await expect(page.getByTestId("visitor-panel")).toBeHidden()
-  await bubble.getByText(ipsbResponse.city, { exact: false }).click()
+  await location.click()
   const panel = page.getByTestId("visitor-panel")
   await expect(panel).toBeVisible()
+  await expect(panel).toContainText(ipsbResponse.city)
   await expect(panel).toContainText(ipsbResponse.ip)
   await expect(panel).toContainText(ipsbResponse.isp)
   expect(requests).toEqual({ ipsb: 1, ipwho: 0 })
   await page.reload()
-  await expect(bubble).toContainText(ipsbResponse.city)
+  await expect(location).toBeVisible()
   expect(requests).toEqual({ ipsb: 1, ipwho: 0 })
 })
 
@@ -50,7 +56,11 @@ test("v1.1: visitor location falls back from IP.SB to ipwho.is", async ({ page }
   const requests = countGeoRequests(page)
   await mockGeo(page, "ipwho")
   await page.goto(mockUrl("normal"))
-  await expect(page.getByTestId("visitor-bubble")).toContainText(ipwhoResponse.city)
+  const bubble = page.getByTestId("visitor-bubble")
+  const location = bubble.getByText("德国", { exact: true }).or(bubble.getByText(ipwhoResponse.city, { exact: true }))
+  await expect(location).toBeVisible()
+  await location.click()
+  await expect(page.getByTestId("visitor-panel")).toContainText(ipwhoResponse.city)
   expect(requests).toEqual({ ipsb: 1, ipwho: 1 })
 })
 
@@ -118,7 +128,10 @@ test("v1.1: untrusted GeoIP location fields are rendered as text, not img elemen
   }))
   await page.goto(mockUrl("normal"))
   const bubble = page.getByTestId("visitor-bubble")
-  await expect(bubble).toContainText(locationText)
+  const location = bubble.getByText("日本", { exact: true }).or(bubble.getByText(locationText, { exact: true }))
+  await expect(location).toBeVisible()
+  await location.click()
+  await expect(page.getByTestId("visitor-panel")).toContainText(locationText)
   // Legitimate local flag images are allowed; assert the injected tag never becomes an element.
   await expect(page.locator(`img[src*="${path}"]`)).toHaveCount(0)
 })
@@ -142,7 +155,9 @@ for (const { currency, amount, skipped } of [
   { currency: "USD", amount: (360 / 60 * 60 + 120 / 3 * 15) / 30.4375, skipped: 9 },
 ]) {
   test(`v1.1: six summary tiles and remaining value only in ${currency}`, async ({ page }) => {
-    if (currency !== "CNY") await page.route("**/api/themes/dys/config", (route) => route.fulfill({ json: { finance_currency: currency } }))
+    await page.route("**/api/themes/dys/config", (route) => route.fulfill({
+      json: { finance_currency: currency, exchange_rate_enabled: false },
+    }))
     await page.goto(mockUrl("normal"))
     const tiles = page.getByTestId("summary-tile")
     await expect(tiles).toHaveCount(6)
@@ -153,38 +168,22 @@ for (const { currency, amount, skipped } of [
   })
 }
 
-test("v1.1: desktop map markers cover every country and the map is hidden at 390px", async ({ page }) => {
+test("desktop map covers all countries and is hidden at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto(mockUrl("normal"))
   const response = await page.request.get(mockUrl("normal", "/api/nodes"))
   const { nodes } = await response.json() as { nodes: { country: string }[] }
-  const countries = [...new Set(nodes.map(({ country }) => country.trim().toUpperCase()).filter(Boolean))].sort()
+  const countries = [...new Set(nodes.map(({ country }) => country))].sort()
   expect(countries.length).toBeGreaterThanOrEqual(8)
   const map = page.getByTestId("world-map")
   await expect(map).toBeVisible()
-  const markers = map.getByTestId("map-marker")
-  const coverage = () => markers.evaluateAll((elements) => elements.map((marker) => {
-    const title = marker.getAttribute("title") ?? ""
-    const explicitCount = marker.getAttribute("data-country-count") ?? title.match(/(\d+)\s*个(?:国家和地区|国家|地区)/u)?.[1]
-    // “在线 x/y” counts nodes, not countries, and describes a single-country marker.
-    const count = explicitCount !== undefined
-      ? Number(explicitCount)
-      : /^.+?\s*·\s*在线\s*\d+\s*\/\s*\d+$/u.test(title) ? 1 : 0
-    return { count, title, flag: marker.querySelector("img[alt]")?.getAttribute("alt") ?? null }
-  }))
-  await expect.poll(async () => {
-    const markers = await coverage()
-    return {
-      total: markers.reduce((sum, { count }) => sum + count, 0),
-      missingCoverage: markers.filter(({ count }) => !Number.isInteger(count) || count < 1).map(({ title }) => title),
-    }
-  }).toEqual({ total: countries.length, missingCoverage: [] })
-  const rendered = await coverage()
-  if (rendered.every(({ count }) => count === 1)) {
-    expect(rendered.map(({ flag }) => flag).sort()).toEqual(countries)
-  }
+  const markers = map.getByTestId("map-country")
+  await expect(markers).toHaveCount(countries.length)
+  expect(await markers.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-country")).sort()))
+    .toEqual(countries)
   await page.setViewportSize({ width: 390, height: 850 })
-  await expect(map).toBeHidden()
+  // The map picture/markers disappear; v1.2 may keep their surrounding country-list card.
+  await expect(markers.first()).toBeHidden()
 })
 
 test("v1.1: searching for 东京 leaves only matching cards", async ({ page }) => {

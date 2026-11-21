@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { bytes, cycleMonths, expiry, money, offlineFor, percent, speed } from "../../src/lib/format"
+import { bytes, cycleMonths, expiry, money, offlineFor, percent, regionName, speed } from "../../src/lib/format"
 
 const MiB = 1024 ** 2
 const now = Date.parse("2026-11-21T12:00:00Z")
@@ -8,13 +8,21 @@ const nowSeconds = now / 1000
 describe("format", () => {
   it.each([
     [0, "0 B"], [-1, "0 B"], [NaN, "0 B"], [Infinity, "0 B"],
-    [1023, "1023 B"], [1024, "1.00 KB"], [1536, "1.50 KB"],
+    [999, "999 B"], [1000, "0.98 KB"], [1011, "0.99 KB"], [1023, "1.00 KB"], [1024, "1.00 KB"], [1536, "1.50 KB"],
+    [999 * 1024, "999 KB"], [1000 * 1024, "0.98 MB"], [1011 * 1024, "0.99 MB"],
+    [1023 * 1024, "1.00 MB"], [1024 * 1024, "1.00 MB"],
     [12.25 * MiB, "12.3 MB"], [200 * MiB, "200 MB"], [1024 ** 3, "1.00 GB"],
   ])("bytes(%s) = %s", (value, text) => expect(bytes(value)).toBe(text))
 
   it("formats rates as bytes per second, not bits per second", () => {
     expect(speed(0)).toBe("0 B/s")
     expect(speed(1536)).toBe("1.50 KB/s")
+    expect(speed(1011 * 1024)).toBe("0.99 MB/s")
+  })
+
+  it("localizes valid region codes and falls back to the original invalid code", () => {
+    expect(regionName("HK")).toBe("香港")
+    expect(regionName("not-a-region")).toBe("not-a-region")
   })
 
   it.each([
