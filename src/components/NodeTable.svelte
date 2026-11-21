@@ -7,7 +7,7 @@
     FOREVER,
     bytes,
     expiry,
-    money,
+    priceShort,
     offlineFor,
     osName,
     pair,
@@ -233,7 +233,7 @@
             {/if}
             {#if showBilling && node.price > 0}
               <div class="text-[11px] text-neutral-500">
-                {money(node.price, node.currency || "CNY")}
+                {priceShort(node.price, node.currency || "CNY", node.billing_cycle)}
               </div>
             {/if}
           </td>

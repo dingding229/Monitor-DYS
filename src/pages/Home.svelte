@@ -4,6 +4,7 @@
   import Summary from "@/components/Summary.svelte"
   import { ALL_GROUP, UNGROUPED, groupsOf, type GroupKey, type Node } from "@/lib/api"
   import { expiry, percentNum, regionName } from "@/lib/format"
+  import { fadeOverflow } from "@/lib/fadeOverflow"
   import type { SortKey } from "@/lib/prefs"
 
   let {
@@ -159,14 +160,6 @@
   $effect(() => {
     onUpdateOrderedNodes?.(displayedNodes)
   })
-
-  function fadeOverflow(el: HTMLElement) {
-    const update = () => el.classList.toggle("fade-end", el.scrollLeft + el.clientWidth + 1 < el.scrollWidth)
-    const observer = new ResizeObserver(update)
-    observer.observe(el); observer.observe(el.firstElementChild!)
-    el.addEventListener("scroll", update, { passive: true })
-    return { destroy() { observer.disconnect(); el.removeEventListener("scroll", update) } }
-  }
 
   type TabItem = { key: GroupKey; label: string; count: number }
 

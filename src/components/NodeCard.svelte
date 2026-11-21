@@ -7,10 +7,8 @@
   import {
     FOREVER,
     bytes,
-    cycleLabel,
-    cycleMonths,
     expiry,
-    money,
+    priceShort,
     offlineFor,
     pair,
     percentNum,
@@ -71,20 +69,8 @@
         : `${bytes(periodUsed)} / ${FOREVER}`,
   )
 
-  let billingCapsule = $derived.by(() => {
-    if (!showBilling) return ""
-    if (typeof node.price !== "number" || node.price <= 0) return ""
-    const formattedPrice = money(node.price, node.currency || "CNY")
-    const months = cycleMonths(node.billing_cycle)
-    const label = cycleLabel(node.billing_cycle)
-    if (Number.isNaN(months)) {
-      return label ? `${formattedPrice} / ${label}` : formattedPrice
-    }
-    if (months === 0) {
-      return `${formattedPrice} · 一次性`
-    }
-    return `${formattedPrice} / ${label.replace(/付$/, "")}`
-  })
+  let billingPrice = $derived(showBilling && node.price > 0
+    ? priceShort(node.price, node.currency || "CNY", node.billing_cycle) : "—")
 
   let publicRemark = $derived(typeof node.public_remark === "string" ? node.public_remark.trim() : "")
 
@@ -232,7 +218,7 @@
     <div class="min-w-0">
       <div class="text-[12px] text-neutral-400">到期</div>
       <div
-        class="tnum mt-0.5 truncate text-[13px] font-medium {exp.level === 'expired'
+        class="tnum mt-0.5 [overflow-wrap:anywhere] text-[13px] font-medium {exp.level === 'expired'
           ? 'text-red-600'
           : exp.level === 'soon'
             ? 'text-amber-600'
@@ -249,10 +235,10 @@
       </div>
       {#if showBilling}
         <div
-          class="tnum truncate text-[13px] font-medium text-neutral-600"
-          title={billingCapsule}
+          class="tnum [overflow-wrap:anywhere] text-[12px] font-medium text-neutral-600"
+          title={billingPrice}
         >
-          {billingCapsule || "—"}
+          {billingPrice}
         </div>
       {/if}
     </div>

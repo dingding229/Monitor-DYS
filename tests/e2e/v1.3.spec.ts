@@ -18,7 +18,7 @@ function amountText(n: number) {
   return new RegExp(`(?:^|[^\\d.])${esc(value)}\\s*${esc(unit)}\\b`)
 }
 
-test.fixme("v1.3: six summary tiles report server counts and cumulative traffic for the current group", async ({ page }) => {
+test("v1.3: six summary tiles report server counts and cumulative traffic for the current group", async ({ page }) => {
   const snapshot = await page.request.get(mockUrl("normal", nodesPath))
   expect(snapshot.ok()).toBe(true)
   const { nodes } = await snapshot.json() as { nodes: { online: boolean; group?: string; total_tx: number; total_rx: number }[] }
@@ -38,7 +38,7 @@ test.fixme("v1.3: six summary tiles report server counts and cumulative traffic 
   await check(group)
 })
 
-test.fixme("v1.3: home, list, and detail have no remaining value or quote-provider requests", async ({ page }) => {
+test("v1.3: home, list, and detail have no remaining value or quote-provider requests", async ({ page }) => {
   const hosts = new Set(["open.er-api.com", "cdn.jsdelivr.net"])
   const unexpected: string[] = []
   page.on("request", (request) => {
@@ -59,7 +59,7 @@ test.fixme("v1.3: home, list, and detail have no remaining value or quote-provid
   expect(unexpected).toEqual([])
 })
 
-test.fixme("v1.3: startup requests start within 50 ms and do not repeat the nodes GET in three seconds", async ({ page }) => {
+test("v1.3: startup requests start within 50 ms and do not repeat the nodes GET in three seconds", async ({ page }) => {
   const paths = ["/api/me", nodesPath, configPath]
   let nodeGets = 0
   page.on("request", (request) => {
@@ -89,7 +89,7 @@ test.fixme("v1.3: startup requests start within 50 ms and do not repeat the node
   expect(nodeGets).toBe(1)
 })
 
-test.fixme("v1.3: detail JS is absent on initial home, then requested on detail navigation", async ({ page }) => {
+test("v1.3: detail JS is absent on initial home, then requested on detail navigation", async ({ page }) => {
   const build = inspectBuild(process.env.DYS_TEST_DIST)
   expect(build.detailFiles.length, "identify detail chunks by manifest or emitted name before testing code splitting").toBeGreaterThan(0)
   const candidates = new Set(build.detailFiles)
@@ -113,7 +113,7 @@ test.fixme("v1.3: detail JS is absent on initial home, then requested on detail 
 type ShiftEntry = PerformanceEntry & { hadRecentInput: boolean; value: number }
 type ShiftWindow = Window & { startupShift?: { observer: PerformanceObserver; values: number[] } }
 
-test.fixme("v1.3: loading skeleton yields to cards after the one-second snapshot delay with CLS under 0.05", async ({ page }) => {
+test("v1.3: loading skeleton yields to cards after the one-second snapshot delay with CLS under 0.05", async ({ page }) => {
   await page.routeWebSocket(wsRoute, () => {}) // isolate the slow HTTP snapshot from the first WS frame
   await page.addInitScript(() => {
     if (!PerformanceObserver.supportedEntryTypes.includes("layout-shift")) return
@@ -143,7 +143,7 @@ test.fixme("v1.3: loading skeleton yields to cards after the one-second snapshot
   expect(cls).toBeLessThan(0.05)
 })
 
-test.fixme("v1.3: the footer has at most 24px bottom gap and contains the visitor bubble when visible", async ({ page }) => {
+test("v1.3: the footer has at most 24px bottom gap and contains the visitor bubble when visible", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   await expect(page.getByTestId("node-card")).toHaveCount(16)
   const footer = page.locator("footer")
@@ -167,7 +167,7 @@ test.fixme("v1.3: the footer has at most 24px bottom gap and contains the visito
   })).toBe(true)
 })
 
-test.fixme("v1.3: header and summary tiles use a glass backdrop", async ({ page }) => {
+test("v1.3: header and summary tiles use a glass backdrop", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   await expect(page.getByRole("banner")).toHaveCSS("backdrop-filter", /blur\(/)
   const tiles = page.getByTestId("summary-tile")
@@ -175,7 +175,7 @@ test.fixme("v1.3: header and summary tiles use a glass backdrop", async ({ page 
   for (const tile of await tiles.all()) await expect(tile).toHaveCSS("backdrop-filter", /blur\(/)
 })
 
-test.fixme("v1.3: reduced transparency disables the glass backdrop", async ({ page, browserName }) => {
+test("v1.3: reduced transparency disables the glass backdrop", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "The media preference is emulated via Chromium DevTools Protocol")
   const client = await page.context().newCDPSession(page)
   await client.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-transparency", value: "reduce" }] })
@@ -188,7 +188,7 @@ test.fixme("v1.3: reduced transparency disables the glass backdrop", async ({ pa
   for (const tile of await tiles.all()) await expect(tile).toHaveCSS("backdrop-filter", "none")
 })
 
-test.fixme("v1.3: node cards have an 8px computed border radius", async ({ page }) => {
+test("v1.3: node cards have an 8px computed border radius", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   await expect(tokyo(page)).toHaveCSS("border-radius", "8px")
 })
@@ -209,7 +209,7 @@ async function checkGrid(cells: Locator, total: number, columns: number) {
   }
 }
 
-test.fixme("v1.3: 390px uses three summary columns and two detail-stat columns", async ({ page }) => {
+test("v1.3: 390px uses three summary columns and two detail-stat columns", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 850 })
   await page.goto(mockUrl("normal"))
   await checkGrid(page.getByTestId("summary-tile"), 6, 3)
@@ -221,7 +221,7 @@ test.fixme("v1.3: 390px uses three summary columns and two detail-stat columns",
   await checkGrid(stats, 4, 2)
 })
 
-test.fixme("v1.3: empty search state clears its filters and restores cards", async ({ page }) => {
+test("v1.3: empty search state clears its filters and restores cards", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   await expect(page.getByTestId("node-card")).toHaveCount(16)
   const search = page.getByTestId("search-input")
@@ -236,7 +236,7 @@ test.fixme("v1.3: empty search state clears its filters and restores cards", asy
 })
 
 for (const scenario of ["normal", "lossy"] as const) {
-  test.fixme(`v1.3: ${scenario} Ping loss controls chart visibility and the no-loss badge`, async ({ page }) => {
+  test(`v1.3: ${scenario} Ping loss controls chart visibility and the no-loss badge`, async ({ page }) => {
     const response = page.waitForResponse((response) => {
       const url = new URL(response.url())
       return url.pathname === "/api/nodes/1/metrics" && url.searchParams.get("series") === "ping" && response.ok()
@@ -258,7 +258,7 @@ for (const scenario of ["normal", "lossy"] as const) {
   })
 }
 
-test.fixme("v1.3: first HTTP snapshot ends 连接中 even before the first WS frame", async ({ page }) => {
+test("v1.3: first HTTP snapshot ends 连接中 even before the first WS frame", async ({ page }) => {
   await page.routeWebSocket(wsRoute, () => {})
   const response = page.waitForResponse((response) => pathIs(response.url(), nodesPath) && response.ok())
   await page.goto(mockUrl("slownodes"), { waitUntil: "domcontentloaded" })
@@ -268,4 +268,56 @@ test.fixme("v1.3: first HTTP snapshot ends 连接中 even before the first WS fr
   await expect(page.getByTestId("node-card")).toHaveCount(16)
   await expect(status).toContainText("已连接")
   await expect(status).not.toContainText(/连接中|实时更新|轮询更新/)
+})
+
+
+test("v1.3: the expiry column shows full prices at 1280px", async ({ page }) => {
+  const examples = [
+    { id: 4, name: "北京 01", price: 1188, currency: "CNY", billing_cycle: "monthly", amount: /1,188/ },
+    { id: 3, name: "硅谷 01", price: 57.6, currency: "USD", billing_cycle: "yearly", amount: /57\.60/ },
+    { id: 14, name: "东京 02", price: 629, currency: "CNY", billing_cycle: "once", amount: /629/ },
+  ]
+  await page.setViewportSize({ width: 1280, height: 900 })
+  // Preserve the sample prices: the mock's unmodified WS pushes would replace the HTTP fixture.
+  await page.routeWebSocket(wsRoute, () => {})
+  await page.route((url) => url.pathname === nodesPath, async (route) => {
+    const response = await route.fetch()
+    if (!response.ok()) return route.fulfill({ response })
+    const snapshot = await response.json() as { nodes: { id: number }[] }
+    const nodes = snapshot.nodes.map((node) => {
+      const sample = examples.find(({ id }) => id === node.id)
+      return sample ? { ...node, price: sample.price, currency: sample.currency, billing_cycle: sample.billing_cycle } : node
+    })
+    await route.fulfill({ response, json: { ...snapshot, nodes } })
+  })
+  await page.goto(mockUrl("normal"))
+  const cards = page.getByTestId("node-card")
+  await expect(cards).toHaveCount(16)
+  await page.evaluate(() => document.fonts.ready.then(() => undefined))
+
+  for (const sample of examples) {
+    const column = cards.filter({ hasText: sample.name }).getByText("到期", { exact: true }).locator("..")
+    const price = column.getByText(sample.amount)
+    await expect(price).toBeVisible()
+    const { scrollWidth, clientWidth, text } = await price.evaluate((element) => {
+      let line = element
+      // An inline price label can be inside a block controlling the available width.
+      while (!line.clientWidth && line.parentElement) line = line.parentElement
+      return { scrollWidth: line.scrollWidth, clientWidth: line.clientWidth, text: element.textContent?.trim() }
+    })
+    expect(clientWidth, `${sample.name}: price line should have a layout width`).toBeGreaterThan(0)
+    expect(scrollWidth, `${sample.name}: ${text} needs ${scrollWidth}px in a ${clientWidth}px column`).toBeLessThanOrEqual(clientWidth)
+  }
+})
+
+test("v1.3: all detail range buttons share one row at 390px", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 850 })
+  await page.goto(mockUrl("normal", "/node/1"))
+  const range = page.getByRole("group", { name: "时间范围" })
+  const buttons = range.getByTestId("range-btn")
+  await expect(buttons).toHaveCount(6)
+  await expect(range).toHaveCSS("overflow-x", "auto")
+  await expect(buttons.first()).toBeVisible()
+  const tops = await buttons.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top))
+  expect(Math.max(...tops) - Math.min(...tops), `Range button top coordinates: ${tops.join(", ")}`).toBeLessThan(1)
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { bytes, cycleMonths, expiry, money, offlineFor, percent, regionName, speed } from "../../src/lib/format"
+import { bytes, cycleMonths, expiry, money, offlineFor, percent, priceShort, regionName, speed } from "../../src/lib/format"
 
 const MiB = 1024 ** 2
 const now = Date.parse("2026-11-21T12:00:00Z")
@@ -76,5 +76,28 @@ describe("format", () => {
     expect(offlineFor({ online: false, last_seen: nowSeconds - 125 }, now)).toBe("2 分")
     expect(offlineFor({ online: false, last_seen: 0 }, now)).toBe("从未上报")
     expect(offlineFor({ online: false, last_seen: null }, now)).toBe("从未上报")
+  })
+})
+
+
+describe("priceShort", () => {
+  it.each([
+    ["monthly", "/月"], ["quarterly", "/季"], ["semiannual", "/半年"],
+    ["yearly", "/年"], ["biennial", "/2年"], ["triennial", "/3年"],
+    ["18m", "/18月"], ["60m", "/60月"],
+  ])("uses the compact %s suffix and omits .00 for integer prices", (cycle, suffix) => {
+    expect(priceShort(1188, "CNY", cycle)).toBe(`¥1,188${suffix}`)
+  })
+
+  it("labels one-time pricing without a recurring suffix", () => {
+    expect(priceShort(629, "CNY", "once")).toMatch(/^¥629[\s·]*一次性$/u)
+  })
+
+  it.each([[86.4, "US$86.40/季"], [86.45, "US$86.45/季"]] as const)("keeps two decimals for a fractional USD price of %s", (amount, expected) => {
+    expect(priceShort(amount, "USD", "quarterly")).toBe(expected)
+  })
+
+  it.each([[12, "BAD-CODE 12/月"], [12.5, "BAD-CODE 12.50/月"]] as const)("falls back to the literal invalid currency code for %s", (amount, expected) => {
+    expect(priceShort(amount, "BAD-CODE", "monthly")).toBe(expected)
   })
 })

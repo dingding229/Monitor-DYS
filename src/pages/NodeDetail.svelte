@@ -10,10 +10,8 @@
     axisBytes,
     bytes,
     cpuName,
-    cycleLabel,
-    cycleMonths,
     expiry,
-    money,
+    priceShort,
     offlineFor,
     pair,
     percentNum,
@@ -22,6 +20,7 @@
     uptime,
   } from "@/lib/format"
   import { osKey } from "@/lib/icons"
+  import { fadeOverflow } from "@/lib/fadeOverflow"
   import { rangeLabel, rangesFor } from "@/lib/ranges"
 
   type MetricPoint = {
@@ -594,17 +593,16 @@
 
   <!-- 5. Resource Trends Section: Range buttons + Show Peak checkbox + Refresh button + 4 side-by-side charts -->
   <div class="space-y-2.5">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div>
+    <div class="trend-toolbar flex flex-wrap items-center gap-2 text-[12px]">
+      <div class="mr-auto">
         <h2 class="text-[14px] font-bold text-neutral-900">资源趋势</h2>
         <p class="tnum text-[11px] text-neutral-400">
           {showPeak ? "含区间峰值" : "历史平均值"}{updatedAtStr ? ` · 更新于 ${updatedAtStr}` : ""}
         </p>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2 text-[12px]">
-        <!-- Range buttons (keeps data-testid="range-btn") -->
-        <div class="flex flex-wrap items-center gap-1" role="group" aria-label="时间范围">
+      <div class="range-scroll min-w-0 max-w-full overflow-x-auto" use:fadeOverflow role="group" aria-label="时间范围">
+        <div class="range-track flex w-max items-center gap-1 py-1">
           {#each rangeHoursList as h (h)}
             {@const active = selectedHours === h}
             <button
@@ -621,8 +619,10 @@
             </button>
           {/each}
         </div>
+      </div>
 
-        <label class="inline-flex cursor-pointer items-center gap-1 text-[12px] text-neutral-600">
+      <div class="trend-actions flex items-center gap-2">
+        <label class="desktop-peak inline-flex cursor-pointer items-center gap-1 text-[12px] text-neutral-600">
           <input
             type="checkbox"
             bind:checked={showPeak}
@@ -631,12 +631,19 @@
           <span>显示峰值</span>
         </label>
 
+        <button type="button" class="mobile-peak trend-action" aria-label="显示峰值" title="显示峰值"
+          aria-pressed={showPeak} onclick={() => (showPeak = !showPeak)}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18h18M3 14l5-6 4 4 5-8 4 6" /></svg>
+        </button>
+
         <button
           type="button"
+          aria-label="刷新" title="刷新"
           onclick={() => loadHistory(node.id, selectedHours)}
-          class="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+          class="trend-action cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
         >
-          刷新
+          <span class="refresh-text">刷新</span>
+          <svg class="refresh-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10a8 8 0 1 0-1.8 7.2M20 4v6h-6" /></svg>
         </button>
       </div>
     </div>
@@ -1046,12 +1053,7 @@
               <div class="text-[11px] text-neutral-400">录入标价</div>
               <div class="tnum mt-0.5 font-semibold text-neutral-800">
                 {#if typeof node.price === "number" && node.price > 0}
-                  {@const cm = cycleMonths(node.billing_cycle)}
-                  {money(node.price, node.currency || "CNY")}{Number.isNaN(cm)
-                    ? node.billing_cycle
-                      ? ` / ${node.billing_cycle}`
-                      : ""
-                    : ` / ${cycleLabel(node.billing_cycle)}`}
+                  {priceShort(node.price, node.currency || "CNY", node.billing_cycle)}
                 {:else}
                   免费 / 未设
                 {/if}
@@ -1079,3 +1081,21 @@
     </section>
   </div>
 </div>
+
+<style>
+  .mobile-peak, .refresh-icon { display: none; }
+
+  @media (width < 640px) {
+    .trend-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+    .trend-actions { grid-area: 1 / 2; }
+    .range-scroll { grid-area: 2 / 1 / auto / -1; }
+    .range-track button { min-width: 64px; min-height: 40px; padding-inline: 13px; white-space: nowrap; }
+    .desktop-peak, .refresh-text { display: none; }
+    .refresh-icon { display: block; }
+    .trend-action {
+      display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0;
+      border: 1px solid var(--border); background-color: white; color: #475954; cursor: pointer;
+    }
+    .mobile-peak[aria-pressed="true"] { color: white; background-color: color-mix(in srgb, var(--accent) 58%, #082b21); }
+  }
+</style>

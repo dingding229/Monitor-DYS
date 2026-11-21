@@ -67,19 +67,24 @@ export const FOREVER = "∞"
 
 const MONEY = new Map<string, Intl.NumberFormat>()
 
-export function money(amount: number, currency: string): string {
+function formatMoney(amount: number, currency: string, digits?: 0 | 2): string {
   const num = typeof amount === "number" && Number.isFinite(amount) ? amount : 0
   try {
     if (!currency || typeof currency !== "string") throw new Error("invalid currency")
-    let format = MONEY.get(currency)
+    const key = `${currency}:${digits ?? "default"}`
+    let format = MONEY.get(key)
     if (!format) {
-      format = new Intl.NumberFormat("zh-CN", { style: "currency", currency, maximumFractionDigits: 2 })
-      MONEY.set(currency, format)
+      format = new Intl.NumberFormat("zh-CN", { style: "currency", currency, minimumFractionDigits: digits, maximumFractionDigits: digits ?? 2 })
+      MONEY.set(key, format)
     }
     return format.format(num)
   } catch {
-    return `${currency ?? ""} ${num.toFixed(2)}`.trim()
+    return `${currency ?? ""} ${num.toFixed(digits ?? 2)}`.trim()
   }
+}
+
+export function money(amount: number, currency: string): string {
+  return formatMoney(amount, currency)
 }
 
 const NAMED_CYCLES: Record<string, number> = {
@@ -120,6 +125,18 @@ export function cycleMonths(cycle?: string | null): number {
     if (Number.isInteger(n) && n >= 1 && n <= 1200) return n
   }
   return Number.NaN
+}
+
+const SHORT_CYCLES: Record<number, string> = { 1: "月", 3: "季", 6: "半年", 12: "年", 24: "2年", 36: "3年" }
+
+export function priceShort(amount: number, currency: string, cycle?: string | null): string {
+  const price = formatMoney(amount, currency, Number.isInteger(amount) ? 0 : 2)
+  const raw = typeof cycle === "string" ? cycle.trim() : ""
+  if (!raw) return price
+  const months = cycleMonths(raw)
+  if (months === 0) return `${price} 一次性`
+  if (!Number.isFinite(months)) return `${price}/${raw}`
+  return `${price}/${raw.endsWith("m") ? `${months}月` : SHORT_CYCLES[months]}`
 }
 
 export function cycleLabel(cycle?: string | null): string {
