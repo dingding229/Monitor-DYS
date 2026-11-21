@@ -27,14 +27,3 @@ export function countGeoRequests(page: Page): Readonly<{ ipsb: number; ipwho: nu
   })
   return counts
 }
-
-export function historyRangeSelect(page: Page) {
-  return page.getByRole("combobox", { name: /时间范围/ })
-}
-
-// Keep the legacy check runnable before and after the v1.1 dropdown replaces v1.0's buttons.
-export async function historyRangeLabels(page: Page): Promise<string[]> {
-  const options = historyRangeSelect(page).locator("option")
-  if (await options.count()) return options.allTextContents()
-  return page.getByTestId("range-btn").allTextContents()
-}

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
-import { historyRangeLabels, historyRangeSelect, mockGeo } from "./helpers"
+import { mockGeo } from "./helpers"
 
 test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
 
@@ -45,15 +45,10 @@ test("normal: opening a card renders charts; changing the range requests both hi
     const url = new URL(request.url())
     return url.pathname === "/api/nodes/1/metrics" && url.searchParams.get("hours") === "720" && url.searchParams.get("series") === series
   }))
-  const range = historyRangeSelect(page)
-  if (await range.count()) {
-    await range.selectOption({ label: "30 天" })
-    await expect(range).toHaveValue("720")
-  } else {
-    const month = page.getByRole("button", { name: "30 天", exact: true })
-    await month.click()
-    await expect(month).toHaveAttribute("aria-pressed", "true")
-  }
+  const range = page.getByRole("group", { name: "时间范围" })
+  const month = range.getByTestId("range-btn").filter({ hasText: /^30 天$/ })
+  await month.click()
+  await expect(month).toHaveAttribute("aria-pressed", "true")
   for (const request of await Promise.all(requests)) {
     const points = Number(new URL(request.url()).searchParams.get("points"))
     expect(points).toBeGreaterThanOrEqual(60)
@@ -65,7 +60,8 @@ test("normal: /node/1 loads directly with all 90-day history ranges", async ({ p
   const response = await page.goto(mockUrl("normal", "/node/1"))
   expect(response?.status()).toBe(200)
   await expect(page).toHaveTitle("东京 01 · DYS Mock Hub")
-  await expect.poll(async () => (await historyRangeLabels(page)).map((label) => label.trim())).toEqual(longRanges)
+  await expect(page.getByTestId("range-btn")).toHaveText(longRanges)
+  await expect(page.getByRole("combobox", { name: /时间范围/ })).toHaveCount(0)
   await expect(page.getByTestId("chart").filter({ hasText: "网络速率" }).locator("canvas")).toBeVisible()
   const ping = page.getByTestId("chart").filter({ hasText: "Ping 延迟" })
   await expect(ping).toContainText(/东京探测.*法兰克福探测/)

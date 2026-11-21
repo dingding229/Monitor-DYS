@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
-import { historyRangeLabels, mockGeo } from "./helpers"
+import { mockGeo } from "./helpers"
 
 test.beforeEach(async ({ page }) => { await mockGeo(page, "fail") })
 
@@ -43,7 +43,7 @@ test("legacy-1.2: renders history without current-only data and offers the seven
   await expect(page.getByTestId("node-card")).toHaveCount(16)
   await expect(page.getByTestId("group-tab")).toHaveCount(0)
   await page.getByTestId("node-card").filter({ hasText: "东京 01" }).click()
-  await expect.poll(async () => (await historyRangeLabels(page)).map((label) => label.trim())).toEqual(["1 小时", "6 小时", "1 天", "7 天"])
+  await expect(page.getByTestId("range-btn")).toHaveText(["1 小时", "6 小时", "1 天", "7 天"])
   const cpu = page.getByTestId("chart").filter({ hasText: "CPU 使用率" })
   await expect(cpu.locator("canvas")).toBeVisible()
   await expect(cpu).not.toContainText("峰值")
@@ -72,7 +72,7 @@ test("anonymous: only the public nodes are displayed", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "首尔 01" })).toHaveCount(0)
 })
 
-test.fixme("config: applies valid settings, falls back for an invalid accent, and renders announcement as text", async ({ page }) => {
+test("config: applies valid settings, falls back for an invalid accent, and renders announcement as text", async ({ page }) => {
   const dialogs: string[] = []
   page.on("dialog", async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss() })
   await page.goto(mockUrl("config"))
