@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, untrack } from "svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
   import type { Node } from "@/lib/api"
   import { withAlpha } from "@/lib/color"
@@ -6,7 +7,7 @@
   import { countryCentroid, getWorldLandDots, projectGeo } from "@/lib/geo"
 
   let {
-    nodes,
+    nodes: incoming,
     accent = "#10b981",
     selectedCountry = $bindable<string | null>(null),
   }: {
@@ -15,6 +16,8 @@
     selectedCountry?: string | null
   } = $props()
 
+  let nodes = $state.raw(untrack(()=>incoming)), mapEl: HTMLElement
+  onMount(()=>{const id=setInterval(()=>{if(!mapEl?.matches(":hover") && !hovered && !document.hidden) nodes=incoming},3000);return ()=>clearInterval(id)})
   const MAP_W = 360
   const MAP_H = 160
   // One round-capped path per country, rather than thousands of reactive circles.
@@ -111,14 +114,7 @@
     return list
   })
 
-  let countByCode = $derived.by(() => {
-    const map = new Map<string, number>()
-    for (const c of countryGroups) {
-      map.set(c.code, c.total)
-    }
-    return map
-  })
-
+  let countByCode = $derived(new Map(countryGroups.map(c => [c.code,c.total])))
   let maxCount = $derived(
     countryGroups.reduce((hi, c) => Math.max(hi, c.total), 1),
   )
@@ -146,7 +142,7 @@
 </script>
 
 <div
-  class="panel map-card flex flex-col justify-between overflow-hidden rounded-[8px] border border-neutral-200 bg-white p-3"
+  bind:this={mapEl} class="panel map-card flex flex-col justify-between overflow-hidden rounded-[8px] border border-neutral-200 bg-white p-3"
 >
   <!-- Top status header -->
   <div class="z-10 flex items-center justify-between gap-2">
@@ -234,7 +230,7 @@
               onblur={() => {
                 if (hovered?.code === m.code) hovered = null
               }}
-              class="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 inline-flex cursor-pointer items-center gap-1 rounded-full bg-white py-0.5 pr-1 pl-0.5 shadow-xs ring-1 transition-transform hover:z-20 hover:scale-110 {isSelected
+              class="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 inline-flex cursor-pointer items-center gap-1 rounded-full bg-white py-0.5 pr-1 pl-0.5 ring-1 transition-transform hover:z-20 hover:scale-110 {isSelected
                 ? 'z-20 ring-2 ring-neutral-900'
                 : 'ring-neutral-200'}"
               style="left: {leftPct.toFixed(1)}%; top: {topPct.toFixed(1)}%;"
@@ -255,7 +251,7 @@
           {@const shownNames = hovered.nodeNames.slice(0, 6)}
           {@const hasMore = hovered.nodeNames.length > 6}
           <div
-            class="pointer-events-none absolute top-1 left-1 z-30 max-w-[230px] rounded-lg border border-neutral-200 bg-white p-2 text-[11px] shadow-md"
+            class="pointer-events-none absolute top-1 left-1 z-30 max-w-[230px] rounded-lg border border-neutral-200 bg-white p-2 text-[11px]"
           >
             <div class="flex items-center justify-between gap-2 font-bold text-neutral-900">
               <span class="inline-flex items-center gap-1">

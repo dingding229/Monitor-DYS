@@ -3,13 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <!-- Critical paint: keep this background in sync with --bg in app.css. -->
+    <style>html,body{background:#f5f6f7;color:#171717;margin:0}.boot-header{height:48px;background:white;border-bottom:1px solid #e5e7eb}</style>
     <link rel="preload" href="/api/nodes" as="fetch" crossorigin="anonymous" />
     <link rel="icon" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Monitor</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"><div class="boot-header" aria-hidden="true"></div></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

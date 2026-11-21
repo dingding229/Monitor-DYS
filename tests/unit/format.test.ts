@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { bytes, cycleMonths, expiry, money, offlineFor, percent, priceShort, regionName, speed } from "../../src/lib/format"
+import { bytes, cycleMonths, expiry, offlineFor, priceShort, regionName, speed } from "../../src/lib/format"
 
 const MiB = 1024 ** 2
 const now = Date.parse("2026-11-21T12:00:00Z")
@@ -24,21 +24,6 @@ describe("format", () => {
     expect(regionName("HK")).toBe("香港")
     expect(regionName("not-a-region")).toBe("not-a-region")
   })
-
-  it.each([
-    [0, "0%"], [0.5, "0.5%"], [0.99, "1.0%"], [1, "1%"],
-    [3.2, "3.2%"], [25.6, "26%"], [100, "100%"], [-4, "0%"], [NaN, "0%"],
-  ])("percent(%s) treats input as a percent", (value, text) => expect(percent(value)).toBe(text))
-
-  it("keeps the used/total overload", () => {
-    expect(percent(0.5, 1)).toBe("50%")
-    expect(percent(1, 200)).toBe("0.5%")
-    expect(percent(100, 0)).toBe("0%")
-  })
-
-  it.each([["USD", "US$12.50"], ["HKD", "HK$12.50"], ["JPY", "JP¥12.5"], ["bad-code", "bad-code 12.50"]])(
-    "formats %s in zh-CN or falls back when invalid", (currency, text) => expect(money(12.5, currency)).toBe(text),
-  )
 
   it.each<[string, number]>([
     ["monthly", 1], ["quarterly", 3], ["semiannual", 6], ["yearly", 12], ["biennial", 24],

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import { expect, test, type Page } from "@playwright/test"
 import { mockUrl } from "../fixtures/mock-origins"
 
@@ -37,6 +38,11 @@ test("home renders six summary tiles, 16 cards and a map from one HTTP snapshot"
   await expect(map).toBeVisible()
   await expect(map.getByTestId("map-country")).toHaveCount(12)
   expect(nodeGets).toBe(1)
+  await test.step("production HTML inlines the background before the app loads", async () => {
+    const html = await readFile(new URL("../../dist/index.html", import.meta.url), "utf8")
+    const head = /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(html)?.[1] ?? ""
+    expect(head, "inline background in built <head>").toMatch(/<style\b[^>]*>[^<]*\bbackground:\s*#f5f6f7\b/i)
+  })
 })
 
 test("list columns put name first, status last and Ping next to the rates", async ({ page }) => {
@@ -180,7 +186,7 @@ test("card text stays on one line at 1280px and 390px and is not clipped at 1280
   }
 })
 
-test("visible home card loads and displays latency and zero loss", async ({ page }) => {
+test("visible home card loads Ping and the list shows average latency and zero loss", async ({ page }) => {
   const pending = firstNodePing(page)
   await page.goto(mockUrl("normal"))
   await tokyo(page).scrollIntoViewIfNeeded()
@@ -189,8 +195,10 @@ test("visible home card loads and displays latency and zero loss", async ({ page
   const ping = tokyo(page).getByTestId("node-ping")
   await expect(ping).toHaveAttribute("data-latency", "42")
   await expect(ping).toHaveAttribute("data-loss", /^0(?:\.0+)?$/)
-  await expect(ping).toContainText(/42\s*ms/)
-  await expect(ping).toContainText(/0\s*%/)
+  await page.getByRole("button", { name: "列表视图" }).click()
+  const cells = page.getByTestId("node-row").filter({ hasText: "东京 01" }).getByRole("cell")
+  await expect(cells.nth(7)).toHaveText(/42\s*ms/)
+  await expect(cells.nth(8)).toHaveText(/^0\s*%$/)
 })
 
 test("a home card without probes shows unavailable Ping", async ({ page }) => {
@@ -203,4 +211,76 @@ test("a home card without probes shows unavailable Ping", async ({ page }) => {
   await expect(ping).toHaveAttribute("data-latency", "")
   await expect(ping).toHaveAttribute("data-loss", "")
   await expect(ping).toContainText("—")
+})
+
+test("500 nodes render the first card quickly and stay responsive across ten seconds of WS updates", async ({ page }) => {
+  test.setTimeout(25_000)
+  const multiplier = process.env.CI ? 2 : 1
+  let frames = 0
+  page.on("websocket", (socket) => {
+    if (pathIs(socket.url(), "/api/ws")) socket.on("framereceived", () => { frames++ })
+  })
+  const cards = page.getByTestId("node-card")
+  const start = performance.now()
+  await page.goto(mockUrl("many"), { waitUntil: "commit" })
+  await cards.first().waitFor({ state: "visible" })
+  const firstCardMs = performance.now() - start
+  expect.soft(firstCardMs, "goto → first visible card (ms)").toBeLessThanOrEqual(1200 * multiplier)
+
+  const initialFrames = frames
+  const longest = await page.evaluate(async () => {
+    if (!PerformanceObserver.supportedEntryTypes.includes("longtask")) throw new Error("Chromium longtask entries unavailable")
+    let max = 0
+    const collect = (entries: PerformanceEntry[]) => {
+      for (const entry of entries) max = Math.max(max, entry.duration)
+    }
+    const observer = new PerformanceObserver((list) => collect(list.getEntries()))
+    observer.observe({ type: "longtask" })
+    await new Promise((resolve) => setTimeout(resolve, 10_000))
+    collect(observer.takeRecords())
+    observer.disconnect()
+    return max
+  })
+  const sampledFrames = frames - initialFrames
+  const measurements = { firstCardMs: Math.round(firstCardMs), longestTaskMs: longest, sampledFrames }
+  await test.info().attach("500-node performance", { body: JSON.stringify(measurements), contentType: "application/json" })
+  expect.soft(longest, "maximum main-thread longtask in 10s (ms)").toBeLessThanOrEqual(50 * multiplier)
+  expect(sampledFrames, "WS frames during the observation window").toBeGreaterThanOrEqual(8)
+  await expect(cards).toHaveCount(500)
+})
+
+test("group and search filter survive reload through the URL", async ({ page }) => {
+  await page.goto(mockUrl("normal"))
+  const group = page.getByTestId("group-tab").filter({ hasText: "亚太" })
+  const search = page.getByTestId("search-input")
+  const cards = page.getByTestId("node-card")
+  await group.click()
+  await search.fill("东京")
+  await expect(cards).toHaveCount(1)
+  await expect(tokyo(page)).toBeVisible()
+  const filtersInUrl = (url: URL) => url.searchParams.get("g") === "亚太" && url.searchParams.get("q") === "东京"
+  await expect(page).toHaveURL(filtersInUrl)
+
+  await page.reload()
+  await expect(page).toHaveURL(filtersInUrl)
+  await expect(group).toHaveAttribute("aria-selected", "true")
+  await expect(search).toHaveValue("东京")
+  await expect(cards).toHaveCount(1)
+  await expect(tokyo(page)).toBeVisible()
+})
+
+test("card Ping displays three per-probe values and twelve segments", async ({ page }) => {
+  const pending = firstNodePing(page)
+  await page.goto(mockUrl("many"))
+  const card = page.getByTestId("node-card").filter({ hasText: "压力节点 001" })
+  await card.scrollIntoViewIfNeeded()
+  const response = await (await pending).json()
+  expect(Object.keys(response.probes)).toHaveLength(3)
+  const ping = card.getByTestId("node-ping")
+  await expect(ping).toContainText(/\b18\s*·\s*60\s*·\s*102(?!\d|\s*·)/)
+  const lossValues = ping.locator(".ping-caption").filter({ hasText: "丢包" }).locator("b")
+  await expect(lossValues).toHaveText(/^(?:—|\d+(?:\.[1-9])?)(?:·(?:—|\d+(?:\.[1-9])?)){2}$/)
+  const bars = ping.getByTestId("ping-bars")
+  await expect(bars.first()).toBeVisible()
+  for (const bar of await bars.all()) await expect(bar.locator(":scope > *")).toHaveCount(12)
 })

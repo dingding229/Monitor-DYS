@@ -3,7 +3,7 @@ import { ReadableStream } from "node:stream/web"
 import { gzipSync } from "node:zlib"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ALL_GROUP, speedHistory } from "../../src/lib/api"
-import { createNodeStore, type NodeStoreOptions } from "../../src/lib/nodes.svelte"
+import { createNodeStore, mergeNodes, type NodeStoreOptions } from "../../src/lib/nodes.svelte"
 import { metricFixture, nodeFixture } from "../fixtures/nodes"
 
 function deferred<T>() {
@@ -68,6 +68,25 @@ afterEach(() => {
 })
 
 const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms)
+
+describe("mergeNodes", () => {
+  it("matches by id, preserves unchanged nodes, and applies changes, additions and removals", () => {
+    const unchanged = nodeFixture({ id: 1 })
+    const changed = nodeFixture({ id: 2 })
+    const removed = nodeFixture({ id: 3 })
+    const added = nodeFixture({ id: 4 })
+    // Simulate independently decoded payloads, including an unchanged nested load array.
+    const unchangedCopy = nodeFixture({ id: 1 })
+    const changedCopy = nodeFixture({ id: 2, metrics: metricFixture({ load: [0.1, 0.2, 0.9] }) })
+
+    const merged = mergeNodes([unchanged, changed, removed], [changedCopy, added, unchangedCopy])
+    expect(merged.map(({ id }) => id)).toEqual([2, 4, 1])
+    expect(merged[0]).not.toBe(changed)
+    expect(merged[0]).toEqual(changedCopy)
+    expect(merged[1]).toEqual(added)
+    expect(merged[2]).toBe(unchanged)
+  })
+})
 
 describe("node store", () => {
   it("consumes the supplied startup snapshot once and reports connected before the first WS frame", async () => {

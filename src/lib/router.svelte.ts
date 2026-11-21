@@ -18,8 +18,10 @@ export function parsePath(pathname: string): Route {
 export function createRouter(win: Window = typeof window !== "undefined" ? window : ({} as Window)) {
   let current = $state<Route>(parsePath(win.location?.pathname ?? "/"))
 
+  function scrollAfterMount(y: number) { win.requestAnimationFrame?.(() => win.scrollTo(0,y)) }
   const onPopState = () => {
     current = parsePath(win.location?.pathname ?? "/")
+    scrollAfterMount(current.page === "home" ? win.history.state?.homeY ?? 0 : 0)
   }
 
   if (typeof win.addEventListener === "function") {
@@ -45,10 +47,12 @@ export function createRouter(win: Window = typeof window !== "undefined" ? windo
     }
 
     if (win.location?.pathname !== targetPath) {
-      win.history?.pushState({}, "", targetPath)
+      const homeY = current.page === "home" ? win.scrollY : win.history.state?.homeY ?? 0
+      if (current.page === "home") win.history.replaceState({...win.history.state,homeY}, "")
+      win.history.pushState({homeY}, "", targetPath + win.location.search)
     }
     current = parsePath(targetPath)
-    win.scrollTo?.(0, 0)
+    scrollAfterMount(current.page === "home" ? win.history.state?.homeY ?? 0 : 0)
   }
 
   function destroy() {

@@ -6,12 +6,13 @@ if (!existsSync(new URL("./dist/index.html", import.meta.url))) {
   throw new Error("Run npm run build before npm run e2e (dist/index.html is missing).")
 }
 
-const scenarios = ["normal", "ws503", "admin", "config", "noping"] as const
+const scenarios = ["normal", "ws503", "admin", "config", "noping", "many"] as const
 
 export default defineConfig({
   testDir: "./tests/e2e",
   captureGitInfo: { commit: false, diff: false },
-  fullyParallel: true,
+  // Keep the performance test from competing with other browser tests for the CPU.
+  fullyParallel: false,
   retries: 0,
   timeout: 12_000,
   reporter: "list",

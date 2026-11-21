@@ -46,7 +46,7 @@ async function scenario(name, test, extraArgs = []) {
   }
 }
 
-async function frames(base, { query = '', gzip = false, count = 1 } = {}) {
+async function frames(base, { query = '', gzip = false, count = 1, intervalMs = 2000 } = {}) {
   const ws = new WebSocket(`${base.replace(/^http:/, 'ws:')}/api/ws${query}`);
   ws.binaryType = 'arraybuffer';
   const received = [];
@@ -63,15 +63,14 @@ async function frames(base, { query = '', gzip = false, count = 1 } = {}) {
           const payload = JSON.parse(text);
           const { nodes } = payload;
           assert.ok(nodes.length > 0);
-          received.push({ at: performance.now(), speed: nodes[0].metrics.net_rx, payload });
+          received.push({ at: performance.now(), payload });
           if (received.length === count) done();
         } catch (err) { done(err); }
       });
     });
-    if (count > 1) {
-      const interval = received[1].at - received[0].at;
-      assert.ok(interval >= 1500 && interval <= 5000, `Push interval ${interval}ms`);
-      assert.notEqual(received[0].speed, received[1].speed);
+    for (let i = 1; i < received.length; i++) {
+      const interval = received[i].at - received[i - 1].at;
+      assert.ok(interval >= intervalMs * 0.75 && interval <= intervalMs * 1.5, `Expected ≈${intervalMs}ms; got ${interval}ms`);
     }
     return received.map(({ payload }) => payload);
   } finally { ws.close(); }
@@ -169,7 +168,40 @@ try {
     assert.ok(full.metrics.length && full.ping.length);
     const streams = await Promise.all([frames(base, { count: 2 }), frames(base, { query: '?gzip=0', gzip: true, count: 2 })]);
     assert.ok(streams.flat().every(({ nodes, admin }) => nodes.length === 16 && admin === false));
+    for (const [a, b] of streams) assert.notEqual(a.nodes[0].metrics.net_rx, b.nodes[0].metrics.net_rx);
     return '16 nodes / 12 countries; OS, CAD/GBP billing + traffic, static/SPA and API OK; history step 360s/129600s and storage near live; homepage ping (hours=1, points=12): 60 minute samples per probe, loss=0; text + gzip pushes ≈2s apart';
+  });
+  await scenario('many', async (base) => {
+    const { nodes } = get(base, '/api/nodes');
+    assert.equal(nodes.length, 500);
+    assert.equal(new Set(nodes.map(({ id }) => id)).size, 500);
+    assert.equal(new Set(nodes.map(({ country }) => country)).size, 20);
+    assert.equal(new Set(nodes.map(({ group }) => group)).size, 6);
+    assert.ok(nodes.every((node) => node.price > 0 && node.currency && node.billing_cycle && Number.isInteger(node.expires_in)));
+
+    const ping = get(base, '/api/nodes/500/metrics?series=ping&hours=1&points=12');
+    assert.deepEqual(ping.metrics, []);
+    assert.equal(ping.step, 300);
+    assert.equal(Object.keys(ping.probes).length, 3);
+    for (const id of Object.keys(ping.probes)) {
+      const points = ping.ping.filter(({ task_id }) => String(task_id) === id);
+      assert.equal(points.length, 12);
+      assert.ok(points.every((point, i) => Number.isFinite(point.latency) && (!i || point.ts - points[i - 1].ts === 300)));
+    }
+
+    const pushes = await frames(base, { query: '?gzip', gzip: true, count: 5, intervalMs: 1000 });
+    const changedIds = new Set();
+    for (const [i, push] of pushes.entries()) {
+      assert.deepEqual(push.nodes.map(({ id }) => id), nodes.map(({ id }) => id));
+      if (!i) continue;
+      const prev = pushes[i - 1].nodes;
+      const changed = push.nodes.filter((node, j) => JSON.stringify(node) !== JSON.stringify(prev[j]));
+      assert.equal(changed.length, 150);
+      assert.equal(push.nodes.filter(({ metrics }, j) => metrics.cpu !== prev[j].metrics.cpu).length, 150);
+      changed.forEach(({ id }) => changedIds.add(id));
+    }
+    assert.equal(changedIds.size, 500);
+    return '500 nodes / 20 countries / 6 groups; gzip pushes ≈1s apart with 150/500 nodes changing each frame; 3 probes × 12 buckets';
   });
   await scenario('nogroups', (base) => {
     assert.ok(get(base, '/api/nodes').nodes.every(({ group }) => group === ''));

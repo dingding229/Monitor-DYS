@@ -1,12 +1,14 @@
 <script lang="ts">
+  import {freezeNode} from "@/lib/viewport.svelte"
   import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
-  import { latencyText, lossText, latencyColor, lossColor, probeTitle, type PingStore } from "@/lib/ping.svelte"
+  import PingPanel from "./PingPanel.svelte"
+  import type { PingStore } from "@/lib/ping.svelte"
   import Meter from "@/components/Meter.svelte"
   import type { Node } from "@/lib/api"
   import { prefetchDetail } from "@/lib/detail"
   import {
-    FOREVER,
+    monthUsage, FOREVER,
     bytes,
     expiry,
     priceShort,
@@ -18,12 +20,12 @@
   import { osKey } from "@/lib/icons"
 
   let {
-    node, ping, showPing, snapshotOnly,
+    node: incoming, defer=false, ping, showPing, snapshotOnly,
     showBilling = true,
     expiryWarningDays = 7,
     onSelect,
   }: {
-    node: Node
+    node: Node; defer?:boolean
     ping: PingStore
     snapshotOnly: boolean
     showPing: boolean
@@ -32,46 +34,21 @@
     onSelect: (id: number) => void
   } = $props()
 
+  const view = freezeNode(()=>incoming,()=>defer), observeView = view.observe
+  let node = $derived(view.node)
   let m = $derived(node.metrics)
   let isCorrupt = $derived(Boolean(node._corrupt))
   let isWaiting = $derived(node.online && !m && !isCorrupt)
   let offlineDuration = $derived(!node.online ? offlineFor(node) : null)
   let exp = $derived(expiry(node, Date.now(), expiryWarningDays))
 
-  function monthUsage(n: Node): number {
-    if (typeof n.month_used === "number") return n.month_used
-    const rx = typeof n.month_rx === "number" ? n.month_rx : (n.metrics?.month_rx ?? 0)
-    const tx = typeof n.month_tx === "number" ? n.month_tx : (n.metrics?.month_tx ?? 0)
-    switch (n.traffic_mode) {
-      case "up":
-        return tx
-      case "down":
-        return rx
-      case "max":
-        return Math.max(rx, tx)
-      default:
-        return rx + tx
-    }
-  }
 
   let periodUsed = $derived(monthUsage(node))
-  let hasTrafficData = $derived(
-    node.online || (node.cpu_cores > 0 || node.mem_total > 0) || periodUsed > 0,
-  )
-  let trafficPct = $derived(
-    node.traffic_limit > 0 && hasTrafficData ? percentNum(periodUsed, node.traffic_limit) : null,
-  )
-  let trafficEmpty = $derived(
-    !hasTrafficData ? "—" : node.traffic_limit > 0 ? "0.0%" : FOREVER,
-  )
-  let trafficFoot = $derived(
-    !hasTrafficData
-      ? "—"
-      : node.traffic_limit > 0
-        ? pair(periodUsed, node.traffic_limit)
-        : `${bytes(periodUsed)} / ${FOREVER}`,
-  )
-
+  let hasTrafficData = $derived(node.online || node.cpu_cores > 0 || node.mem_total > 0 || periodUsed > 0)
+  let limited = $derived(node.traffic_limit > 0)
+  let trafficPct = $derived(limited && hasTrafficData ? percentNum(periodUsed,node.traffic_limit) : null)
+  let trafficEmpty = $derived(!hasTrafficData ? "—" : limited ? "0.0%" : FOREVER)
+  let trafficFoot = $derived(!hasTrafficData ? "—" : limited ? pair(periodUsed,node.traffic_limit) : `${bytes(periodUsed)} / ${FOREVER}`)
   let billingPrice = $derived(showBilling && node.price > 0
     ? priceShort(node.price, node.currency || "CNY", node.billing_cycle) : "—")
 
@@ -83,7 +60,7 @@
     return `${Math.floor(seconds / 60)} 分`
   }
   let duration = $derived(snapshotOnly ? "状态待确认" : node.online ? `在线${m ? " " + cardUptime(m.uptime) : ""}` : `离线 ${offlineDuration ?? ""}`)
-  let info = $derived(showPing && node.online ? `${duration} · 延迟 ${latencyText(sample?.latency)} · 丢包 ${lossText(sample?.loss)}` : duration)
+  let info = $derived(duration + (showBilling && billingPrice !== "—" ? ` · ${billingPrice}` : ""))
   let expiryText = $derived(exp.level === "none" ? "长期" : exp.days !== null && exp.days > 0 ? `剩余 ${exp.days} 天` : exp.text)
 
   function handleClick(e: MouseEvent) {
@@ -97,10 +74,11 @@
 
 <a
   href="/node/{node.id}"
-  data-testid="node-card" use:observePing={showPing && node.online ? node.id : 0}
+  use:observeView data-testid="node-card" use:observePing={showPing && node.online ? node.id : 0}
   onclick={handleClick} onpointerenter={prefetchDetail} onfocus={prefetchDetail}
   class="panel node-card group flex min-w-0 cursor-pointer flex-col justify-between rounded-[8px] border border-neutral-200 bg-white px-[8px] py-[12px] text-inherit no-underline transition-colors hover:border-neutral-400"
 >
+  {#if !view.painted}<div style="min-height:234px">{node.name}</div>{:else}
   <div>
     <!-- 1. Title Row: Status dot + Name + OS BrandIcon + Flag -->
     <div class="flex items-center justify-between gap-2">
@@ -133,26 +111,12 @@
       </div>
     </div>
 
-    <div class="card-info tnum mt-2 truncate text-[12px] text-neutral-500" title={info}>
-      {duration}{#if showPing && node.online}<span data-testid="node-ping" data-latency={sample?.latency ?? ""} data-loss={sample?.loss ?? ""} title={[info, probeTitle(sample)].filter(Boolean).join("\n")}>
-        {" · "}延迟 <span class={latencyColor(sample?.latency)}>{latencyText(sample?.latency)}</span> · 丢包 <span class={lossColor(sample?.loss)}>{lossText(sample?.loss)}</span></span>{/if}
-    </div>
+    <div class="card-info tnum mt-2 truncate text-[12px] text-neutral-500" title={info}>{info}</div>
+
 
     <!-- 3. 2x2 Metric Grid or Status Notice -->
-    {#if isCorrupt}
-      <div
-        data-testid="status-unavailable"
-        class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-6 text-center text-[12px] text-neutral-500"
-      >
-        不可用
-      </div>
-    {:else if isWaiting}
-      <div
-        data-testid="status-waiting"
-        class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-6 text-center text-[12px] text-neutral-500"
-      >
-        等待数据
-      </div>
+    {#if isCorrupt || isWaiting}
+      <div data-testid={isCorrupt?'status-unavailable':'status-waiting'} class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-6 text-center text-[12px] text-neutral-500">{isCorrupt?'不可用':'等待数据'}</div>
     {:else}
       <div class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 {!node.online ? 'opacity-65' : ''}">
         <Meter
@@ -186,50 +150,17 @@
     {/if}
   </div>
 
-  <!-- Columns size to their readings, not to equal fractions of a narrow card. -->
   <div class="card-foot mt-3 flex justify-between gap-[8px] border-t border-neutral-200 pt-2.5 text-left">
-    <!-- Col 1: 实时速率 -->
-    <div class="min-w-0 flex-[0_1_auto]">
-      <div class="text-[12px] text-neutral-400">实时速率</div>
-      <div class="tnum mt-0.5 truncate text-[13px] font-medium text-emerald-600" title='↑ {m ? speed(m.net_tx) : "0 B/s"}'>
-        ↑ {speed(m?.net_tx ?? 0).replace(" ", "")}
-      </div>
-      <div class="tnum truncate text-[13px] font-medium text-sky-600" title='↓ {m ? speed(m.net_rx) : "0 B/s"}'>
-        ↓ {speed(m?.net_rx ?? 0).replace(" ", "")}
-      </div>
-    </div>
-
-    <!-- Col 2: 当期流量 -->
-    <div class="min-w-0 flex-[0_1_auto]">
-      <div class="text-[12px] text-neutral-400">当期流量</div>
-      <div class="tnum mt-0.5 truncate text-[13px] font-medium text-neutral-700" title='↑ {bytes(node.month_tx ?? m?.month_tx ?? 0)}'>
-        ↑ {bytes(node.month_tx ?? m?.month_tx ?? 0)}
-      </div>
-      <div class="tnum truncate text-[13px] font-medium text-neutral-700" title='↓ {bytes(node.month_rx ?? m?.month_rx ?? 0)}'>
-        ↓ {bytes(node.month_rx ?? m?.month_rx ?? 0)}
-      </div>
-    </div>
-
-    <!-- Col 3: 到期 -->
-    <div class="min-w-0 flex-[0_1_auto]">
-      <div class="text-[12px] text-neutral-400">到期</div>
-      <div
-        class="tnum mt-0.5 truncate text-[13px] font-medium {exp.level === 'expired'
-          ? 'text-red-600'
-          : exp.level === 'soon'
-            ? 'text-amber-600'
-            : 'text-neutral-700'}"
-        title={expiryText}
-      >{expiryText}
-      </div>
-      {#if showBilling}
-        <div
-          class="tnum truncate text-[13px] font-medium text-neutral-600"
-          title={billingPrice}
-        >
-          {billingPrice}
-        </div>
-      {/if}
-    </div>
+    {@render column('实时速率', `↑ ${speed(m?.net_tx??0).replace(' ','')}`, `↓ ${speed(m?.net_rx??0).replace(' ','')}`, 'text-emerald-600','text-sky-600')}
+    {@render column('当期流量', `↑ ${bytes(node.month_tx??m?.month_tx??0)}`, `↓ ${bytes(node.month_rx??m?.month_rx??0)}`)}
+    {@render column('到期',expiryText,showBilling?billingPrice:'',exp.level==='expired'?'text-red-600':exp.level==='soon'?'text-amber-600':'')}
   </div>
+  {#if showPing && node.online}<PingPanel {sample} />{/if}
+  {/if}
 </a>
+{#snippet column(label:string, first:string, second:string, tone='', secondTone='')}
+  <div class="min-w-0 flex-[0_1_auto]"><div class="text-[12px] text-neutral-400">{label}</div>
+    <div class="tnum mt-0.5 truncate text-[13px] font-medium {tone}" title={first}>{first}</div>
+    {#if second}<div class="tnum truncate text-[13px] font-medium {secondTone}" title={second}>{second}</div>{/if}
+  </div>
+{/snippet}

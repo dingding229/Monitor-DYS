@@ -2,6 +2,9 @@
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
 
+export const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v)
+export const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v)
+
 export type Metrics = {
   uptime: number
   cpu: number
@@ -153,22 +156,9 @@ export async function api<T>(
  */
 export function safeNodes(nodes: Node[]): Node[] {
   if (!Array.isArray(nodes)) return []
-  const isNonNegNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0
+  const isNonNegNum = (v: unknown): v is number => num(v) && v >= 0
   const isOptNonNegNum = (v: unknown): boolean => v === undefined || v === null || isNonNegNum(v)
-  const requiredFields = [
-    "uptime",
-    "cpu",
-    "mem_total",
-    "mem_used",
-    "disk_total",
-    "disk_used",
-    "net_rx",
-    "net_tx",
-    "total_rx",
-    "total_tx",
-    "month_rx",
-    "month_tx",
-  ] as const
+  const requiredFields = ["uptime","cpu","mem_total","mem_used","disk_total","disk_used","net_rx","net_tx","total_rx","total_tx","month_rx","month_tx"] as const
   const optionalFields = ["swap_total", "swap_used", "tcp", "udp", "procs"] as const
 
   return nodes.map((node) => {

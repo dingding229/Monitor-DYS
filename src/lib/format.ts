@@ -2,6 +2,8 @@
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
 
+import { num, type Node } from "./api"
+
 const UNITS = ["B", "KB", "MB", "GB", "TB", "PB"]
 
 const unitOf = (n: number) => {
@@ -37,19 +39,6 @@ export function speed(bps: number): string {
   return `${bytes(bps)}/s`
 }
 
-export const rate = speed
-
-export function percent(x: number, total?: number): string {
-  if (typeof total === "number") {
-    if (!(total > 0) || !Number.isFinite(x)) return "0%"
-    const p = Math.max(0, (x / total) * 100)
-    return `${p < 10 && p > 0 ? p.toFixed(1) : Math.round(p)}%`
-  }
-  if (typeof x !== "number" || !Number.isFinite(x)) return "0%"
-  const clamped = Math.max(0, x)
-  return `${clamped < 10 && clamped > 0 && !Number.isInteger(clamped) ? clamped.toFixed(1) : Math.round(clamped)}%`
-}
-
 export function percentNum(used: number, total: number): number {
   return total > 0 ? (used / total) * 100 : 0
 }
@@ -68,7 +57,7 @@ export const FOREVER = "∞"
 const MONEY = new Map<string, Intl.NumberFormat>()
 
 function formatMoney(amount: number, currency: string, digits?: 0 | 2): string {
-  const num = typeof amount === "number" && Number.isFinite(amount) ? amount : 0
+  const value = num(amount) ? amount : 0
   try {
     if (!currency || typeof currency !== "string") throw new Error("invalid currency")
     const key = `${currency}:${digits ?? "default"}`
@@ -77,15 +66,12 @@ function formatMoney(amount: number, currency: string, digits?: 0 | 2): string {
       format = new Intl.NumberFormat("zh-CN", { style: "currency", currency, minimumFractionDigits: digits, maximumFractionDigits: digits ?? 2 })
       MONEY.set(key, format)
     }
-    return format.format(num)
+    return format.format(value)
   } catch {
-    return `${currency ?? ""} ${num.toFixed(digits ?? 2)}`.trim()
+    return `${currency ?? ""} ${value.toFixed(digits ?? 2)}`.trim()
   }
 }
 
-export function money(amount: number, currency: string): string {
-  return formatMoney(amount, currency)
-}
 
 const NAMED_CYCLES: Record<string, number> = {
   monthly: 1,
@@ -97,15 +83,6 @@ const NAMED_CYCLES: Record<string, number> = {
   once: 0,
 }
 
-const CYCLE_WORDS: Record<number, string> = {
-  0: "一次性",
-  1: "月付",
-  3: "季付",
-  6: "半年付",
-  12: "年付",
-  24: "两年付",
-  36: "三年付",
-}
 
 /**
  * Billing cycle to months:
@@ -158,12 +135,6 @@ export function priceFull(amount: number, currency: string, cycle?: string | nul
   return formatMoney(amount, currency, Number.isInteger(amount) ? 0 : 2) + cycleSuffix(cycle)
 }
 
-export function cycleLabel(cycle?: string | null): string {
-  const m = cycleMonths(cycle)
-  if (Number.isNaN(m)) return cycle || ""
-  if (CYCLE_WORDS[m]) return CYCLE_WORDS[m]
-  return m % 12 === 0 ? `${m / 12} 年付` : `${m} 个月付`
-}
 
 export type ExpiryInfo = {
   days: number | null
@@ -244,10 +215,6 @@ export function offlineFor(
   return uptime(seconds)
 }
 
-export function osName(name?: string | null): string {
-  if (!name) return ""
-  return name.replace("GNU/Linux ", "").replace(/\s*\([^)]*\)\s*$/, "")
-}
 
 export function cpuName(name?: string | null): string {
   if (!name) return ""
@@ -278,4 +245,9 @@ export function regionName(code?: string | null): string {
     // ignore
   }
   return code
+}
+
+export function monthUsage(n: Node) {
+  const rx = n.month_rx ?? n.metrics?.month_rx ?? 0, tx = n.month_tx ?? n.metrics?.month_tx ?? 0
+  return n.month_used ?? (n.traffic_mode === 'up' ? tx : n.traffic_mode === 'down' ? rx : n.traffic_mode === 'max' ? Math.max(rx, tx) : rx + tx)
 }

@@ -1,34 +1,44 @@
+import { isObj as record, num } from "./api"
 import { SvelteMap } from "svelte/reactivity"
 
+type Bucket = { latency: number | null; loss: number | null }
 type Probe = { name: string; latency: number | null; loss: number | null }
-export type PingSummary = Omit<Probe, "name"> & { probes: Probe[] }
-const empty: PingSummary = { latency: null, loss: null, probes: [] }
-const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
-const number = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0
+export type PingSummary = Omit<Probe, "name"> & { probes: Probe[]; buckets: Bucket[] }
+const empty: PingSummary = { latency: null, loss: null, probes: [], buckets: [] }
+const number = (v: unknown): v is number => num(v) && v >= 0
 const mean = (values: number[], digits: number) => values.length ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(digits)) : null
 
-export function summarizePing(resp: unknown): PingSummary {
+export function summarizePing(resp: unknown, latestLoss = false): PingSummary {
   if (!record(resp) || !Array.isArray(resp.ping)) return empty
   const names = record(resp.probes) ? resp.probes : {}
   const lossMap = record(resp.loss) ? resp.loss : null
-  const groups = new Map<string, { latency: number | null; ts: number; losses: number[] }>()
+  const groups = new Map<string, { latency: number | null; ts: number; lossTS:number; lastLoss:number|null; losses: number[] }>()
+  const times = new Map<number,{lat:number[]; lost:number[]}>()
   for (const point of resp.ping) {
     if (!record(point) || !(number(point.task_id) || typeof point.task_id === "string")) continue
     const id = String(point.task_id)
-    const g = groups.get(id) ?? { latency: null, ts: -Infinity, losses: [] }
+    const g = groups.get(id) ?? { latency: null, ts: -Infinity, lossTS:-Infinity, lastLoss:null, losses: [] }
     const ts = number(point.ts) ? point.ts : g.ts
     if (number(point.latency) && ts >= g.ts) { g.latency = point.latency; g.ts = ts }
     // The Hub omits a zero-loss bucket / probe from its loss fields.
     if (number(point.loss) || point.loss === undefined) g.losses.push(number(point.loss) ? point.loss : 0)
+    if (ts >= g.lossTS) { g.lossTS=ts; g.lastLoss=number(point.loss)?point.loss:point.loss===undefined?0:null }
+    if (number(point.ts)) {
+      const bin=times.get(ts) ?? {lat:[], lost:[]}
+      if(number(point.latency)) bin.lat.push(point.latency)
+      if(number(point.loss) || point.loss===undefined) bin.lost.push(number(point.loss) ? point.loss : 0)
+      times.set(ts,bin)
+    }
     groups.set(id, g)
   }
   if (!groups.size) return empty
   const probes = Array.from(groups, ([id, g]) => {
     const loss = lossMap?.[id]
     return { name: typeof names[id] === "string" ? names[id] : `探测 #${id}`, latency: g.latency,
-      loss: lossMap ? (number(loss) ? Number(loss.toFixed(1)) : loss === undefined ? 0 : null) : mean(g.losses, 1) }
+      loss: latestLoss ? g.lastLoss : lossMap ? (number(loss) ? Number(loss.toFixed(1)) : loss === undefined ? 0 : null) : mean(g.losses, 1) }
   })
-  return { probes, latency: mean(probes.map(p => p.latency).filter(number), 0),
+  const buckets=Array.from(times).sort(([a],[b])=>a-b).slice(-12).map(([,b])=>({latency:mean(b.lat,0),loss:mean(b.lost,1)}))
+  return { probes, buckets, latency: mean(probes.map(p => p.latency).filter(number), 0),
     loss: lossMap && !Object.keys(lossMap).length ? 0 : mean(lossMap ? Object.values(lossMap).filter(number) : Array.from(groups.values()).flatMap(g => g.losses), 1) }
 }
 
@@ -49,7 +59,10 @@ export function createPingStore() {
   let observer: IntersectionObserver | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let cancelIdle: (() => void) | undefined
-  let disposed = false
+  let disposed = false, scrolling = false
+  let settled: ReturnType<typeof setTimeout>
+  function onScroll() { scrolling=true; clearTimeout(settled); clearTimeout(timer); cancelIdle?.(); cancelIdle=undefined
+    settled=setTimeout(()=>{scrolling=false; schedule()},300) }
 
   async function sample(id: number) {
     const ctrl = new AbortController()
@@ -63,7 +76,7 @@ export function createPingStore() {
       if (res.ok) {
         const body: unknown = await res.json()
         if (record(body) && Array.isArray(body.ping) && !body.ping.length) delay = 600_000
-        value = summarizePing(body)
+        value = summarizePing(body,true)
       }
     } catch { /* A timeout or unsuccessful read clears the previous sample. */ }
     finally {
@@ -81,14 +94,14 @@ export function createPingStore() {
     if (disposed) return
     const ids = document.hidden ? new Set<number>() : visibleIds()
     for (const [id, ctrl] of flight) if (!ids.has(id)) ctrl.abort()
-    if (!ids.size || flight.size >= 3) { stopTimers(); return }
+    if (scrolling || !ids.size || flight.size >= 3) { stopTimers(); return }
     const due = Math.min(...Array.from(ids, id => flight.has(id) ? Infinity : next.get(id) ?? 0))
     if (!Number.isFinite(due)) return
     if (due > Date.now()) { timer = setTimeout(schedule, due - Date.now()); return }
     if (cancelIdle) return
     const drain = () => {
       cancelIdle = undefined
-      if (document.hidden || disposed) return
+      if (document.hidden || disposed || scrolling) return
       for (const id of visibleIds()) {
         if (flight.size >= 3) break
         if (!flight.has(id) && (next.get(id) ?? 0) <= Date.now()) void sample(id)
@@ -111,6 +124,7 @@ export function createPingStore() {
           schedule()
         }, { rootMargin: "200px" })
         document.addEventListener("visibilitychange", schedule)
+        window.addEventListener("scroll", onScroll, {capture:true, passive:true})
       }
       if (value) { targets.set(el, value); observer?.observe(el) }
       else { targets.delete(el); visible.delete(el); observer?.unobserve(el) }
@@ -120,6 +134,7 @@ export function createPingStore() {
     return { update, destroy: () => update(0) }
   }
   function destroy() {
+    clearTimeout(settled); window.removeEventListener("scroll",onScroll,true)
     disposed = true; stopTimers(); observer?.disconnect(); document.removeEventListener("visibilitychange", schedule)
     for (const ctrl of flight.values()) ctrl.abort()
     targets.clear(); visible.clear()

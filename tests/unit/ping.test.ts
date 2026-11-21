@@ -40,12 +40,25 @@ describe("summarizePing", () => {
     expect(summarizePing({ step, metrics, ping: history, probes })?.loss).toBe(6)
   })
 
+  it("sorts buckets by timestamp and averages probes within each bucket", () => {
+    const ping = [point(9, 120, 80, 4), point(2, 60, 30, 0), point(9, 60, 10, 8), point(2, 120, 100, 8)]
+    expect(summarizePing({ step, metrics, ping, probes }).buckets).toEqual([
+      { latency: 20, loss: 4 }, { latency: 90, loss: 6 },
+    ])
+  })
+
+  it("keeps only the newest 12 buckets, even for reverse-ordered history", () => {
+    const ping = Array.from({ length: 15 }, (_, i) => point(9, (i + 1) * step, 30 + i, i)).reverse()
+    const expected = Array.from({ length: 12 }, (_, i) => ({ latency: 33 + i, loss: 3 + i }))
+    expect(summarizePing({ step, metrics, ping, probes }).buckets).toEqual(expected)
+  })
+
   it("returns an empty summary for an empty ping array", () => {
-    expect(summarizePing({ step, metrics, ping: [], probes: {} })).toEqual({ latency: null, loss: null, probes: [] })
+    expect(summarizePing({ step, metrics, ping: [], probes: {} })).toEqual({ latency: null, loss: null, probes: [], buckets: [] })
   })
 
   it("returns the same empty summary for invalid input", () => {
-    expect(summarizePing({ ping: null })).toEqual({ latency: null, loss: null, probes: [] })
+    expect(summarizePing({ ping: null })).toEqual({ latency: null, loss: null, probes: [], buckets: [] })
   })
 
   it("keeps loss data when every latency is null", () => {

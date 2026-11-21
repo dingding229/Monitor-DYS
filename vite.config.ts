@@ -1,9 +1,17 @@
+import { readFileSync } from "node:fs"
+import { countries } from "country-flag-icons"
 import { defineConfig } from "vitest/config"
 import { svelte } from "@sveltejs/vite-plugin-svelte"
 import tailwindcss from "@tailwindcss/vite"
 
 export default defineConfig({
   plugins: [svelte(), tailwindcss(), {
+    name: "local-country-flags",
+    apply: "build",
+    generateBundle() {
+      for (const code of countries) this.emitFile({type:"asset", fileName:`assets/flags/${code}.svg`, source:readFileSync(new URL(`./node_modules/country-flag-icons/3x2/${code}.svg`, import.meta.url))})
+    },
+  }, {
     name: "preload-world-map",
     transformIndexHtml: { order: "post", handler(_, ctx) {
       const chunk = Object.values(ctx.bundle ?? {}).find(item => item.type === "chunk" && item.facadeModuleId?.endsWith("/WorldMap.svelte"))
@@ -20,7 +28,6 @@ export default defineConfig({
     // Share one preloaded, tree-shaken set of OS paths across cards, rows and details.
     rolldownOptions: { output: { codeSplitting: { groups: [{ name: "os-icons", test: /node_modules\/simple-icons\/index\.mjs$/ }] } } },
     chunkSizeWarningLimit: 500,
-    assetsInlineLimit: (file) => (file.includes("/country-flag-icons/") ? false : undefined),
   },
   server: {
     proxy: {

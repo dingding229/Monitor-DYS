@@ -2,7 +2,7 @@
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
 import manifest from "../../theme.json"
-import { api } from "@/lib/api"
+import { api, isObj, num } from "@/lib/api"
 
 export type ConfigField = {
   type: "title" | "select" | "string" | "boolean" | "text" | "number"
@@ -61,7 +61,7 @@ function isValidHttpUrl(v: string): boolean {
 
 function extractFields(declared: unknown): ConfigField[] {
   if (Array.isArray(declared)) return declared as ConfigField[]
-  if (declared && typeof declared === "object" && "config" in declared && Array.isArray((declared as { config: unknown }).config)) {
+  if (isObj(declared) && Array.isArray(declared.config)) {
     return (declared as { config: ConfigField[] }).config
   }
   return manifest.config as ConfigField[]
@@ -72,7 +72,7 @@ export function resolveConfig(
   saved?: Record<string, unknown> | null,
 ): ThemeConfig {
   const fields = extractFields(declared)
-  const raw = saved && typeof saved === "object" ? saved : {}
+  const raw = isObj(saved) ? saved : {}
   const result: Record<string, unknown> = {}
 
   for (const field of fields) {
@@ -81,50 +81,18 @@ export function resolveConfig(
     const def = field.default
     const val = raw[key]
 
-    if (val === undefined) {
-      result[key] = def
-      continue
-    }
-
+    let valid = false
     switch (field.type) {
-      case "boolean":
-        result[key] = typeof val === "boolean" ? val : def
+      case 'boolean': valid = typeof val === 'boolean'; break
+      case 'number': valid = num(val) && val >= (field.min ?? -Infinity) && val <= (field.max ?? Infinity); break
+      case 'select': valid = !!field.options?.some(o => o.value === val); break
+      case 'string': case 'text':
+        valid = typeof val === 'string' && (key==='accent' ? isValidCssColor(val) : key==='footer_url' ? isValidHttpUrl(val) : true)
         break
-      case "select":
-        if (typeof val === "string" && Array.isArray(field.options) && field.options.some((o) => o.value === val)) {
-          result[key] = val
-        } else {
-          result[key] = def
-        }
-        break
-      case "number":
-        if (typeof val === "number" && Number.isFinite(val)) {
-          const minOK = field.min === undefined || val >= field.min
-          const maxOK = field.max === undefined || val <= field.max
-          result[key] = minOK && maxOK ? val : def
-        } else {
-          result[key] = def
-        }
-        break
-      case "string":
-      case "text":
-        if (typeof val === "string") {
-          if (key === "accent") {
-            result[key] = isValidCssColor(val) ? val.trim() : def
-          } else if (key === "footer_url") {
-            result[key] = isValidHttpUrl(val) ? val.trim() : def
-          } else {
-            result[key] = val
-          }
-        } else {
-          result[key] = def
-        }
-        break
-      default:
-        result[key] = typeof val === typeof def ? val : def
+      default: valid = typeof val === typeof def
     }
+    result[key] = !valid ? def : typeof val === 'string' && (key==='accent' || key==='footer_url') ? val.trim() : val
   }
-
   return result as unknown as ThemeConfig
 }
 

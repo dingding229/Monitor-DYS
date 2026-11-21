@@ -8,7 +8,7 @@
   import { createPingStore } from "@/lib/ping.svelte"
   import { resolveConfig, type ThemeConfig } from "@/lib/config"
   import { createNodeStore } from "@/lib/nodes.svelte"
-  import { loadPrefs, savePref, type SortKey, type VisitorPrefs } from "@/lib/prefs"
+  import { directory, readView, writeView, loadPrefs, savePref, type SortKey, type VisitorPrefs } from "@/lib/view-state"
   import { createRouter } from "@/lib/router.svelte"
 
   let { initialMe, initialNodes, initialConfig }: {
@@ -36,11 +36,17 @@
   let siteConfig = $state<ThemeConfig>(resolveConfig())
   let configLoaded = $state<boolean>(false)
   let visitorPrefs = $state<VisitorPrefs>(loadPrefs())
-  let selectedGroup = $state<GroupKey>(ALL_GROUP)
-  let selectedCountry = $state<string | null>(null)
-  let sortKey = $state<SortKey>(loadPrefs().sort ?? "default")
-  let searchQuery = $state<string>("")
-  let orderedNodes = $state<Node[]>([])
+  const initialView = readView()
+  let selectedGroup = $state<GroupKey>(initialView.group)
+  let selectedCountry = $state<string | null>(initialView.country)
+  let sortKey = $state<SortKey>(initialView.sort)
+  let searchQuery = $state(initialView.query)
+  let debounced = $state(initialView.query)
+  $effect(() => { const text = searchQuery; const id = setTimeout(() => debounced = text, 120); return () => clearTimeout(id) })
+  $effect(() => { if (router.route.page === 'home') writeView(selectedGroup, selectedCountry, searchQuery, sortKey) })
+  function restoreView() {
+    const v=readView(); selectedGroup=v.group; selectedCountry=v.country; searchQuery=v.query; debounced=v.query; sortKey=v.sort
+  }
 
   // Effective layout per SPEC §5.13 & v1.2:
   // theme.json default < Hub config < visitor localStorage (only layout and sort)
@@ -163,7 +169,9 @@
       ? me.history_days
       : 7,
   )
+  let filtered = $derived(directory(sortedNodes, selectedGroup, selectedCountry, siteConfig.show_search ? debounced : "", siteConfig.show_sort ? sortKey : "default"))
 </script>
+<svelte:window onpopstate={restoreView} />
 
 {#if meUnauthorized || nodeStore.closed}
   <div class="grid min-h-svh place-items-center px-4 py-12">
@@ -285,7 +293,7 @@
             <NodeDetail
               node={activeNode}
               showPing={configLoaded && siteConfig.show_ping}
-              orderedNodes={orderedNodes.length > 0 ? orderedNodes : sortedNodes}
+              orderedNodes={filtered.list}
               {groupLabel}
               {historyDays}
               showBilling={siteConfig.show_billing}
@@ -312,7 +320,7 @@
             {ping} showPing={configLoaded && siteConfig.show_ping && nodeStore.lastUpdated !== null}
             snapshotOnly={nodeStore.lastUpdated === null}
             loading={!nodeStore.nodes}
-            nodes={sortedNodes}
+            {filtered}
             accent={siteConfig.accent}
             layout={effectiveLayout}
             cardSize={siteConfig.card_size}
@@ -329,7 +337,6 @@
             onChangeLayout={setLayout}
             onChangeSort={setSort}
             onSelectNode={(id) => router.navigate(id)}
-            onUpdateOrderedNodes={(list) => (orderedNodes = list)}
           />
         {/if}
       {/if}

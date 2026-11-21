@@ -1,3 +1,4 @@
+import { isObj } from "./api"
 /**
  * Visitor information & User-Agent / GeoIP normalization per SPEC-v1.1 §F.
  * External requests may ONLY go to `https://api.ip.sb/geoip` and `https://ipwho.is/`.
@@ -47,38 +48,11 @@ export function parseUA(ua = ""): ParsedUA {
     os = "Linux"
   }
 
-  // Browser detection (Edge / Chrome / Safari / Firefox / Opera / 微信 / QQ 浏览器)
-  let browser = "Browser"
-  let version = ""
-
-  const matchVer = (re: RegExp): string => {
-    const m = re.exec(s)
-    return m?.[1] ?? ""
-  }
-
-  if (/MicroMessenger\//i.test(s)) {
-    browser = "微信"
-    version = matchVer(/MicroMessenger\/([\d.]+)/i)
-  } else if (/QQBrowser\//i.test(s) || /MQQBrowser\//i.test(s)) {
-    browser = "QQ 浏览器"
-    version = matchVer(/M?QQBrowser\/([\d.]+)/i)
-  } else if (/EdgA?\//i.test(s) || /EdgiOS\//i.test(s) || /Edge\//i.test(s)) {
-    browser = "Edge"
-    version = matchVer(/(?:EdgA?|EdgiOS|Edge)\/([\d.]+)/i)
-  } else if (/OPR\//i.test(s) || /Opera\//i.test(s)) {
-    browser = "Opera"
-    version = matchVer(/(?:OPR|Opera)\/([\d.]+)/i)
-  } else if (/Firefox\//i.test(s) || /FxiOS\//i.test(s)) {
-    browser = "Firefox"
-    version = matchVer(/(?:Firefox|FxiOS)\/([\d.]+)/i)
-  } else if (/Chrome\//i.test(s) || /CriOS\//i.test(s)) {
-    browser = "Chrome"
-    version = matchVer(/(?:Chrome|CriOS)\/([\d.]+)/i)
-  } else if (/Safari\//i.test(s)) {
-    browser = "Safari"
-    version = matchVer(/Version\/([\d.]+)/i) || matchVer(/Safari\/([\d.]+)/i)
-  }
-
+  const browsers: [string,RegExp][] = [["微信",/MicroMessenger\/([\d.]+)/i], ["QQ 浏览器",/M?QQBrowser\/([\d.]+)/i],
+    ["Edge",/(?:EdgA?|EdgiOS|Edge)\/([\d.]+)/i], ["Opera",/(?:OPR|Opera)\/([\d.]+)/i], ["Firefox",/(?:Firefox|FxiOS)\/([\d.]+)/i],
+    ["Chrome",/(?:Chrome|CriOS)\/([\d.]+)/i], ["Safari",/Version\/([\d.]+).*Safari/i], ["Safari",/Safari\/([\d.]+)/i]]
+  let browser="Browser", version=""
+  for(const [name,pattern] of browsers) {const match=pattern.exec(s); if(match){browser=name;version=match[1];break}}
   return { browser, version, os, device }
 }
 
@@ -90,38 +64,13 @@ export function normalizeGeo(source: "ipsb" | "ipwho", json: unknown): VisitorGe
   if (!json || typeof json !== "object") return null
   const data = json as Record<string, unknown>
 
-  if (source === "ipsb") {
-    const ip = cleanStr(data.ip)
-    if (!ip) return null
-    const countryCode = cleanStr(data.country_code).toUpperCase()
-    const country = cleanStr(data.country)
-    const region = cleanStr(data.region)
-    const city = cleanStr(data.city)
-    const org = cleanStr(data.isp) || cleanStr(data.organization)
-    const asn = typeof data.asn === "number" ? `AS${data.asn}` : cleanStr(data.asn)
-    const isp = [asn && !org.includes(asn) ? asn : "", org].filter(Boolean).join(" ").trim()
-    if (!countryCode && !country && !city && !isp) return null
-    return { ip, countryCode, country, region, city, isp }
-  }
-
-  if (source === "ipwho") {
-    if (data.success === false) return null
-    const ip = cleanStr(data.ip)
-    if (!ip) return null
-    const countryCode = cleanStr(data.country_code).toUpperCase()
-    const country = cleanStr(data.country)
-    const region = cleanStr(data.region)
-    const city = cleanStr(data.city)
-    const conn = data.connection && typeof data.connection === "object" ? (data.connection as Record<string, unknown>) : {}
-    const org = cleanStr(conn.isp) || cleanStr(conn.org) || cleanStr(data.isp) || cleanStr(data.org)
-    const asnRaw = conn.asn ?? data.asn
-    const asn = typeof asnRaw === "number" ? `AS${asnRaw}` : cleanStr(asnRaw)
-    const isp = [asn && !org.includes(asn) ? asn : "", org].filter(Boolean).join(" ").trim()
-    if (!countryCode && !country && !city && !isp) return null
-    return { ip, countryCode, country, region, city, isp }
-  }
-
-  return null
+  if (source === 'ipwho' && data.success === false) return null
+  const ip=cleanStr(data.ip), countryCode=cleanStr(data.country_code).toUpperCase(), country=cleanStr(data.country)
+  const region=cleanStr(data.region), city=cleanStr(data.city), conn=isObj(data.connection)?data.connection:{}
+  const org=cleanStr(conn.isp)||cleanStr(conn.org)||cleanStr(data.isp)||cleanStr(data.organization)||cleanStr(data.org)
+  const raw=conn.asn??data.asn, asn=typeof raw==='number'?`AS${raw}`:cleanStr(raw)
+  const isp=[asn && !org.includes(asn)?asn:'',org].filter(Boolean).join(' ')
+  return ip && (countryCode||country||city||isp) ? {ip,countryCode,country,region,city,isp} : null
 }
 
 async function fetchJsonWithTimeout(fetchFn: typeof fetch, url: string, timeoutMs = 5000): Promise<unknown> {
@@ -138,54 +87,21 @@ export async function fetchVisitor(
   fetchFn: typeof fetch = globalThis.fetch,
   storage?: Storage | null,
 ): Promise<VisitorGeo | null> {
-  const store =
-    storage !== undefined
-      ? storage
-      : typeof sessionStorage !== "undefined"
-        ? sessionStorage
-        : null
-
+  let store = storage
   try {
-    const cached = store?.getItem(SESSION_CACHE_KEY)
-    if (cached) {
-      const parsed = JSON.parse(cached) as VisitorGeo
-      if (parsed && typeof parsed.ip === "string" && parsed.ip) {
-        return parsed
-      }
-    }
-  } catch {
-    // ignore storage read error
-  }
-
-  if (typeof fetchFn !== "function") return null
-
-  let result: VisitorGeo | null = null
-
-  try {
-    const ipsbJson = await fetchJsonWithTimeout(fetchFn, "https://api.ip.sb/geoip", 5000)
-    result = normalizeGeo("ipsb", ipsbJson)
-  } catch {
-    result = null
-  }
-
-  if (!result) {
+    if(store === undefined) store = sessionStorage
+    const cached = JSON.parse(store?.getItem(SESSION_CACHE_KEY) || 'null') as VisitorGeo | null
+    if(cached && typeof cached.ip === 'string' && cached.ip) return cached
+  } catch { /* memory-only if storage is unavailable */ }
+  for(const [source,url] of [['ipsb','https://api.ip.sb/geoip'],['ipwho','https://ipwho.is/']] as const) {
     try {
-      const ipwhoJson = await fetchJsonWithTimeout(fetchFn, "https://ipwho.is/", 5000)
-      result = normalizeGeo("ipwho", ipwhoJson)
-    } catch {
-      result = null
-    }
+      const geo=normalizeGeo(source, await fetchJsonWithTimeout(fetchFn,url))
+      if(!geo) continue
+      try {store?.setItem(SESSION_CACHE_KEY,JSON.stringify(geo))} catch { /* cache optional */ }
+      return geo
+    } catch { /* try the next provider */ }
   }
-
-  if (result) {
-    try {
-      store?.setItem(SESSION_CACHE_KEY, JSON.stringify(result))
-    } catch {
-      // ignore storage write error
-    }
-  }
-
-  return result
+  return null
 }
 
 export function isVisitorBubbleDismissed(storage?: Storage | null): boolean {

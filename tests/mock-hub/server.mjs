@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
 import { gzipSync } from 'node:zlib';
+import { lastManyUpdate, manyNodes } from './many.mjs';
 
 const { values: args } = parseArgs({ options: {
   port: { type: 'string', default: '9911' },
@@ -25,6 +26,7 @@ function fixture(name) {
 
 const normal = fixture('normal');
 const scenario = args.scenario === 'normal' ? normal : fixture(args.scenario);
+const many = scenario.generateMany === true;
 function responseDelay(flag, fallback = 0) {
   const value = args[flag] ?? String(fallback);
   if (!/^\d+$/.test(value) || Number(value) > 60_000) throw new Error(`--${flag} 必须是 0–60000 的整数毫秒数`);
@@ -41,7 +43,7 @@ const MiB = 1024 ** 2;
 const own = (obj, key) => Object.hasOwn(obj, key);
 const omit = (obj, fields) => { for (const field of fields ?? []) delete obj[field]; };
 const groups = ['亚太', '欧洲', '美洲'];
-const nodeSeeds = normal.nodes.map((seed, index) => ({
+const nodeSeeds = (many ? manyNodes() : normal.nodes).map((seed, index) => ({
   ...seed,
   ...(scenario.groupMode === 'none' ? { group: '' } : {}),
   ...(scenario.groupMode === 'all' && !seed.group ? { group: groups[index % groups.length] } : {}),
@@ -91,11 +93,15 @@ function usageAt(storage, id, ts) {
   };
 }
 
-function snapshot() {
-  const now = Math.floor(Date.now() / 1000);
-  const elapsed = Math.max(0, Math.floor((Date.now() - started) / 1000));
-  const tick = Math.floor(elapsed / 2);
+const secondsSinceStart = () => Math.max(0, Math.floor((Date.now() - started) / 1000));
+
+function snapshot(frameTick = secondsSinceStart()) {
+  const elapsedSinceStart = secondsSinceStart();
+  const wallTime = Math.floor(Date.now() / 1000);
   const nodes = nodeSeeds.map((seed, index) => {
+    const elapsed = many ? lastManyUpdate(index, frameTick) : elapsedSinceStart;
+    const now = many ? Math.floor(started / 1000) + elapsed : wallTime;
+    const tick = many ? elapsed : Math.floor(elapsed / 2);
     const { id } = seed;
     const online = seed.online ?? true;
     const age = own(seed, 'last_seen_ago') ? (seed.last_seen_ago === null ? null : seed.last_seen_ago + elapsed) : 1;
@@ -132,16 +138,17 @@ function snapshot() {
   return { admin: me.authed, nodes };
 }
 
-const probes = [[9, '东京探测'], [2, '法兰克福探测']];
+const probes = [[9, '东京探测'], [2, '法兰克福探测'], ...(many ? [[5, '纽约探测']] : [])];
 function positiveInt(value, fallback) {
   return value && /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : fallback;
 }
 function history(seed, query) {
   const { id } = seed;
   const hours = Math.min(positiveInt(query.get('hours'), 6), (me.history_days ?? 7) * 24);
-  // Homepage ping may request 12, but Hub history keeps the 60–1440 point clamp.
-  const points = Math.max(60, Math.min(1440, positiveInt(query.get('points'), 1440)));
   const series = query.get('series');
+  // Preserve older Hub responses in the existing scenarios. The many fixture
+  // also exercises a Hub that honors the 12-point Ping request directly.
+  const points = Math.max(many && series === 'ping' ? 12 : 60, Math.min(1440, positiveInt(query.get('points'), 1440)));
   const duration = hours * 3600;
   const quantum = hours <= 168 ? 60 : 3600;
   const retention = scenario.recentHistoryHours ? scenario.recentHistoryHours * 3600 : null;
@@ -309,12 +316,13 @@ server.on('upgrade', (req, socket, head) => {
   const accept = createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
   const gzip = url.searchParams.has('gzip') && !scenario.legacy && !me.authed;
+  let tick = secondsSinceStart();
   const push = () => {
     if (!socket.writable || socket.writableLength) return;
-    const payload = Buffer.from(JSON.stringify(snapshot()));
+    const payload = Buffer.from(JSON.stringify(snapshot(many ? tick++ : undefined)));
     socket.write(frame(gzip ? 0x2 : 0x1, gzip ? gzipSync(payload) : payload));
   };
-  const timer = setInterval(push, 2000);
+  const timer = setInterval(push, many ? 1000 : 2000);
   socket.once('close', () => clearInterval(timer));
   // Read-only stream; the only supported client frames are masked control frames.
   let pending = Buffer.alloc(0);

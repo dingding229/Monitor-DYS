@@ -41,6 +41,20 @@ async function frameText(data: unknown): Promise<string> {
   return String(data)
 }
 
+// Hub frames are JSON values; include optional and unknown fields in equality.
+function same(a:unknown,b:unknown):boolean {
+  if(a===b) return true
+  if(!a || !b || typeof a!=='object' || typeof b!=='object' || Array.isArray(a)!==Array.isArray(b)) return false
+  const x=a as Record<string,unknown>, y=b as Record<string,unknown>, keys=Object.keys(x)
+  return keys.length===Object.keys(y).length && keys.every(k=>Object.hasOwn(y,k) && same(x[k],y[k]))
+}
+export function mergeNodes(prev:Node[]|null,next:Node[]):Node[] {
+  if(!prev) return next
+  const old=new Map(prev.map(n=>[n.id,n]))
+  const merged=next.map(n=>{const p=old.get(n.id);return p && same(p,n)?p:n})
+  return merged.length===prev.length && merged.every((n,i)=>n===prev[i])?prev:merged
+}
+
 export function createNodeStore(opts: NodeStoreOptions = {}) {
   const WS = opts.WebSocket ?? globalThis.WebSocket
   const fetchFn = opts.fetch ?? globalThis.fetch
@@ -51,7 +65,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   const staleMs = opts.staleTimeoutMs ?? 10_000
   const baseRetryMs = opts.reconnectBaseMs ?? 2000
 
-  let nodes = $state<Node[] | null>(opts.cachedNodes ?? null)
+  let nodes = $state.raw<Node[] | null>(opts.cachedNodes ?? null)
   let error = $state<string | null>(null)
   let closed = $state<boolean>(false)
   let connected = $state<boolean>(false)
@@ -73,7 +87,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     if (gap) speedHistory.clear()
     gap = false
     sample(safe)
-    nodes = safe
+    nodes = mergeNodes(nodes,safe)
     lastUpdated = Date.now()
     error = null
     closed = false
@@ -295,5 +309,3 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     setPollInterval,
   }
 }
-
-export const useNodes = createNodeStore
