@@ -10,7 +10,7 @@
     yFormat,
     yMin = 0,
     yMax,
-    height = 180,
+    height = 165,
     partialBuckets = [],
   }: {
     title: string
@@ -27,7 +27,6 @@
   let container: HTMLDivElement | undefined = $state()
   let chart: uPlot | null = null
   let resizeObserver: ResizeObserver | null = null
-  let themeObserver: MutationObserver | null = null
 
   const HHMM = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" })
   const MDHHMM = new Intl.DateTimeFormat("zh-CN", {
@@ -37,19 +36,14 @@
     minute: "2-digit",
   })
 
-  function isDark(): boolean {
-    return typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-  }
-
   function buildOptions(width: number): uPlot.Options {
-    const dark = isDark()
-    const axisColor = dark ? "#a3a3a3" : "#737373"
-    const gridColor = dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"
+    const axisColor = "#6b7280"
+    const gridColor = "rgba(0,0,0,0.05)"
 
     return {
-      width: Math.max(240, width),
+      width: Math.max(180, width),
       height,
-      padding: [10, 12, 0, 0],
+      padding: [8, 10, 0, 0],
       cursor: {
         drag: { x: false, y: false },
       },
@@ -75,8 +69,8 @@
         {
           stroke: axisColor,
           grid: { stroke: gridColor, width: 1 },
-          ticks: { stroke: gridColor, width: 1, size: 4 },
-          font: "11px -apple-system, BlinkMacSystemFont, sans-serif",
+          ticks: { stroke: gridColor, width: 1, size: 3 },
+          font: "10.5px -apple-system, BlinkMacSystemFont, sans-serif",
           values: (_u, splits) => {
             if (!splits.length) return []
             const span = (splits[splits.length - 1] ?? 0) - (splits[0] ?? 0)
@@ -87,9 +81,9 @@
         {
           stroke: axisColor,
           grid: { stroke: gridColor, width: 1 },
-          ticks: { stroke: gridColor, width: 1, size: 4 },
-          size: 58,
-          font: "11px -apple-system, BlinkMacSystemFont, sans-serif",
+          ticks: { stroke: gridColor, width: 1, size: 3 },
+          size: 54,
+          font: "10.5px -apple-system, BlinkMacSystemFont, sans-serif",
           values: (_u, splits) =>
             splits.map((v) => (yFormat ? yFormat(v) : Number.isInteger(v) ? String(v) : v.toFixed(1))),
         },
@@ -100,7 +94,7 @@
             if (!partialBuckets.length) return
             const ctx = u.ctx
             ctx.save()
-            ctx.fillStyle = dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.035)"
+            ctx.fillStyle = "rgba(0,0,0,0.035)"
             for (const b of partialBuckets) {
               const x0 = Math.max(u.bbox.left, u.valToPos(b.from, "x", true))
               const x1 = Math.min(u.bbox.left + u.bbox.width, u.valToPos(b.to, "x", true))
@@ -124,7 +118,7 @@
 
   function renderChart() {
     if (!container) return
-    const width = container.clientWidth || 640
+    const width = container.clientWidth || 320
     if (chart) {
       chart.destroy()
       chart = null
@@ -142,24 +136,14 @@
       resizeObserver = new ResizeObserver((entries) => {
         const w = entries[0]?.contentRect?.width
         if (w && chart) {
-          chart.setSize({ width: Math.max(240, Math.floor(w)), height })
+          chart.setSize({ width: Math.max(180, Math.floor(w)), height })
         }
       })
       resizeObserver.observe(container)
     }
-    if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
-      themeObserver = new MutationObserver(() => {
-        renderChart()
-      })
-      themeObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["class", "style"],
-      })
-    }
   })
 
   $effect(() => {
-    // Re-render when data or series definitions change
     void data
     void series
     void yMax
@@ -170,7 +154,6 @@
 
   onDestroy(() => {
     resizeObserver?.disconnect()
-    themeObserver?.disconnect()
     chart?.destroy()
     chart = null
   })
@@ -178,12 +161,12 @@
 
 <div
   data-testid="chart"
-  class="rounded-[12px] border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+  class="rounded-[10px] border border-neutral-200 bg-white p-[12px]"
 >
-  <div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-    <h4 class="text-xs font-semibold text-neutral-700 dark:text-neutral-300">{title}</h4>
+  <div class="mb-1.5 flex flex-wrap items-baseline justify-between gap-1.5">
+    <h4 class="text-[12px] font-semibold text-neutral-800">{title}</h4>
     {#if subtitle}
-      <span class="tnum text-xs text-neutral-500 dark:text-neutral-400">{subtitle}</span>
+      <span class="tnum text-[11px] text-neutral-500">{subtitle}</span>
     {/if}
   </div>
   <div bind:this={container} class="w-full overflow-hidden"></div>

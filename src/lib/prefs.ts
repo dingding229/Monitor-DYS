@@ -1,22 +1,24 @@
 /**
  * Visitor preferences stored in localStorage.
- * Per SPEC §5.13:
- * - Only layout, color_scheme (theme), and sort can be stored in localStorage.
- * - Site-level settings (show_summary, show_billing, announcement, footer, poll_interval, accent) must NEVER be stored in localStorage.
+ * Per SPEC-v1.1 §A & §C.2:
+ * - Only layout and sort are stored in localStorage (colorScheme removed in v1.1).
+ * - Site-level settings must NEVER be stored in localStorage.
  * - All localStorage access must be wrapped in try/catch.
  */
 
+export type SortKey = "default" | "name" | "cpu" | "mem" | "disk" | "tx" | "rx" | "expiry" | "traffic"
+
 export type VisitorPrefs = {
   layout?: "grid" | "table"
-  color_scheme?: "auto" | "light" | "dark"
-  sort?: "default" | "name" | "cpu" | "traffic"
+  sort?: SortKey
 }
 
 const KEYS = {
   layout: "dys.layout",
-  color_scheme: "theme",
   sort: "dys.sort",
 } as const
+
+const VALID_SORTS = new Set<SortKey>(["default", "name", "cpu", "mem", "disk", "tx", "rx", "expiry", "traffic"])
 
 export function loadPrefs(storage?: Storage): VisitorPrefs {
   const prefs: VisitorPrefs = {}
@@ -27,11 +29,8 @@ export function loadPrefs(storage?: Storage): VisitorPrefs {
     const layout = store.getItem(KEYS.layout)
     if (layout === "grid" || layout === "table") prefs.layout = layout
 
-    const scheme = store.getItem(KEYS.color_scheme) ?? store.getItem("dys.color_scheme")
-    if (scheme === "auto" || scheme === "light" || scheme === "dark") prefs.color_scheme = scheme
-
-    const sort = store.getItem(KEYS.sort)
-    if (sort === "default" || sort === "name" || sort === "cpu" || sort === "traffic") prefs.sort = sort
+    const sort = store.getItem(KEYS.sort) as SortKey | null
+    if (sort && VALID_SORTS.has(sort)) prefs.sort = sort
   } catch {
     // Storage disabled or blocked
   }

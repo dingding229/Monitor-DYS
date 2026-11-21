@@ -17,12 +17,19 @@ export type ConfigField = {
 
 export type ThemeConfig = {
   layout: "grid" | "table"
-  color_scheme: "auto" | "light" | "dark"
+  card_size: "compact" | "standard"
   accent: string
   show_summary: boolean
-  show_billing: boolean
+  show_map: boolean
+  show_search: boolean
+  show_sort: boolean
   announcement: string
+  show_billing: boolean
+  finance_currency: "CNY" | "USD" | "EUR" | "HKD" | "JPY"
+  expiry_warning_days: number
+  visitor_info_enabled: boolean
   footer: string
+  footer_url: string
   poll_interval: number
 }
 
@@ -32,10 +39,22 @@ function isValidCssColor(v: string): boolean {
   if (typeof CSS !== "undefined" && typeof CSS.supports === "function") {
     return CSS.supports("color", s)
   }
-  if (typeof document === "undefined") return false
-  const style = document.createElement("span").style
-  style.color = s
-  return style.color !== ""
+  return (
+    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s) ||
+    /^(rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color)\([^)]+\)$/i.test(s) ||
+    /^[a-zA-Z]{3,20}$/.test(s)
+  )
+}
+
+function isValidHttpUrl(v: string): boolean {
+  const s = v.trim()
+  if (!s) return false
+  try {
+    const u = new URL(s)
+    return u.protocol === "http:" || u.protocol === "https:"
+  } catch {
+    return false
+  }
 }
 
 function extractFields(declared: unknown): ConfigField[] {
@@ -90,6 +109,8 @@ export function resolveConfig(
         if (typeof val === "string") {
           if (key === "accent") {
             result[key] = isValidCssColor(val) ? val.trim() : def
+          } else if (key === "footer_url") {
+            result[key] = isValidHttpUrl(val) ? val.trim() : def
           } else {
             result[key] = val
           }

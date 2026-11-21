@@ -1,17 +1,60 @@
 <script lang="ts">
-  import { speedHistory, type GroupKey, type Node } from "@/lib/api"
-  import { bytes, speed } from "@/lib/format"
+  import WorldMap from "@/components/WorldMap.svelte"
+  import type { Node } from "@/lib/api"
+  import { summarizeValue } from "@/lib/finance"
+  import { bytes, money, percentNum, speed } from "@/lib/format"
 
   let {
     nodes,
-    group,
+    showSummary = true,
+    showMap = true,
+    showBilling = true,
+    financeCurrency = "CNY",
   }: {
     nodes: Node[]
-    group: GroupKey
+    showSummary?: boolean
+    showMap?: boolean
+    showBilling?: boolean
+    financeCurrency?: string
   } = $props()
 
-  let onlineCount = $derived(nodes.filter((n) => n.online).length)
-  let totalCount = $derived(nodes.length)
+  function splitValUnit(formatted: string): { val: string; unit: string } {
+    const idx = formatted.indexOf(" ")
+    if (idx === -1) return { val: formatted, unit: "" }
+    return {
+      val: formatted.slice(0, idx),
+      unit: formatted.slice(idx + 1),
+    }
+  }
+
+  let memUsed = $derived(
+    nodes.reduce((acc, n) => acc + (n.metrics ? n.metrics.mem_used : 0), 0),
+  )
+  let memTotal = $derived(
+    nodes.reduce((acc, n) => acc + (n.metrics?.mem_total || n.mem_total || 0), 0),
+  )
+  let memPct = $derived(percentNum(memUsed, memTotal))
+  let memUsedParts = $derived(splitValUnit(bytes(memUsed)))
+
+  let diskUsed = $derived(
+    nodes.reduce((acc, n) => acc + (n.metrics ? n.metrics.disk_used : 0), 0),
+  )
+  let diskTotal = $derived(
+    nodes.reduce((acc, n) => acc + (n.metrics?.disk_total || n.disk_total || 0), 0),
+  )
+  let diskPct = $derived(percentNum(diskUsed, diskTotal))
+  let diskUsedParts = $derived(splitValUnit(bytes(diskUsed)))
+
+  let valueSum = $derived(summarizeValue(nodes, financeCurrency))
+
+  let nowTx = $derived(
+    nodes.reduce((acc, n) => acc + (n.online && n.metrics ? n.metrics.net_tx : 0), 0),
+  )
+  let nowRx = $derived(
+    nodes.reduce((acc, n) => acc + (n.online && n.metrics ? n.metrics.net_rx : 0), 0),
+  )
+  let txParts = $derived(splitValUnit(speed(nowTx)))
+  let rxParts = $derived(splitValUnit(speed(nowRx)))
 
   function nodeMonthRx(n: Node): number {
     return typeof n.month_rx === "number" ? n.month_rx : (n.metrics?.month_rx ?? 0)
@@ -19,106 +62,192 @@
   function nodeMonthTx(n: Node): number {
     return typeof n.month_tx === "number" ? n.month_tx : (n.metrics?.month_tx ?? 0)
   }
+  function nodeTotalRx(n: Node): number {
+    return typeof n.total_rx === "number" ? n.total_rx : (n.metrics?.total_rx ?? 0)
+  }
+  function nodeTotalTx(n: Node): number {
+    return typeof n.total_tx === "number" ? n.total_tx : (n.metrics?.total_tx ?? 0)
+  }
 
   let monthRx = $derived(nodes.reduce((acc, n) => acc + nodeMonthRx(n), 0))
   let monthTx = $derived(nodes.reduce((acc, n) => acc + nodeMonthTx(n), 0))
-  let monthTotal = $derived(monthRx + monthTx)
+  let monthSum = $derived(monthRx + monthTx)
+  let monthParts = $derived(splitValUnit(bytes(monthSum)))
 
-  let nowRx = $derived(
-    nodes.reduce((acc, n) => acc + (n.online && n.metrics ? n.metrics.net_rx : 0), 0),
-  )
-  let nowTx = $derived(
-    nodes.reduce((acc, n) => acc + (n.online && n.metrics ? n.metrics.net_tx : 0), 0),
-  )
+  let totalRx = $derived(nodes.reduce((acc, n) => acc + nodeTotalRx(n), 0))
+  let totalTx = $derived(nodes.reduce((acc, n) => acc + nodeTotalTx(n), 0))
+  let totalSum = $derived(totalRx + totalTx)
 
-  let history = $derived.by(() => {
-    // Re-evaluate when nodes update
-    void nodes
-    return speedHistory.get(group) ?? []
-  })
-
-  let sparkPoints = $derived.by(() => {
-    const raw = history.length > 0 ? history : [{ rx: nowRx, tx: nowTx }]
-    const pts = raw.length === 1 ? [raw[0], raw[0]] : raw
-    const maxVal = Math.max(...pts.flatMap((p) => [p.rx, p.tx]), 1)
-    const w = Math.max(pts.length - 1, 1)
-    const rxLine = pts
-      .map((p, i) => `${((i / w) * 100).toFixed(1)},${(22 - (p.rx / maxVal) * 20).toFixed(1)}`)
-      .join(" ")
-    const txLine = pts
-      .map((p, i) => `${((i / w) * 100).toFixed(1)},${(22 - (p.tx / maxVal) * 20).toFixed(1)}`)
-      .join(" ")
-    return { rxLine, txLine }
-  })
+  let onlineCount = $derived(nodes.filter((n) => n.online).length)
 </script>
 
-<section
-  data-testid="summary"
-  class="grid grid-cols-1 gap-3 sm:grid-cols-3"
-  aria-label="节点汇总"
->
-  <div class="rounded-[12px] border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-    <div class="text-xs text-neutral-500 dark:text-neutral-400">在线节点</div>
-    <div class="tnum mt-1.5 flex items-baseline gap-2">
-      <span class="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
-        {onlineCount} / {totalCount}
-      </span>
-      <span class="inline-flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-        <span
-          class="inline-block h-2 w-2 rounded-full"
-          style="background-color: {onlineCount > 0 ? 'var(--online)' : 'var(--offline)'};"
-        ></span>
-        {totalCount === 0
-          ? "暂无节点"
-          : onlineCount === totalCount
-            ? "全部在线"
-            : `${totalCount - onlineCount} 离线`}
-      </span>
-    </div>
-  </div>
+{#if showSummary || showMap}
+  <section
+    data-testid="summary"
+    aria-label="节点总览 ({onlineCount} / {nodes.length} 在线)"
+    class="grid grid-cols-1 gap-3 {showSummary && showMap ? 'min-[900px]:grid-cols-12' : ''}"
+  >
+    <span class="sr-only">{onlineCount} / {nodes.length}</span>
 
-  <div class="rounded-[12px] border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-    <div class="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-      <span>本月总流量</span>
-      <span class="tnum font-medium text-neutral-700 dark:text-neutral-300">{bytes(monthTotal)}</span>
-    </div>
-    <div class="tnum mt-2 grid grid-cols-2 gap-2 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-      <div class="truncate" title="本月下行">↓ {bytes(monthRx)}</div>
-      <div class="truncate" title="本月上行">↑ {bytes(monthTx)}</div>
-    </div>
-  </div>
-
-  <div class="rounded-[12px] border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-    <div class="flex items-center justify-between gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-      <span>实时速率</span>
-      <span class="tnum truncate font-medium text-neutral-800 dark:text-neutral-200">
-        ↓ {speed(nowRx)} · ↑ {speed(nowTx)}
-      </span>
-    </div>
-    <div class="mt-2">
-      <svg
-        viewBox="0 0 100 24"
-        preserveAspectRatio="none"
-        class="h-6 w-full overflow-visible"
-        aria-hidden="true"
+    {#if showSummary}
+      <div
+        class="grid grid-cols-2 gap-3 sm:grid-cols-3 {showMap ? 'min-[900px]:col-span-7' : ''}"
       >
-        <polyline
-          fill="none"
-          stroke="var(--accent)"
-          stroke-width="1.5"
-          vector-effect="non-scaling-stroke"
-          points={sparkPoints.rxLine}
-        />
-        <polyline
-          fill="none"
-          stroke="currentColor"
-          class="text-neutral-400 dark:text-neutral-600"
-          stroke-width="1.25"
-          stroke-dasharray="2 2"
-          vector-effect="non-scaling-stroke"
-          points={sparkPoints.txLine}
-        />
-      </svg>
-    </div>
-  </div>
-</section>
+        <!-- 1. 内存用量 -->
+        <div
+          data-testid="summary-tile"
+          class="flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3"
+        >
+          <div class="flex items-center justify-between text-[12px] text-neutral-500">
+            <span>内存用量</span>
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="4.5" width="12" height="7" rx="1.5" />
+                <path d="M5 7v2M8 7v2M11 7v2" />
+              </svg>
+            </span>
+          </div>
+          <div class="tnum mt-2 flex items-baseline gap-1 truncate">
+            <span class="text-[22px] leading-none font-bold text-neutral-900">{memUsedParts.val}</span>
+            <span class="text-[12px] text-neutral-500">{memUsedParts.unit} / {bytes(memTotal)}</span>
+          </div>
+          <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
+            <div
+              class="h-full rounded-full transition-[width] duration-300"
+              style="width: {Math.min(100, memPct)}%; background-color: var(--accent);"
+            ></div>
+          </div>
+        </div>
+
+        <!-- 2. 剩余价值 -->
+        <div
+          data-testid="summary-tile"
+          class="flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3"
+        >
+          <div class="flex items-center justify-between text-[12px] text-neutral-500">
+            <span>剩余价值</span>
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="3.5" width="12" height="9" rx="1.5" />
+                <circle cx="8" cy="8" r="2" />
+              </svg>
+            </span>
+          </div>
+          {#if !showBilling}
+            <div class="tnum mt-2 text-[22px] leading-none font-bold text-neutral-400">—</div>
+            <div class="mt-1 text-[11px] text-neutral-400">费用已隐藏</div>
+          {:else}
+            <div
+              data-testid="remaining-value"
+              class="tnum mt-2 truncate text-[22px] leading-none font-bold text-neutral-900"
+            >
+              {valueSum.counted > 0 ? money(valueSum.amount, financeCurrency) : "—"}
+            </div>
+            <div class="tnum mt-1 text-[11px] text-neutral-500">
+              {valueSum.skipped > 0
+                ? `${valueSum.skipped} 台未计入`
+                : valueSum.counted > 0
+                  ? `已计入 ${valueSum.counted} 台 (${financeCurrency})`
+                  : "暂无计费节点"}
+            </div>
+          {/if}
+        </div>
+
+        <!-- 3. 实时上行 -->
+        <div
+          data-testid="summary-tile"
+          class="flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3"
+        >
+          <div class="flex items-center justify-between text-[12px] text-neutral-500">
+            <span>实时上行</span>
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M8 12.5v-9M8 3.5L4.5 7M8 3.5L11.5 7" />
+              </svg>
+            </span>
+          </div>
+          <div class="tnum mt-2 flex items-baseline gap-1 truncate">
+            <span class="text-[22px] leading-none font-bold" style="color: var(--accent);">{txParts.val}</span>
+            <span class="text-[12px] text-neutral-500">{txParts.unit}</span>
+          </div>
+          <div class="mt-1 text-[11px] text-neutral-400">本月 ↑ {bytes(monthTx)}</div>
+        </div>
+
+        <!-- 4. 硬盘用量 -->
+        <div
+          data-testid="summary-tile"
+          class="flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3"
+        >
+          <div class="flex items-center justify-between text-[12px] text-neutral-500">
+            <span>硬盘用量</span>
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-orange-50 text-orange-600">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="3.5" width="12" height="9" rx="2" />
+                <path d="M2 8.5h12" />
+              </svg>
+            </span>
+          </div>
+          <div class="tnum mt-2 flex items-baseline gap-1 truncate">
+            <span class="text-[22px] leading-none font-bold text-neutral-900">{diskUsedParts.val}</span>
+            <span class="text-[12px] text-neutral-500">{diskUsedParts.unit} / {bytes(diskTotal)}</span>
+          </div>
+          <div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
+            <div
+              class="h-full rounded-full transition-[width] duration-300"
+              style="width: {Math.min(100, diskPct)}%; background-color: var(--accent);"
+            ></div>
+          </div>
+        </div>
+
+        <!-- 5. 累计流量 (本月合计，悬停显示累计) -->
+        <div
+          data-testid="summary-tile"
+          title="累计总流量：{bytes(totalSum)}（↓ {bytes(totalRx)} / ↑ {bytes(totalTx)}）"
+          class="flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3"
+        >
+          <div class="flex items-center justify-between text-[12px] text-neutral-500">
+            <span>累计流量</span>
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-50 text-purple-600">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M5 12V4M5 4L2.5 6.5M5 4l2.5 2.5M11 4v8m0 0l-2.5-2.5M11 12l2.5-2.5" />
+              </svg>
+            </span>
+          </div>
+          <div class="tnum mt-2 flex items-baseline gap-1 truncate">
+            <span class="text-[22px] leading-none font-bold text-neutral-900">{monthParts.val}</span>
+            <span class="text-[12px] text-neutral-500">{monthParts.unit}</span>
+          </div>
+          <div class="tnum mt-1 truncate text-[11px] text-neutral-400">
+            总计 {bytes(totalSum)}
+          </div>
+        </div>
+
+        <!-- 6. 实时下行 -->
+        <div
+          data-testid="summary-tile"
+          class="flex flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-3"
+        >
+          <div class="flex items-center justify-between text-[12px] text-neutral-500">
+            <span>实时下行</span>
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-50 text-sky-600">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M8 3.5v9m0 0L4.5 9M8 12.5L11.5 9" />
+              </svg>
+            </span>
+          </div>
+          <div class="tnum mt-2 flex items-baseline gap-1 truncate">
+            <span class="text-[22px] leading-none font-bold text-sky-600">{rxParts.val}</span>
+            <span class="text-[12px] text-neutral-500">{rxParts.unit}</span>
+          </div>
+          <div class="mt-1 text-[11px] text-neutral-400">本月 ↓ {bytes(monthRx)}</div>
+        </div>
+      </div>
+    {/if}
+
+    {#if showMap}
+      <div class={showSummary ? "min-[900px]:col-span-5 flex flex-col [&>*]:flex-1" : ""}>
+        <WorldMap {nodes} />
+      </div>
+    {/if}
+  </section>
+{/if}

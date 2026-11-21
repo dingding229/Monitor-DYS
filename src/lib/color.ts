@@ -1,4 +1,4 @@
-const DEFAULT_RGB: [number, number, number] = [37, 99, 235] // #2563eb
+const DEFAULT_RGB: [number, number, number] = [16, 185, 129] // #10b981
 
 function parseHex(s: string): [number, number, number] | null {
   const m3 = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])?$/.exec(s)
@@ -91,7 +91,7 @@ export function toRgb(color: string): [number, number, number] {
 }
 
 /**
- * Convert any valid CSS color to `rgba(r, g, b, alpha)`, falling back to `#2563eb` (`rgb(37, 99, 235)`) on invalid input.
+ * Convert any valid CSS color to `rgba(r, g, b, alpha)`, falling back to `#10b981` (`rgb(16, 185, 129)`) on invalid input.
  */
 export function withAlpha(color: string, alpha: number): string {
   const [r, g, b] = toRgb(color)

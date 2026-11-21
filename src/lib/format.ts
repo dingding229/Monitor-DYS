@@ -147,6 +147,7 @@ export function daysUntil(date?: string | null, nowMs = Date.now()): number | nu
 export function expiry(
   node: { expires_in?: number | null; expires_at?: string | null },
   nowMs = Date.now(),
+  warnDays = 7,
 ): ExpiryInfo {
   const hasExpiresIn = "expires_in" in node && node.expires_in !== undefined
   const days = hasExpiresIn
@@ -161,10 +162,11 @@ export function expiry(
   if (days < 0) {
     return { days, text: `已过期 ${-days} 天`, level: "expired" }
   }
+  const threshold = typeof warnDays === "number" && Number.isFinite(warnDays) && warnDays >= 1 ? warnDays : 7
   if (days === 0) {
     return { days: 0, text: "今天到期", level: "soon" }
   }
-  if (days <= 7) {
+  if (days <= threshold) {
     return { days, text: `${days} 天后到期`, level: "soon" }
   }
   return { days, text: `${days} 天后到期`, level: "ok" }

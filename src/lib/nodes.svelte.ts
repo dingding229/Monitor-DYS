@@ -50,6 +50,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   let error = $state<string | null>(null)
   let closed = $state<boolean>(false)
   let connected = $state<boolean>(false)
+  let lastUpdated = $state<number | null>(null)
 
   let socket: WebSocket | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -67,6 +68,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     gap = false
     sample(safe)
     nodes = safe
+    lastUpdated = Date.now()
     error = null
     closed = false
   }
@@ -263,6 +265,9 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     },
     get connected() {
       return connected
+    },
+    get lastUpdated() {
+      return lastUpdated
     },
     start,
     stop,

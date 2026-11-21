@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte"
+  import VisitorBubble from "@/components/VisitorBubble.svelte"
   import Home from "@/pages/Home.svelte"
   import NodeDetail from "@/pages/NodeDetail.svelte"
-  import { ALL_GROUP, ApiError, api, type GroupKey, type Me } from "@/lib/api"
+  import { ALL_GROUP, UNGROUPED, ApiError, api, type GroupKey, type Me, type Node } from "@/lib/api"
+  import { withAlpha } from "@/lib/color"
   import { loadConfig, resolveConfig, type ThemeConfig } from "@/lib/config"
   import { createNodeStore } from "@/lib/nodes.svelte"
-  import { loadPrefs, savePref, type VisitorPrefs } from "@/lib/prefs"
+  import { loadPrefs, savePref, type SortKey, type VisitorPrefs } from "@/lib/prefs"
   import { createRouter } from "@/lib/router.svelte"
 
   const router = createRouter()
@@ -15,25 +17,23 @@
   let meError = $state<string>("")
   let meUnauthorized = $state<boolean>(false)
   let siteConfig = $state<ThemeConfig>(resolveConfig())
-  let visitorPrefs = $state<VisitorPrefs>(loadPrefs())
-  let systemDark = $state<boolean>(
-    typeof window !== "undefined" && typeof window.matchMedia === "function"
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-      : false,
-  )
+  const initialPrefs = loadPrefs()
+  let visitorPrefs = $state<VisitorPrefs>(initialPrefs)
   let selectedGroup = $state<GroupKey>(ALL_GROUP)
+  let sortKey = $state<SortKey>(initialPrefs.sort ?? "default")
+  let searchQuery = $state<string>("")
+  let orderedNodes = $state<Node[]>([])
 
-  // Effective layout & color scheme per SPEC §5.13:
-  // theme.json default < Hub config < visitor localStorage (only layout, color_scheme, sort)
+  // Effective layout per SPEC §5.13 & v1.1:
+  // theme.json default < Hub config < visitor localStorage (only layout and sort)
   let effectiveLayout = $derived<"grid" | "table">(visitorPrefs.layout ?? siteConfig.layout)
-  let effectiveScheme = $derived<"auto" | "light" | "dark">(visitorPrefs.color_scheme ?? siteConfig.color_scheme)
-  let isDark = $derived(effectiveScheme === "dark" ? true : effectiveScheme === "light" ? false : systemDark)
 
-  // Apply dark mode class `html.dark` and `--accent` CSS variable
+  // Apply `--accent` and `--accent-glow` CSS variables
   $effect(() => {
     if (typeof document !== "undefined") {
-      document.documentElement.classList.toggle("dark", isDark)
-      document.documentElement.style.setProperty("--accent", siteConfig.accent || "#2563eb")
+      const accentColor = siteConfig.accent || "#10b981"
+      document.documentElement.style.setProperty("--accent", accentColor)
+      document.documentElement.style.setProperty("--accent-glow", withAlpha(accentColor, 0.07))
     }
   })
 
@@ -42,23 +42,26 @@
     nodeStore.setPollInterval(siteConfig.poll_interval)
   })
 
-  // If nodeStore detects 401 closed, re-check /me or mark unauthorized
+  // If nodeStore detects 401 closed, mark unauthorized
   $effect(() => {
     if (nodeStore.closed) {
       meUnauthorized = true
     }
   })
 
-  function toggleLayout() {
-    const next = effectiveLayout === "grid" ? "table" : "grid"
+  function setLayout(next: "grid" | "table") {
     visitorPrefs = { ...visitorPrefs, layout: next }
     savePref("layout", next)
   }
 
-  function toggleColorScheme() {
-    const next = isDark ? "light" : "dark"
-    visitorPrefs = { ...visitorPrefs, color_scheme: next }
-    savePref("color_scheme", next)
+  function toggleLayout() {
+    setLayout(effectiveLayout === "grid" ? "table" : "grid")
+  }
+
+  function setSort(next: SortKey) {
+    sortKey = next
+    visitorPrefs = { ...visitorPrefs, sort: next }
+    savePref("sort", next)
   }
 
   async function fetchMe() {
@@ -80,18 +83,7 @@
     }
   }
 
-  let mediaQuery: MediaQueryList | null = null
-  const onMediaChange = (e: MediaQueryListEvent) => {
-    systemDark = e.matches
-  }
-
   onMount(() => {
-    if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-      mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-      systemDark = mediaQuery.matches
-      mediaQuery.addEventListener("change", onMediaChange)
-    }
-
     void fetchMe()
     void loadConfig().then((cfg) => {
       siteConfig = cfg
@@ -100,7 +92,6 @@
   })
 
   onDestroy(() => {
-    mediaQuery?.removeEventListener("change", onMediaChange)
     nodeStore.stop()
     router.destroy()
   })
@@ -114,6 +105,21 @@
   )
 
   let siteName = $derived(me?.site_name?.trim() || "Monitor")
+
+  let lastUpdateTitle = $derived.by(() => {
+    const ts = nodeStore.lastUpdated
+    if (!ts) return "等待更新"
+    const hhmmss = new Date(ts).toLocaleTimeString("zh-CN", { hour12: false })
+    return `最后更新 ${hhmmss}`
+  })
+
+  let groupLabel = $derived(
+    selectedGroup === ALL_GROUP
+      ? "全部节点"
+      : selectedGroup === UNGROUPED
+        ? "未分组"
+        : String(selectedGroup),
+  )
 
   // Document title per SPEC §6: `节点名 · site_name` (or `site_name` on home, fallback "Monitor")
   $effect(() => {
@@ -133,15 +139,15 @@
   <div class="grid min-h-svh place-items-center px-4 py-12">
     <div
       data-testid="login-required"
-      class="w-full max-w-sm rounded-[12px] border border-neutral-200 bg-white p-6 text-center dark:border-neutral-800 dark:bg-neutral-900"
+      class="w-full max-w-sm rounded-[10px] border border-neutral-200 bg-white p-6 text-center"
     >
-      <h1 class="text-base font-semibold text-neutral-900 dark:text-neutral-100">需要登录后查看</h1>
-      <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+      <h1 class="text-base font-semibold text-neutral-900">需要登录后查看</h1>
+      <p class="mt-2 text-[12px] text-neutral-500">
         当前状态页未公开，请登录管理员后台后访问。
       </p>
       <a
         href="/admin"
-        class="mt-4 inline-flex items-center justify-center rounded-lg px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
+        class="mt-4 inline-flex items-center justify-center rounded-lg px-4 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
         style="background-color: var(--accent);"
       >
         前往管理后台 (/admin)
@@ -150,24 +156,42 @@
   </div>
 {:else}
   <div class="flex min-h-svh flex-col">
-    <!-- Top Header -->
-    <header class="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/90">
-      <div class="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <button
-          type="button"
-          onclick={() => router.navigate("/")}
-          class="cursor-pointer text-base font-semibold tracking-tight text-neutral-900 transition-opacity hover:opacity-75 dark:text-neutral-100"
+    <!-- Top Header per SPEC-v1.1 §B -->
+    <header class="sticky top-0 z-20 border-b border-neutral-200/80 bg-white/85 backdrop-blur">
+      <div class="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-[16px] py-2.5">
+        <!-- Left: /favicon.svg + site_name -->
+        <a
+          href="/"
+          onclick={(e) => {
+            e.preventDefault()
+            router.navigate("/")
+          }}
+          class="inline-flex cursor-pointer items-center gap-2 text-[15px] font-bold tracking-tight text-neutral-900 transition-opacity hover:opacity-75"
         >
-          {siteName}
-        </button>
+          <img src="/favicon.svg" alt="" class="h-5 w-5 shrink-0" />
+          <span>{siteName}</span>
+        </a>
 
+        <!-- Right: conn-status + view toggle + admin-link (ONLY when me.authed === true) -->
         <div class="flex items-center gap-2">
+          <div
+            data-testid="conn-status"
+            title={lastUpdateTitle}
+            class="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-600"
+          >
+            <span
+              class="h-2 w-2 rounded-full"
+              style="background-color: {nodeStore.connected ? 'var(--online)' : 'var(--warn)'};"
+            ></span>
+            <span>{nodeStore.connected ? "实时更新" : "轮询更新"}</span>
+          </div>
+
           <button
             type="button"
             onclick={toggleLayout}
             title={effectiveLayout === "grid" ? "切换为列表视图" : "切换为卡片视图"}
             aria-label={effectiveLayout === "grid" ? "切换为列表视图" : "切换为卡片视图"}
-            class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            class="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
           >
             {#if effectiveLayout === "grid"}
               <span>列表</span>
@@ -176,36 +200,30 @@
             {/if}
           </button>
 
-          <button
-            type="button"
-            onclick={toggleColorScheme}
-            title={isDark ? "切换为浅色模式" : "切换为深色模式"}
-            aria-label={isDark ? "切换为浅色模式" : "切换为深色模式"}
-            class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
-          >
-            {#if isDark}
-              <span>浅色</span>
-            {:else}
-              <span>深色</span>
-            {/if}
-          </button>
-
-          <a
-            href="/admin"
-            class="inline-flex items-center rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800"
-          >
-            {me?.authed ? "后台" : "登录"}
-          </a>
+          {#if me?.authed === true}
+            <a
+              href="/admin"
+              data-testid="admin-link"
+              title="管理后台"
+              aria-label="管理后台"
+              class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="8" cy="8" r="2.2" />
+                <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1" />
+              </svg>
+            </a>
+          {/if}
         </div>
       </div>
     </header>
 
-    <!-- Main Container -->
-    <main class="mx-auto w-full max-w-7xl flex-1 space-y-4 px-4 py-5 sm:px-6">
+    <!-- Main Container (max-w 1440px, px 16px, compact spacing 12px) -->
+    <main class="mx-auto w-full max-w-[1440px] flex-1 space-y-3 px-[16px] py-3.5">
       {#if siteConfig.announcement && siteConfig.announcement.trim()}
         <div
           data-testid="announcement"
-          class="rounded-[12px] border border-neutral-200 bg-white px-4 py-3 text-xs leading-relaxed text-neutral-700 whitespace-pre-line dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"
+          class="rounded-[10px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px] leading-relaxed text-neutral-700 whitespace-pre-line"
         >
           {siteConfig.announcement}
         </div>
@@ -214,7 +232,7 @@
       {#if (meError || nodeStore.error) && !nodeStore.nodes}
         <div
           role="alert"
-          class="rounded-[12px] border border-red-200 bg-white p-6 text-center text-xs text-red-600 dark:border-red-900/50 dark:bg-neutral-900 dark:text-red-400"
+          class="rounded-[10px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600"
         >
           <p>{nodeStore.error || meError}</p>
           <button
@@ -223,7 +241,7 @@
               void fetchMe()
               nodeStore.resume()
             }}
-            class="mt-3 cursor-pointer rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300"
+            class="mt-3 cursor-pointer rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50"
           >
             重试
           </button>
@@ -232,7 +250,7 @@
         {#if nodeStore.error}
           <div
             role="alert"
-            class="rounded-[12px] border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+            class="rounded-[10px] border border-amber-200 bg-amber-50/70 px-3.5 py-2 text-[12px] text-amber-800"
           >
             {nodeStore.error}
           </div>
@@ -240,19 +258,23 @@
 
         {#if router.route.page === "node"}
           {#if !nodeStore.nodes}
-            <div class="rounded-[12px] border border-neutral-200 bg-white py-16 text-center text-xs text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900">
+            <div class="rounded-[10px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-400">
               正在加载节点数据…
             </div>
           {:else if activeNode}
             <NodeDetail
               node={activeNode}
+              orderedNodes={orderedNodes.length > 0 ? orderedNodes : sortedNodes}
+              {groupLabel}
               {historyDays}
               showBilling={siteConfig.show_billing}
+              expiryWarningDays={siteConfig.expiry_warning_days}
               accent={siteConfig.accent}
               onBack={() => router.navigate("/")}
+              onSelectNode={(id) => router.navigate(id)}
             />
           {:else}
-            <div class="rounded-[12px] border border-neutral-200 bg-white py-16 text-center text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+            <div class="rounded-[10px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-500">
               <p>节点不存在或未公开</p>
               <button
                 type="button"
@@ -264,30 +286,78 @@
             </div>
           {/if}
         {:else if !nodeStore.nodes}
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {#each [1, 2, 3, 4] as item (item)}
-              <div class="h-56 animate-pulse rounded-[12px] border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"></div>
+              <div class="h-48 animate-pulse rounded-[10px] border border-neutral-200 bg-white p-3"></div>
             {/each}
           </div>
         {:else}
           <Home
             nodes={sortedNodes}
             layout={effectiveLayout}
+            cardSize={siteConfig.card_size}
             showSummary={siteConfig.show_summary}
+            showMap={siteConfig.show_map}
+            showSearch={siteConfig.show_search}
+            showSort={siteConfig.show_sort}
             showBilling={siteConfig.show_billing}
+            financeCurrency={siteConfig.finance_currency}
+            expiryWarningDays={siteConfig.expiry_warning_days}
             bind:selectedGroup
+            bind:sortKey
+            bind:searchQuery
+            onChangeLayout={setLayout}
+            onChangeSort={setSort}
             onSelectNode={(id) => router.navigate(id)}
+            onUpdateOrderedNodes={(list) => (orderedNodes = list)}
           />
         {/if}
       {/if}
     </main>
 
-    {#if siteConfig.footer && siteConfig.footer.trim()}
-      <footer class="border-t border-neutral-200 bg-white py-4 text-center text-xs text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-500">
-        <div class="mx-auto max-w-7xl px-4 sm:px-6">
-          {siteConfig.footer}
+    <!-- Footer per SPEC-v1.1 §F & §G: pb >= 56px so visitor bubble never overlaps -->
+    <footer class="border-t border-neutral-200/80 bg-white/80 pt-3.5 pb-[60px] text-[12px] text-neutral-500">
+      <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-[16px]">
+        <div class="flex flex-wrap items-center gap-1.5">
+          <a
+            href="https://github.com/monitor-probe/monitor"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="font-medium text-neutral-600 transition-colors hover:text-neutral-900"
+          >
+            Powered by Monitor
+          </a>
+          <span class="text-neutral-300">·</span>
+          <a
+            href="https://github.com/dingding229/Monitor-DYS"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="font-medium text-neutral-600 transition-colors hover:text-neutral-900"
+          >
+            Theme by DYS
+          </a>
         </div>
-      </footer>
-    {/if}
+
+        {#if siteConfig.footer && siteConfig.footer.trim()}
+          <div>
+            {#if siteConfig.footer_url && /^https?:\/\//i.test(siteConfig.footer_url)}
+              <a
+                href={siteConfig.footer_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-neutral-600 underline-offset-2 hover:text-neutral-900 hover:underline"
+              >
+                {siteConfig.footer}
+              </a>
+            {:else}
+              <span>{siteConfig.footer}</span>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </footer>
+
+    <!-- Bottom Visitor Bubble -->
+    <VisitorBubble enabled={siteConfig.visitor_info_enabled} />
   </div>
 {/if}

@@ -1,184 +1,222 @@
 <script lang="ts">
   import CountryFlag from "@/components/CountryFlag.svelte"
   import type { Node } from "@/lib/api"
+  import { remainingValue } from "@/lib/finance"
   import {
+    FOREVER,
     bytes,
-    cycleLabel,
-    cycleMonths,
     expiry,
     money,
     offlineFor,
     osName,
+    pair,
     percentNum,
     speed,
     uptime,
   } from "@/lib/format"
+  import { countryName } from "@/lib/geo"
 
   let {
     nodes,
     showBilling = true,
+    expiryWarningDays = 7,
     onSelect,
   }: {
     nodes: Node[]
     showBilling?: boolean
+    expiryWarningDays?: number
     onSelect: (id: number) => void
   } = $props()
 
-  function formatBilling(node: Node): string {
-    if (typeof node.price !== "number" || node.price <= 0) return ""
-    const p = money(node.price, node.currency || "CNY")
-    const m = cycleMonths(node.billing_cycle)
-    if (Number.isNaN(m)) return p
-    return `${p}/${cycleLabel(node.billing_cycle)}`
+  function monthUsage(n: Node): number {
+    if (typeof n.month_used === "number") return n.month_used
+    const rx = typeof n.month_rx === "number" ? n.month_rx : (n.metrics?.month_rx ?? 0)
+    const tx = typeof n.month_tx === "number" ? n.month_tx : (n.metrics?.month_tx ?? 0)
+    switch (n.traffic_mode) {
+      case "up":
+        return tx
+      case "down":
+        return rx
+      case "max":
+        return Math.max(rx, tx)
+      default:
+        return rx + tx
+    }
+  }
+
+  function barColor(pct: number): string {
+    if (pct >= 90) return "var(--danger)"
+    if (pct >= 80) return "var(--warn)"
+    return "var(--accent)"
   }
 </script>
 
-<div class="overflow-x-auto rounded-[12px] border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-  <table class="w-full border-collapse text-left text-xs">
-    <thead>
-      <tr class="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-        <th class="px-4 py-3 font-medium">节点</th>
-        <th class="px-3 py-3 font-medium">状态</th>
-        <th class="px-3 py-3 font-medium">系统</th>
-        <th class="px-3 py-3 font-medium">CPU</th>
-        <th class="px-3 py-3 font-medium">内存</th>
-        <th class="px-3 py-3 font-medium">硬盘</th>
-        <th class="px-3 py-3 font-medium">网络速率</th>
-        <th class="px-3 py-3 font-medium">累计流量</th>
-        {#if showBilling}
-          <th class="px-4 py-3 font-medium">到期 / 价格</th>
-        {/if}
+<div class="overflow-x-auto rounded-[10px] border border-neutral-200 bg-white">
+  <table class="w-full border-collapse text-left text-[12px]">
+    <thead class="sticky top-0 z-10 bg-neutral-50/95 backdrop-blur">
+      <tr class="border-b border-neutral-200 text-neutral-500">
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">状态</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">名称</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">地区</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">CPU</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">内存</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">硬盘</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">↑</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">↓</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">本期流量</th>
+        <th class="whitespace-nowrap px-3 py-2.5 font-medium">到期</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800/70">
+    <tbody class="divide-y divide-neutral-100">
       {#each nodes as node (node.id)}
         {@const m = node.metrics}
         {@const isCorrupt = Boolean(node._corrupt)}
         {@const isWaiting = node.online && !m && !isCorrupt}
-        {@const exp = expiry(node)}
+        {@const exp = expiry(node, Date.now(), expiryWarningDays)}
         {@const offDur = !node.online ? offlineFor(node) : null}
         {@const memPct = m ? percentNum(m.mem_used, m.mem_total) : 0}
         {@const diskPct = m ? percentNum(m.disk_used, m.disk_total) : 0}
+        {@const usedTraffic = monthUsage(node)}
+        {@const remVal = remainingValue(node)}
         <tr
           data-testid="node-row"
           role="button"
           tabindex="0"
           onclick={() => onSelect(node.id)}
           onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onSelect(node.id))}
-          class="cursor-pointer transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+          class="cursor-pointer transition-colors hover:bg-neutral-50"
         >
-          <td class="px-4 py-3">
-            <div class="flex items-center gap-2">
-              <CountryFlag code={node.country} />
-              <span class="font-medium text-neutral-900 dark:text-neutral-100">{node.name}</span>
-            </div>
-            {#if node.public_remark}
-              <div class="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
-                {node.public_remark}
-              </div>
-            {/if}
-          </td>
-
-          <td class="tnum whitespace-nowrap px-3 py-3">
+          <!-- 状态 -->
+          <td class="tnum whitespace-nowrap px-3 py-2.5">
             <span class="inline-flex items-center gap-1.5">
               <span
                 class="h-2 w-2 rounded-full"
                 style="background-color: {node.online ? 'var(--online)' : 'var(--offline)'};"
               ></span>
               {#if node.online}
-                <span class="text-neutral-700 dark:text-neutral-300">{m ? uptime(m.uptime) : "在线"}</span>
+                <span class="text-neutral-700">{m ? uptime(m.uptime) : "在线"}</span>
               {:else}
-                <span class="text-neutral-400 dark:text-neutral-500">
+                <span class="text-neutral-400">
                   离线{offDur ? ` (${offDur})` : ""}
                 </span>
               {/if}
             </span>
           </td>
 
-          <td class="whitespace-nowrap px-3 py-3 text-neutral-600 dark:text-neutral-400">
-            {[osName(node.os), node.virt && node.virt !== "none" ? node.virt : ""].filter(Boolean).join(" · ") || "—"}
+          <!-- 名称 -->
+          <td class="px-3 py-2.5">
+            <div class="flex items-center gap-1.5">
+              <span class="font-semibold text-neutral-900">{node.name}</span>
+              {#if node.os}
+                <span class="text-[11px] text-neutral-400">{osName(node.os)}</span>
+              {/if}
+            </div>
+            {#if node.public_remark}
+              <div class="text-[11px] text-neutral-400">{node.public_remark}</div>
+            {/if}
+          </td>
+
+          <!-- 地区 -->
+          <td class="whitespace-nowrap px-3 py-2.5 text-neutral-600">
+            <div class="inline-flex items-center gap-1.5">
+              <CountryFlag code={node.country} />
+              <span class="text-[11px]">{countryName(node.country) || "—"}</span>
+            </div>
           </td>
 
           {#if isCorrupt}
-            <td colspan="3" class="px-3 py-3 text-center text-neutral-400">
+            <td colspan="3" class="px-3 py-2.5 text-center text-neutral-400">
               <span data-testid="status-unavailable">不可用</span>
             </td>
           {:else if isWaiting}
-            <td colspan="3" class="px-3 py-3 text-center text-neutral-400">
+            <td colspan="3" class="px-3 py-2.5 text-center text-neutral-400">
               <span data-testid="status-waiting">等待数据</span>
             </td>
           {:else}
-            <td class="tnum whitespace-nowrap px-3 py-3">
+            <!-- CPU -->
+            <td class="tnum whitespace-nowrap px-3 py-2.5">
               <div class="w-20">
                 <div class="flex justify-between text-[11px]">
-                  <span>{m ? `${Math.round(m.cpu)}%` : "—"}</span>
+                  <span class="font-medium text-neutral-800">{m ? `${m.cpu.toFixed(1)}%` : "—"}</span>
                 </div>
-                <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+                <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
                   <div
                     class="h-full rounded-full"
-                    style="width: {m ? Math.min(100, m.cpu) : 0}%; background-color: var(--accent);"
+                    style="width: {m ? Math.min(100, m.cpu) : 0}%; background-color: {barColor(m ? m.cpu : 0)};"
                   ></div>
                 </div>
               </div>
             </td>
 
-            <td class="tnum whitespace-nowrap px-3 py-3">
+            <!-- 内存 -->
+            <td class="tnum whitespace-nowrap px-3 py-2.5">
               <div class="w-20">
                 <div class="flex justify-between text-[11px]">
-                  <span>{m ? `${Math.round(memPct)}%` : "—"}</span>
+                  <span class="font-medium text-neutral-800">{m ? `${memPct.toFixed(1)}%` : "—"}</span>
                 </div>
-                <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+                <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
                   <div
                     class="h-full rounded-full"
-                    style="width: {m ? Math.min(100, memPct) : 0}%; background-color: var(--accent);"
+                    style="width: {m ? Math.min(100, memPct) : 0}%; background-color: {barColor(memPct)};"
                   ></div>
                 </div>
               </div>
             </td>
 
-            <td class="tnum whitespace-nowrap px-3 py-3">
+            <!-- 硬盘 -->
+            <td class="tnum whitespace-nowrap px-3 py-2.5">
               <div class="w-20">
                 <div class="flex justify-between text-[11px]">
-                  <span>{m ? `${Math.round(diskPct)}%` : "—"}</span>
+                  <span class="font-medium text-neutral-800">{m ? `${diskPct.toFixed(1)}%` : "—"}</span>
                 </div>
-                <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+                <div class="mt-1 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
                   <div
                     class="h-full rounded-full"
-                    style="width: {m ? Math.min(100, diskPct) : 0}%; background-color: var(--accent);"
+                    style="width: {m ? Math.min(100, diskPct) : 0}%; background-color: {barColor(diskPct)};"
                   ></div>
                 </div>
               </div>
             </td>
           {/if}
 
-          <td class="tnum whitespace-nowrap px-3 py-3 text-neutral-700 dark:text-neutral-300">
-            <div>↓ {m ? speed(m.net_rx) : "0 B/s"}</div>
-            <div class="text-neutral-400">↑ {m ? speed(m.net_tx) : "0 B/s"}</div>
+          <!-- ↑ -->
+          <td class="tnum whitespace-nowrap px-3 py-2.5 font-medium text-emerald-600">
+            {m ? speed(m.net_tx) : "0 B/s"}
           </td>
 
-          <td class="tnum whitespace-nowrap px-3 py-3 text-neutral-600 dark:text-neutral-400">
-            <div>↓ {bytes(node.total_rx ?? 0)}</div>
-            <div>↑ {bytes(node.total_tx ?? 0)}</div>
+          <!-- ↓ -->
+          <td class="tnum whitespace-nowrap px-3 py-2.5 font-medium text-sky-600">
+            {m ? speed(m.net_rx) : "0 B/s"}
           </td>
 
-          {#if showBilling}
-            <td class="tnum whitespace-nowrap px-4 py-3">
-              {#if exp.level !== "none"}
-                <div
-                  class={exp.level === "expired"
-                    ? "font-medium text-red-600 dark:text-red-400"
-                    : exp.level === "soon"
-                      ? "font-medium text-amber-600 dark:text-amber-400"
-                      : "text-neutral-600 dark:text-neutral-400"}
-                >
-                  {exp.text}
-                </div>
-              {/if}
-              {#if formatBilling(node)}
-                <div class="text-[11px] text-neutral-400 dark:text-neutral-500">{formatBilling(node)}</div>
-              {/if}
-            </td>
-          {/if}
+          <!-- 本期流量 -->
+          <td class="tnum whitespace-nowrap px-3 py-2.5 text-neutral-700">
+            {node.traffic_limit > 0
+              ? pair(usedTraffic, node.traffic_limit)
+              : `${bytes(usedTraffic)} / ${FOREVER}`}
+          </td>
+
+          <!-- 到期 -->
+          <td class="tnum whitespace-nowrap px-3 py-2.5">
+            {#if exp.level !== "none"}
+              <div
+                class={exp.level === "expired"
+                  ? "font-medium text-red-600"
+                  : exp.level === "soon"
+                    ? "font-medium text-amber-600"
+                    : "text-neutral-700"}
+              >
+                {exp.text}
+              </div>
+            {:else}
+              <div class="text-neutral-400">长期</div>
+            {/if}
+            {#if showBilling && remVal !== null}
+              <div data-testid="remaining-value" class="text-[11px] text-neutral-500">
+                {money(remVal, node.currency || "CNY")}
+              </div>
+            {/if}
+          </td>
         </tr>
       {/each}
     </tbody>

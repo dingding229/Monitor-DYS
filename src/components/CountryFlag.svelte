@@ -21,11 +21,11 @@
       {src}
       alt={upper}
       title={upper}
-      class="h-3.5 w-5 shrink-0 rounded-[2px] border border-neutral-200 object-cover dark:border-neutral-700"
+      class="h-3.5 w-5 shrink-0 rounded-[2px] border border-neutral-200 object-cover"
     />
   {:else}
     <span
-      class="inline-flex h-4 shrink-0 items-center rounded border border-neutral-200 px-1 text-[10px] font-medium text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
+      class="inline-flex h-4 shrink-0 items-center rounded border border-neutral-200 px-1 text-[10px] font-medium text-neutral-500"
     >
       {upper}
     </span>

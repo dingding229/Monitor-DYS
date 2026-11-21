@@ -3,7 +3,10 @@
   import CountryFlag from "@/components/CountryFlag.svelte"
   import UPlotChart from "@/components/UPlotChart.svelte"
   import { api, type Node } from "@/lib/api"
+  import { withAlpha } from "@/lib/color"
+  import { monthlyCost, remainingValue } from "@/lib/finance"
   import {
+    FOREVER,
     axisBytes,
     bytes,
     cpuName,
@@ -12,13 +15,13 @@
     expiry,
     money,
     offlineFor,
-    osName,
     pair,
+    percentNum,
     speed,
     uptime,
   } from "@/lib/format"
+  import { countryName } from "@/lib/geo"
   import { rangeLabel, rangesFor } from "@/lib/ranges"
-  import { withAlpha } from "@/lib/color"
 
   type MetricPoint = {
     ts: number
@@ -54,20 +57,36 @@
 
   let {
     node,
+    orderedNodes = [],
+    groupLabel = "全部节点",
     historyDays = 7,
     showBilling = true,
-    accent = "#2563eb",
+    expiryWarningDays = 7,
+    accent = "#10b981",
     onBack,
+    onSelectNode,
   }: {
     node: Node
+    orderedNodes?: Node[]
+    groupLabel?: string
     historyDays?: number
     showBilling?: boolean
+    expiryWarningDays?: number
     accent?: string
     onBack: () => void
+    onSelectNode?: (id: number) => void
   } = $props()
+
+  let switcherList = $derived(orderedNodes.length > 0 ? orderedNodes : [node])
+  let currentIndex = $derived(switcherList.findIndex((n) => n.id === node.id))
+  let prevNode = $derived(currentIndex > 0 ? switcherList[currentIndex - 1] : null)
+  let nextNode = $derived(
+    currentIndex >= 0 && currentIndex < switcherList.length - 1 ? switcherList[currentIndex + 1] : null,
+  )
 
   let rangeHoursList = $derived(rangesFor(historyDays))
   let selectedHours = $state<number>(6)
+  let showPeak = $state<boolean>(false)
 
   $effect(() => {
     if (!rangeHoursList.includes(selectedHours)) {
@@ -80,6 +99,7 @@
   let fetchError = $state("")
   let metricsResp = $state<MetricsResponse | null>(null)
   let pingResp = $state<MetricsResponse | null>(null)
+  let updatedAtStr = $state<string>("")
 
   function computePoints(): number {
     const rawW = chartContainerEl?.clientWidth || (typeof window !== "undefined" ? window.innerWidth : 720)
@@ -101,6 +121,7 @@
         if (token !== reqToken) return
         metricsResp = mRes
         pingResp = pRes
+        updatedAtStr = new Date().toLocaleTimeString("zh-CN", { hour12: false })
         loading = false
       })
       .catch((e: unknown) => {
@@ -118,7 +139,19 @@
   let isCorrupt = $derived(Boolean(node._corrupt))
   let isWaiting = $derived(node.online && !m && !isCorrupt)
   let offDur = $derived(!node.online ? offlineFor(node) : null)
-  let exp = $derived(expiry(node))
+  let exp = $derived(expiry(node, Date.now(), expiryWarningDays))
+  let mCost = $derived(monthlyCost(node))
+  let remVal = $derived(remainingValue(node))
+
+  let lastSeenSec = $derived.by(() => {
+    if ("last_seen_ago" in node && node.last_seen_ago !== undefined) {
+      return node.last_seen_ago
+    }
+    if (node.last_seen && node.last_seen > 0) {
+      return Math.max(0, Math.floor(Date.now() / 1000 - node.last_seen))
+    }
+    return null
+  })
 
   let hasSwap = $derived(
     (typeof node.swap_total === "number" && node.swap_total > 0) ||
@@ -133,7 +166,38 @@
     return rows.some((r) => typeof r.tcp === "number" || typeof r.udp === "number" || typeof r.procs === "number")
   })
 
-  // Process metrics series with gap insertion when ts jumps > 2 * step or partial offline when minutes < step / 60
+  function monthUsage(n: Node): number {
+    if (typeof n.month_used === "number") return n.month_used
+    const rx = typeof n.month_rx === "number" ? n.month_rx : (n.metrics?.month_rx ?? 0)
+    const tx = typeof n.month_tx === "number" ? n.month_tx : (n.metrics?.month_tx ?? 0)
+    switch (n.traffic_mode) {
+      case "up":
+        return tx
+      case "down":
+        return rx
+      case "max":
+        return Math.max(rx, tx)
+      default:
+        return rx + tx
+    }
+  }
+
+  let periodUsed = $derived(monthUsage(node))
+  let trafficPct = $derived(node.traffic_limit > 0 ? percentNum(periodUsed, node.traffic_limit) : 0)
+
+  let trafficModeLabel = $derived.by(() => {
+    switch (node.traffic_mode) {
+      case "up":
+        return "仅上传"
+      case "down":
+        return "仅下载"
+      case "max":
+        return "单向取大"
+      default:
+        return "双向合计"
+    }
+  })
+
   let processedMetrics = $derived.by(() => {
     const rows = [...(metricsResp?.metrics ?? [])].sort((a, b) => a.ts - b.ts)
     if (rows.length === 0) return null
@@ -144,7 +208,9 @@
     const cpu: (number | null)[] = []
     const cpuMax: (number | null)[] = []
     const mem: (number | null)[] = []
-    const swap: (number | null)[] = []
+    const memCap: (number | null)[] = []
+    const disk: (number | null)[] = []
+    const diskCap: (number | null)[] = []
     const rx: (number | null)[] = []
     const tx: (number | null)[] = []
     const rxMax: (number | null)[] = []
@@ -156,7 +222,9 @@
 
     let hasCpuMax = false
     let hasNetMax = false
-    let hasSwapSeries = false
+
+    const memTotalVal = m?.mem_total || node.mem_total || 0
+    const diskTotalVal = m?.disk_total || node.disk_total || 0
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]
@@ -166,7 +234,9 @@
         cpu.push(null)
         cpuMax.push(null)
         mem.push(null)
-        swap.push(null)
+        memCap.push(memTotalVal > 0 ? memTotalVal : null)
+        disk.push(null)
+        diskCap.push(diskTotalVal > 0 ? diskTotalVal : null)
         rx.push(null)
         tx.push(null)
         rxMax.push(null)
@@ -176,7 +246,6 @@
         procs.push(null)
       }
 
-      // Per SPEC §5.9: minutes < step/60 means partial offline during bucket
       const isZeroMinutes = typeof r.minutes === "number" && expectedMinutes > 0 && r.minutes <= 0
       if (typeof r.minutes === "number" && expectedMinutes > 0 && r.minutes < expectedMinutes) {
         partialBuckets.push({ from: r.ts, to: r.ts + step })
@@ -192,12 +261,10 @@
       }
 
       mem.push(isZeroMinutes ? null : r.mem_used)
-      if (typeof r.swap_used === "number") {
-        hasSwapSeries = true
-        swap.push(isZeroMinutes ? null : r.swap_used)
-      } else {
-        swap.push(null)
-      }
+      memCap.push(memTotalVal > 0 ? memTotalVal : null)
+
+      disk.push(isZeroMinutes ? null : r.disk_used)
+      diskCap.push(diskTotalVal > 0 ? diskTotalVal : null)
 
       rx.push(isZeroMinutes ? null : r.net_rx)
       tx.push(isZeroMinutes ? null : r.net_tx)
@@ -221,8 +288,11 @@
       cpuMax,
       hasCpuMax,
       mem,
-      swap,
-      hasSwapSeries,
+      memCap,
+      memTotalVal,
+      disk,
+      diskCap,
+      diskTotalVal,
       rx,
       tx,
       rxMax,
@@ -235,8 +305,7 @@
     }
   })
 
-  // Process Ping series ordered by first appearance of task_id (SPEC §5.10)
-  const PROBE_COLORS = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626", "#0891b2"]
+  const PROBE_COLORS = ["#10b981", "#2563eb", "#d97706", "#9333ea", "#dc2626", "#0891b2"]
 
   let processedPing = $derived.by(() => {
     const rawPing = pingResp?.ping ?? []
@@ -244,7 +313,6 @@
     const probesMap = pingResp?.probes ?? {}
     const lossMap = pingResp?.loss ?? {}
 
-    // Order by first appearance of task_id
     const taskIds: number[] = []
     const seen = new Set<number>()
     for (const p of rawPing) {
@@ -298,334 +366,492 @@
     }
   })
 
-  let billingSummary = $derived.by(() => {
-    if (!showBilling) return ""
-    const parts: string[] = []
-    if (typeof node.price === "number" && node.price > 0) {
-      const p = money(node.price, node.currency || "CNY")
-      const m = cycleMonths(node.billing_cycle)
-      const label = cycleLabel(node.billing_cycle)
-      if (Number.isNaN(m)) {
-        parts.push(label ? `${p} / ${label}` : p)
-      } else if (m === 0) {
-        parts.push(`${p} · 一次性`)
-      } else {
-        const monthly = m > 1 ? ` (约 ${money(node.price / m, node.currency || "CNY")}/月)` : ""
-        parts.push(`${p} / ${label}${monthly}`)
-      }
-    }
-    if (exp.level !== "none" && exp.text) {
-      parts.push(exp.text)
-    }
-    return parts.join(" · ")
-  })
+  let memPct = $derived(m ? percentNum(m.mem_used, m.mem_total) : 0)
+  let diskPct = $derived(m ? percentNum(m.disk_used, m.disk_total) : 0)
 </script>
 
-<div class="space-y-4" bind:this={chartContainerEl}>
-  <!-- Back button & Header -->
-  <div class="flex flex-wrap items-center justify-between gap-3">
+<div class="space-y-3" bind:this={chartContainerEl}>
+  <!-- 1. Top Bar: Back Button + Node Switcher (prev/next + select + '全部节点 · N 台') -->
+  <div class="flex flex-wrap items-center justify-between gap-2">
     <button
       type="button"
       onclick={onBack}
-      class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
     >
       <span>← 返回列表</span>
     </button>
 
-    <!-- Time Range Buttons -->
-    <div class="flex flex-wrap items-center gap-1" role="group" aria-label="时间范围">
-      {#each rangeHoursList as h (h)}
-        {@const active = selectedHours === h}
-        <button
-          type="button"
-          data-testid="range-btn"
-          aria-pressed={active}
-          onclick={() => (selectedHours = h)}
-          class="cursor-pointer rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors {active
-            ? 'border-transparent text-white'
-            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800'}"
-          style={active ? "background-color: var(--accent);" : ""}
-        >
-          {rangeLabel(h)}
-        </button>
-      {/each}
+    <div
+      data-testid="node-switcher"
+      class="flex flex-wrap items-center gap-1.5 text-[12px]"
+    >
+      <span class="tnum text-neutral-500">{groupLabel} · {switcherList.length} 台</span>
+      <button
+        type="button"
+        disabled={!prevNode}
+        onclick={() => prevNode && onSelectNode?.(prevNode.id)}
+        title="上一个节点"
+        aria-label="上一个节点"
+        class="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        ‹
+      </button>
+      <select
+        aria-label="切换节点"
+        value={node.id}
+        onchange={(e) => {
+          const nextId = Number((e.currentTarget as HTMLSelectElement).value)
+          if (nextId && nextId !== node.id) onSelectNode?.(nextId)
+        }}
+        class="h-7 max-w-[200px] cursor-pointer truncate rounded-lg border border-neutral-200 bg-white px-2 text-[12px] font-medium text-neutral-800 outline-none focus:border-neutral-400"
+      >
+        {#each switcherList as item (item.id)}
+          <option value={item.id}>{item.name}</option>
+        {/each}
+      </select>
+      <button
+        type="button"
+        disabled={!nextNode}
+        onclick={() => nextNode && onSelectNode?.(nextNode.id)}
+        title="下一个节点"
+        aria-label="下一个节点"
+        class="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        ›
+      </button>
     </div>
   </div>
 
-  <!-- Node Info Card -->
-  <div class="rounded-[12px] border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="flex items-center gap-2.5">
-        <CountryFlag code={node.country} />
-        <h1 class="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{node.name}</h1>
-        {#if node.group}
-          <span class="rounded border border-neutral-200 px-2 py-0.5 text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-            {node.group}
-          </span>
+  <!-- 2. Header: Flag + Name + Online Status Capsule + Subtext (地区 · 分组 · 最近上报 N 秒前) -->
+  <div class="rounded-[10px] border border-neutral-200 bg-white p-3.5">
+    <div class="flex flex-wrap items-center gap-2.5">
+      <CountryFlag code={node.country} />
+      <h1 class="text-lg font-bold text-neutral-900">{node.name}</h1>
+      <span
+        class="tnum inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium {node.online
+          ? 'bg-emerald-50 text-emerald-700'
+          : 'bg-neutral-100 text-neutral-600'}"
+      >
+        <span
+          class="h-2 w-2 rounded-full"
+          style="background-color: {node.online ? 'var(--online)' : 'var(--offline)'};"
+        ></span>
+        {#if node.online}
+          在线
+        {:else}
+          离线{offDur ? ` · ${offDur}` : ""}
         {/if}
-      </div>
-
-      <div class="flex items-center gap-2">
-        <span class="tnum inline-flex items-center gap-1.5 text-xs font-medium">
-          <span
-            class="h-2.5 w-2.5 rounded-full"
-            style="background-color: {node.online ? 'var(--online)' : 'var(--offline)'};"
-          ></span>
-          {#if node.online}
-            <span class="text-neutral-700 dark:text-neutral-300">
-              在线 {m ? `· ${uptime(m.uptime)}` : ""}
-            </span>
-          {:else}
-            <span class="text-neutral-500 dark:text-neutral-400">
-              离线{offDur ? ` · ${offDur}` : ""}
-            </span>
-          {/if}
-        </span>
-      </div>
+      </span>
     </div>
+
+    <p class="tnum mt-1 text-[12px] text-neutral-500">
+      {[
+        countryName(node.country) || "未知地区",
+        node.group || "未分组",
+        lastSeenSec === null ? "从未上报" : `最近上报 ${lastSeenSec} 秒前`,
+      ].join(" · ")}
+    </p>
 
     {#if isCorrupt}
       <div
         data-testid="status-unavailable"
-        class="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-800/50 dark:text-neutral-400"
+        class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-[12px] text-neutral-500"
       >
         不可用
       </div>
     {:else if isWaiting}
       <div
         data-testid="status-waiting"
-        class="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-xs text-neutral-500 dark:border-neutral-800 dark:bg-neutral-800/50 dark:text-neutral-400"
+        class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-[12px] text-neutral-500"
       >
         等待数据
       </div>
     {/if}
-
-    <dl class="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 border-t border-neutral-100 pt-4 text-xs sm:grid-cols-2 lg:grid-cols-3 dark:border-neutral-800">
-      <div>
-        <dt class="text-neutral-400 dark:text-neutral-500">系统 / 内核</dt>
-        <dd class="mt-0.5 font-medium text-neutral-800 dark:text-neutral-200">
-          {[osName(node.os), node.kernel].filter(Boolean).join(" · ") || "—"}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-neutral-400 dark:text-neutral-500">CPU / 架构</dt>
-        <dd class="mt-0.5 font-medium text-neutral-800 dark:text-neutral-200">
-          {[
-            node.cpu_name ? cpuName(node.cpu_name) : "",
-            node.cpu_cores ? `${node.cpu_cores} 核` : "",
-            node.arch,
-            node.virt && node.virt !== "none" ? node.virt : "",
-          ]
-            .filter(Boolean)
-            .join(" · ") || "—"}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-neutral-400 dark:text-neutral-500">内存 / 硬盘{hasSwap ? " / Swap" : ""}</dt>
-        <dd class="tnum mt-0.5 font-medium text-neutral-800 dark:text-neutral-200">
-          {m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total)} ·
-          {m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total)}
-          {#if hasSwap}
-            · Swap {m && typeof m.swap_used === "number" && typeof m.swap_total === "number"
-              ? pair(m.swap_used, m.swap_total)
-              : bytes(node.swap_total ?? 0)}
-          {/if}
-        </dd>
-      </div>
-      <div>
-        <dt class="text-neutral-400 dark:text-neutral-500">累计流量 (总计 / 本月)</dt>
-        <dd class="tnum mt-0.5 font-medium text-neutral-800 dark:text-neutral-200">
-          总 ↓ {bytes(node.total_rx ?? 0)} ↑ {bytes(node.total_tx ?? 0)} · 月 ↓ {bytes(node.month_rx ?? 0)} ↑ {bytes(node.month_tx ?? 0)}
-        </dd>
-      </div>
-      {#if m && (typeof m.tcp === "number" || typeof m.udp === "number" || typeof m.procs === "number")}
-        <div>
-          <dt class="text-neutral-400 dark:text-neutral-500">连接 / 进程</dt>
-          <dd class="tnum mt-0.5 font-medium text-neutral-800 dark:text-neutral-200">
-            {[
-              typeof m.tcp === "number" ? `TCP ${m.tcp}` : "",
-              typeof m.udp === "number" ? `UDP ${m.udp}` : "",
-              typeof m.procs === "number" ? `进程 ${m.procs}` : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </dd>
-        </div>
-      {/if}
-      {#if showBilling && billingSummary}
-        <div>
-          <dt class="text-neutral-400 dark:text-neutral-500">计费与到期</dt>
-          <dd class="tnum mt-0.5 font-medium text-neutral-800 dark:text-neutral-200">
-            {billingSummary}
-          </dd>
-        </div>
-      {/if}
-    </dl>
-
-    {#if node.public_remark}
-      <p class="mt-3 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600 whitespace-pre-line dark:bg-neutral-800/60 dark:text-neutral-300">
-        {node.public_remark}
-      </p>
-    {/if}
   </div>
 
-  <!-- Charts -->
-  {#if fetchError}
-    <div class="rounded-[12px] border border-red-200 bg-white p-6 text-center text-xs text-red-600 dark:border-red-900/50 dark:bg-neutral-900 dark:text-red-400">
-      读取历史数据失败：{fetchError}
+  <!-- 3. 4 Stat Cards: CPU (核数、负载) / 内存 (总量) / 磁盘 (总量) / 网络速率 (↑↓) -->
+  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <!-- CPU Card -->
+    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+      <div class="flex items-center justify-between text-[12px] text-neutral-500">
+        <span class="font-medium text-neutral-700">CPU</span>
+        <span class="tnum">{node.cpu_cores ? `${node.cpu_cores} 核` : "—"}</span>
+      </div>
+      <div class="tnum mt-2 flex items-baseline justify-between">
+        <span class="text-[22px] leading-none font-bold text-neutral-900">
+          {m ? `${m.cpu.toFixed(1)}%` : "—"}
+        </span>
+        <span class="text-[11px] text-neutral-500">
+          负载 {m ? m.load[0].toFixed(2) : "—"}
+        </span>
+      </div>
+      <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+        <div
+          class="h-full rounded-full transition-[width] duration-300"
+          style="width: {m ? Math.min(100, m.cpu) : 0}%; background-color: var(--accent);"
+        ></div>
+      </div>
     </div>
-  {:else if loading && !processedMetrics && !processedPing}
-    <div class="rounded-[12px] border border-neutral-200 bg-white p-12 text-center text-xs text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900">
-      正在加载图表数据…
+
+    <!-- Memory Card -->
+    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+      <div class="flex items-center justify-between text-[12px] text-neutral-500">
+        <span class="font-medium text-neutral-700">内存</span>
+        <span class="tnum">{bytes(m?.mem_total || node.mem_total)}</span>
+      </div>
+      <div class="tnum mt-2 flex items-baseline justify-between">
+        <span class="text-[22px] leading-none font-bold text-neutral-900">
+          {m ? `${memPct.toFixed(1)}%` : "—"}
+        </span>
+        <span class="text-[11px] text-neutral-500">
+          {m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total)}
+        </span>
+      </div>
+      <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+        <div
+          class="h-full rounded-full transition-[width] duration-300"
+          style="width: {m ? Math.min(100, memPct) : 0}%; background-color: var(--accent);"
+        ></div>
+      </div>
     </div>
-  {:else}
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+
+    <!-- Disk Card -->
+    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+      <div class="flex items-center justify-between text-[12px] text-neutral-500">
+        <span class="font-medium text-neutral-700">磁盘</span>
+        <span class="tnum">{bytes(m?.disk_total || node.disk_total)}</span>
+      </div>
+      <div class="tnum mt-2 flex items-baseline justify-between">
+        <span class="text-[22px] leading-none font-bold text-neutral-900">
+          {m ? `${diskPct.toFixed(1)}%` : "—"}
+        </span>
+        <span class="text-[11px] text-neutral-500">
+          {m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total)}
+        </span>
+      </div>
+      <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+        <div
+          class="h-full rounded-full transition-[width] duration-300"
+          style="width: {m ? Math.min(100, diskPct) : 0}%; background-color: var(--accent);"
+        ></div>
+      </div>
+    </div>
+
+    <!-- Network Speed Card -->
+    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+      <div class="flex items-center justify-between text-[12px] text-neutral-500">
+        <span class="font-medium text-neutral-700">网络速率</span>
+        <span>实时吞吐</span>
+      </div>
+      <div class="tnum mt-1.5 space-y-1 text-[13px] font-bold">
+        <div class="truncate rounded bg-sky-50/70 px-2 py-0.5 text-sky-700">
+          ↓ {m ? speed(m.net_rx) : "0 B/s"}
+        </div>
+        <div class="truncate rounded bg-emerald-50/70 px-2 py-0.5 text-emerald-700">
+          ↑ {m ? speed(m.net_tx) : "0 B/s"}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Info Bar: 负载 1/5/15、Swap、进程、TCP/UDP、运行时长 -->
+  <div class="tnum flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[10px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px]">
+    <div>
+      <span class="text-neutral-400">负载 1/5/15m</span>
+      <span class="ml-1.5 font-semibold text-neutral-800">
+        {m ? m.load.map((v) => v.toFixed(2)).join(" / ") : "—"}
+      </span>
+    </div>
+    {#if hasSwap}
+      <div>
+        <span class="text-neutral-400">Swap</span>
+        <span class="ml-1.5 font-semibold text-neutral-800">
+          {m && typeof m.swap_used === "number" && typeof m.swap_total === "number"
+            ? pair(m.swap_used, m.swap_total)
+            : bytes(node.swap_total ?? 0)}
+        </span>
+      </div>
+    {/if}
+    {#if m && typeof m.procs === "number"}
+      <div>
+        <span class="text-neutral-400">进程</span>
+        <span class="ml-1.5 font-semibold text-neutral-800">{m.procs}</span>
+      </div>
+    {/if}
+    {#if m && (typeof m.tcp === "number" || typeof m.udp === "number")}
+      <div>
+        <span class="text-neutral-400">TCP / UDP</span>
+        <span class="ml-1.5 font-semibold text-neutral-800">
+          {m.tcp ?? "—"} / {m.udp ?? "—"}
+        </span>
+      </div>
+    {/if}
+    <div>
+      <span class="text-neutral-400">系统运行</span>
+      <span class="ml-1.5 font-semibold text-neutral-800">
+        {m ? uptime(m.uptime) : "—"}
+      </span>
+    </div>
+  </div>
+
+  <!-- 5. Resource Trends Section: Range buttons + Dropdown + Show Peak checkbox + Refresh button + 4 side-by-side charts -->
+  <div class="space-y-2.5">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="text-[14px] font-bold text-neutral-900">资源趋势</h2>
+        <p class="tnum text-[11px] text-neutral-400">
+          {showPeak ? "含区间峰值" : "历史平均值"}{updatedAtStr ? ` · 更新于 ${updatedAtStr}` : ""}
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 text-[12px]">
+        <!-- Range buttons (keeps data-testid="range-btn" for E2E & quick click) -->
+        <div class="flex flex-wrap items-center gap-1" role="group" aria-label="时间范围">
+          {#each rangeHoursList as h (h)}
+            {@const active = selectedHours === h}
+            <button
+              type="button"
+              data-testid="range-btn"
+              aria-pressed={active}
+              onclick={() => (selectedHours = h)}
+              class="cursor-pointer rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors {active
+                ? 'border-transparent text-white'
+                : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'}"
+              style={active ? "background-color: var(--accent);" : ""}
+            >
+              {rangeLabel(h)}
+            </button>
+          {/each}
+        </div>
+
+        <!-- Range dropdown selector -->
+        <select
+          aria-label="选择时间范围"
+          value={selectedHours}
+          onchange={(e) => (selectedHours = Number((e.currentTarget as HTMLSelectElement).value))}
+          class="h-7 cursor-pointer rounded-lg border border-neutral-200 bg-white px-2 text-[12px] text-neutral-700 outline-none"
+        >
+          {#each rangeHoursList as h (h)}
+            <option value={h}>{rangeLabel(h)}</option>
+          {/each}
+        </select>
+
+        <label class="inline-flex cursor-pointer items-center gap-1 text-[12px] text-neutral-600">
+          <input
+            type="checkbox"
+            bind:checked={showPeak}
+            class="rounded border-neutral-300"
+          />
+          <span>显示峰值</span>
+        </label>
+
+        <button
+          type="button"
+          onclick={() => loadHistory(node.id, selectedHours)}
+          class="cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+        >
+          刷新
+        </button>
+      </div>
+    </div>
+
+    {#if fetchError}
+      <div class="rounded-[10px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600">
+        读取历史数据失败：{fetchError}
+      </div>
+    {:else if loading && !processedMetrics && !processedPing}
+      <div class="rounded-[10px] border border-neutral-200 bg-white p-10 text-center text-[12px] text-neutral-400">
+        正在加载图表数据…
+      </div>
+    {:else}
       {#if processedMetrics}
-        <!-- 1. CPU Chart -->
-        <UPlotChart
-          title="CPU 使用率"
-          subtitle={m ? `当前 ${m.cpu.toFixed(1)}%` : ""}
-          partialBuckets={processedMetrics.partialBuckets}
-          data={processedMetrics.hasCpuMax
-            ? [processedMetrics.ts, processedMetrics.cpu, processedMetrics.cpuMax]
-            : [processedMetrics.ts, processedMetrics.cpu]}
-          yMin={0}
-          yMax={100}
-          yFormat={(v) => `${Math.round(v)}%`}
-          series={processedMetrics.hasCpuMax
-            ? [
-                {
-                  label: "平均",
-                  stroke: accent,
-                  width: 1.5,
-                  fill: withAlpha(accent, 0.1),
-                  value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
-                },
-                {
-                  label: "峰值",
-                  stroke: "#9ca3af",
-                  width: 1,
-                  dash: [3, 3],
-                  value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
-                },
-              ]
-            : [
-                {
-                  label: "CPU",
-                  stroke: accent,
-                  width: 1.5,
-                  fill: withAlpha(accent, 0.1),
-                  value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
-                },
-              ]}
-        />
+        <!-- 4 charts side-by-side: wide 4 cols, medium 2 cols, mobile 1 col -->
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <!-- 1. CPU -->
+          <UPlotChart
+            title="CPU 使用率"
+            subtitle={m ? `${m.cpu.toFixed(1)}%` : ""}
+            partialBuckets={processedMetrics.partialBuckets}
+            data={showPeak && processedMetrics.hasCpuMax
+              ? [processedMetrics.ts, processedMetrics.cpu, processedMetrics.cpuMax]
+              : [processedMetrics.ts, processedMetrics.cpu]}
+            yMin={0}
+            yMax={100}
+            yFormat={(v) => `${Math.round(v)}%`}
+            series={showPeak && processedMetrics.hasCpuMax
+              ? [
+                  {
+                    label: "平均 CPU",
+                    stroke: accent,
+                    width: 1.5,
+                    fill: withAlpha(accent, 0.1),
+                    value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
+                  },
+                  {
+                    label: "峰值",
+                    stroke: "#9ca3af",
+                    width: 1,
+                    dash: [3, 3],
+                    value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
+                  },
+                ]
+              : [
+                  {
+                    label: "平均 CPU",
+                    stroke: accent,
+                    width: 1.5,
+                    fill: withAlpha(accent, 0.1),
+                    value: (_u, v) => (v == null ? "—" : `${v.toFixed(1)}%`),
+                  },
+                ]}
+          />
 
-        <!-- 2. Memory (& Swap if present) Chart -->
-        <UPlotChart
-          title="内存使用"
-          subtitle={node.mem_total ? `总计 ${bytes(node.mem_total)}` : ""}
-          partialBuckets={processedMetrics.partialBuckets}
-          data={hasSwap && processedMetrics.hasSwapSeries
-            ? [processedMetrics.ts, processedMetrics.mem, processedMetrics.swap]
-            : [processedMetrics.ts, processedMetrics.mem]}
-          yMin={0}
-          yMax={node.mem_total > 0 ? node.mem_total : undefined}
-          yFormat={(v) => axisBytes(v)}
-          series={hasSwap && processedMetrics.hasSwapSeries
-            ? [
-                {
-                  label: "内存",
-                  stroke: accent,
-                  width: 1.5,
-                  fill: withAlpha(accent, 0.1),
-                  value: (_u, v) => (v == null ? "—" : bytes(v)),
-                },
-                {
-                  label: "Swap",
-                  stroke: "#9ca3af",
-                  width: 1.25,
-                  dash: [4, 2],
-                  value: (_u, v) => (v == null ? "—" : bytes(v)),
-                },
-              ]
-            : [
-                {
-                  label: "内存",
-                  stroke: accent,
-                  width: 1.5,
-                  fill: withAlpha(accent, 0.1),
-                  value: (_u, v) => (v == null ? "—" : bytes(v)),
-                },
-              ]}
-        />
+          <!-- 2. Memory (dashed line for total) -->
+          <UPlotChart
+            title="内存用量"
+            subtitle={processedMetrics.memTotalVal ? bytes(processedMetrics.memTotalVal) : ""}
+            partialBuckets={processedMetrics.partialBuckets}
+            data={processedMetrics.memTotalVal > 0
+              ? [processedMetrics.ts, processedMetrics.mem, processedMetrics.memCap]
+              : [processedMetrics.ts, processedMetrics.mem]}
+            yMin={0}
+            yMax={processedMetrics.memTotalVal > 0 ? processedMetrics.memTotalVal * 1.05 : undefined}
+            yFormat={(v) => axisBytes(v)}
+            series={processedMetrics.memTotalVal > 0
+              ? [
+                  {
+                    label: "使用量",
+                    stroke: accent,
+                    width: 1.5,
+                    fill: withAlpha(accent, 0.1),
+                    value: (_u, v) => (v == null ? "—" : bytes(v)),
+                  },
+                  {
+                    label: "当前总容量",
+                    stroke: "#94a3b8",
+                    width: 1,
+                    dash: [4, 3],
+                    value: (_u, v) => (v == null ? "—" : bytes(v)),
+                  },
+                ]
+              : [
+                  {
+                    label: "使用量",
+                    stroke: accent,
+                    width: 1.5,
+                    fill: withAlpha(accent, 0.1),
+                    value: (_u, v) => (v == null ? "—" : bytes(v)),
+                  },
+                ]}
+          />
 
-        <!-- 3. Network Rate Chart -->
-        <UPlotChart
-          title="网络速率"
-          subtitle={m ? `↓ ${speed(m.net_rx)} · ↑ ${speed(m.net_tx)}` : ""}
-          partialBuckets={processedMetrics.partialBuckets}
-          data={processedMetrics.hasNetMax
-            ? [
-                processedMetrics.ts,
-                processedMetrics.rx,
-                processedMetrics.tx,
-                processedMetrics.rxMax,
-                processedMetrics.txMax,
-              ]
-            : [processedMetrics.ts, processedMetrics.rx, processedMetrics.tx]}
-          yMin={0}
-          yFormat={(v) => `${axisBytes(v)}/s`}
-          series={processedMetrics.hasNetMax
-            ? [
-                {
-                  label: "下行均值",
-                  stroke: accent,
-                  width: 1.5,
-                  fill: withAlpha(accent, 0.08),
-                  value: (_u, v) => (v == null ? "—" : speed(v)),
-                },
-                {
-                  label: "上行均值",
-                  stroke: "#16a34a",
-                  width: 1.5,
-                  value: (_u, v) => (v == null ? "—" : speed(v)),
-                },
-                {
-                  label: "下行峰值",
-                  stroke: accent,
-                  width: 1,
-                  dash: [2, 2],
-                  value: (_u, v) => (v == null ? "—" : speed(v)),
-                },
-                {
-                  label: "上行峰值",
-                  stroke: "#16a34a",
-                  width: 1,
-                  dash: [2, 2],
-                  value: (_u, v) => (v == null ? "—" : speed(v)),
-                },
-              ]
-            : [
-                {
-                  label: "下行",
-                  stroke: accent,
-                  width: 1.5,
-                  fill: withAlpha(accent, 0.08),
-                  value: (_u, v) => (v == null ? "—" : speed(v)),
-                },
-                {
-                  label: "上行",
-                  stroke: "#16a34a",
-                  width: 1.5,
-                  value: (_u, v) => (v == null ? "—" : speed(v)),
-                },
-              ]}
-        />
+          <!-- 3. Disk (dashed line for total) -->
+          <UPlotChart
+            title="磁盘用量"
+            subtitle={processedMetrics.diskTotalVal ? bytes(processedMetrics.diskTotalVal) : ""}
+            partialBuckets={processedMetrics.partialBuckets}
+            data={processedMetrics.diskTotalVal > 0
+              ? [processedMetrics.ts, processedMetrics.disk, processedMetrics.diskCap]
+              : [processedMetrics.ts, processedMetrics.disk]}
+            yMin={0}
+            yMax={processedMetrics.diskTotalVal > 0 ? processedMetrics.diskTotalVal * 1.05 : undefined}
+            yFormat={(v) => axisBytes(v)}
+            series={processedMetrics.diskTotalVal > 0
+              ? [
+                  {
+                    label: "使用量",
+                    stroke: "#d97706",
+                    width: 1.5,
+                    fill: withAlpha("#d97706", 0.1),
+                    value: (_u, v) => (v == null ? "—" : bytes(v)),
+                  },
+                  {
+                    label: "当前总容量",
+                    stroke: "#94a3b8",
+                    width: 1,
+                    dash: [4, 3],
+                    value: (_u, v) => (v == null ? "—" : bytes(v)),
+                  },
+                ]
+              : [
+                  {
+                    label: "使用量",
+                    stroke: "#d97706",
+                    width: 1.5,
+                    fill: withAlpha("#d97706", 0.1),
+                    value: (_u, v) => (v == null ? "—" : bytes(v)),
+                  },
+                ]}
+          />
 
-        <!-- 4. TCP / UDP / Procs Chart (hidden when absent per SPEC §5.15) -->
+          <!-- 4. Network Rate -->
+          <UPlotChart
+            title="网络速率"
+            subtitle={m ? `↓ ${speed(m.net_rx)} ↑ ${speed(m.net_tx)}` : ""}
+            partialBuckets={processedMetrics.partialBuckets}
+            data={showPeak && processedMetrics.hasNetMax
+              ? [
+                  processedMetrics.ts,
+                  processedMetrics.rx,
+                  processedMetrics.tx,
+                  processedMetrics.rxMax,
+                  processedMetrics.txMax,
+                ]
+              : [processedMetrics.ts, processedMetrics.rx, processedMetrics.tx]}
+            yMin={0}
+            yFormat={(v) => `${axisBytes(v)}/s`}
+            series={showPeak && processedMetrics.hasNetMax
+              ? [
+                  {
+                    label: "下载",
+                    stroke: "#0284c7",
+                    width: 1.5,
+                    fill: withAlpha("#0284c7", 0.08),
+                    value: (_u, v) => (v == null ? "—" : speed(v)),
+                  },
+                  {
+                    label: "上传",
+                    stroke: accent,
+                    width: 1.5,
+                    value: (_u, v) => (v == null ? "—" : speed(v)),
+                  },
+                  {
+                    label: "下载峰值",
+                    stroke: "#0284c7",
+                    width: 1,
+                    dash: [2, 2],
+                    value: (_u, v) => (v == null ? "—" : speed(v)),
+                  },
+                  {
+                    label: "上传峰值",
+                    stroke: accent,
+                    width: 1,
+                    dash: [2, 2],
+                    value: (_u, v) => (v == null ? "—" : speed(v)),
+                  },
+                ]
+              : [
+                  {
+                    label: "下载",
+                    stroke: "#0284c7",
+                    width: 1.5,
+                    fill: withAlpha("#0284c7", 0.08),
+                    value: (_u, v) => (v == null ? "—" : speed(v)),
+                  },
+                  {
+                    label: "上传",
+                    stroke: accent,
+                    width: 1.5,
+                    value: (_u, v) => (v == null ? "—" : speed(v)),
+                  },
+                ]}
+          />
+        </div>
+
         {#if hasConnMetrics}
           <UPlotChart
             title="TCP / UDP / 进程数"
+            height={145}
             partialBuckets={processedMetrics.partialBuckets}
             data={[
               processedMetrics.ts,
@@ -643,7 +869,7 @@
               },
               {
                 label: "UDP",
-                stroke: "#16a34a",
+                stroke: "#0284c7",
                 width: 1.5,
                 value: (_u, v) => (v == null ? "—" : String(Math.round(v))),
               },
@@ -659,9 +885,9 @@
         {/if}
       {/if}
 
-      <!-- 5. Ping Latency & Loss Chart -->
+      <!-- Ping Latency & Loss below -->
       {#if processedPing}
-        <div class="lg:col-span-2 space-y-4">
+        <div class="grid grid-cols-1 gap-3 {processedPing.hasLossPoints ? 'lg:grid-cols-2' : ''}">
           <UPlotChart
             title="Ping 延迟"
             subtitle={processedPing.probeInfos
@@ -684,7 +910,6 @@
               data={processedPing.lossData}
               yMin={0}
               yMax={100}
-              height={140}
               yFormat={(v) => `${Math.round(v)}%`}
               series={processedPing.probeInfos.map((p) => ({
                 label: `${p.name} 丢包`,
@@ -696,6 +921,189 @@
           {/if}
         </div>
       {/if}
-    </div>
-  {/if}
+    {/if}
+  </div>
+
+  <!-- 6. Bottom Two-Column Panels: 「硬件与系统」 & 「流量与费用」 -->
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+    <!-- Left Panel: 硬件与系统 -->
+    <section class="rounded-[10px] border border-neutral-200 bg-white p-3.5">
+      <h3 class="text-[13px] font-bold text-neutral-900">硬件与系统</h3>
+      <p class="text-[11px] text-neutral-400">主控提供的节点资料</p>
+
+      <div class="mt-3 space-y-2 text-[12px]">
+        <div class="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2">
+          <span class="text-neutral-500">CPU 型号</span>
+          <span class="font-medium text-neutral-800">{cpuName(node.cpu_name) || "—"}</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">CPU 核心</div>
+            <div class="tnum mt-0.5 font-semibold text-neutral-800">{node.cpu_cores ? `${node.cpu_cores} 核` : "—"}</div>
+          </div>
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">架构 / 虚拟化</div>
+            <div class="mt-0.5 font-semibold text-neutral-800">
+              {[node.arch, node.virt && node.virt !== "none" ? node.virt : ""].filter(Boolean).join(" / ") || "—"}
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2">
+          <span class="text-neutral-500">系统</span>
+          <span class="font-medium text-neutral-800">{node.os || "—"}</span>
+        </div>
+
+        <div class="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2">
+          <span class="text-neutral-500">内核</span>
+          <span class="tnum font-medium text-neutral-800">{node.kernel || "—"}</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">物理内存 / Swap</div>
+            <div class="tnum mt-0.5 font-semibold text-neutral-800">
+              {bytes(node.mem_total)}{hasSwap ? ` / ${bytes(node.swap_total ?? m?.swap_total ?? 0)}` : ""}
+            </div>
+          </div>
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">磁盘总容量</div>
+            <div class="tnum mt-0.5 font-semibold text-neutral-800">{bytes(node.disk_total)}</div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2">
+          <span class="text-neutral-500">Agent 版本</span>
+          <span class="tnum font-medium text-neutral-800">{node.agent_version || "—"}</span>
+        </div>
+
+        <!-- Admin-only fields shown ONLY when present -->
+        {#if node.ip || node.hostname || node.remark || node.public_remark}
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {#if node.ip}
+              <div class="rounded-lg bg-neutral-50 px-3 py-2">
+                <div class="text-[11px] text-neutral-400">IP 地址</div>
+                <div class="tnum mt-0.5 font-semibold text-neutral-800">{node.ip}</div>
+              </div>
+            {/if}
+            {#if node.hostname}
+              <div class="rounded-lg bg-neutral-50 px-3 py-2">
+                <div class="text-[11px] text-neutral-400">主机名</div>
+                <div class="mt-0.5 font-semibold text-neutral-800">{node.hostname}</div>
+              </div>
+            {/if}
+          </div>
+          {#if node.remark || node.public_remark}
+            <div class="rounded-lg bg-neutral-50 px-3 py-2">
+              <div class="text-[11px] text-neutral-400">备注</div>
+              <div class="mt-0.5 whitespace-pre-line text-neutral-700">{node.remark || node.public_remark}</div>
+            </div>
+          {/if}
+        {/if}
+      </div>
+    </section>
+
+    <!-- Right Panel: 流量与费用 -->
+    <section class="rounded-[10px] border border-neutral-200 bg-white p-3.5">
+      <h3 class="text-[13px] font-bold text-neutral-900">流量与费用</h3>
+      <p class="text-[11px] text-neutral-400">按主控计费规则与当前节点配置展示</p>
+
+      <div class="mt-3 space-y-2 text-[12px]">
+        <!-- 当期计费流量进度 -->
+        <div class="rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
+          <div class="flex items-center justify-between">
+            <span class="text-neutral-600">当期计费流量</span>
+            <span class="tnum font-bold text-neutral-900">
+              {node.traffic_limit > 0
+                ? `${pair(periodUsed, node.traffic_limit)} (${trafficPct.toFixed(1)}%)`
+                : `${bytes(periodUsed)} / ${FOREVER}`}
+            </span>
+          </div>
+          <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-200/70">
+            <div
+              class="h-full rounded-full transition-[width] duration-300"
+              style="width: {node.traffic_limit > 0 ? Math.min(100, trafficPct) : 0}%; background-color: var(--accent);"
+            ></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">当期上传 / 下载</div>
+            <div class="tnum mt-0.5 font-semibold text-neutral-800">
+              {bytes(node.month_tx ?? 0)} / {bytes(node.month_rx ?? 0)}
+            </div>
+          </div>
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">计费方向 / 重置日</div>
+            <div class="tnum mt-0.5 font-semibold text-neutral-800">
+              {trafficModeLabel}{node.traffic_reset_day ? ` · 每月 ${node.traffic_reset_day} 日` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">累计上传 / 下载</div>
+            <div class="tnum mt-0.5 font-semibold text-neutral-800">
+              {bytes(node.total_tx ?? 0)} / {bytes(node.total_rx ?? 0)}
+            </div>
+          </div>
+          {#if showBilling}
+            <div class="rounded-lg bg-neutral-50 px-3 py-2">
+              <div class="text-[11px] text-neutral-400">录入标价</div>
+              <div class="tnum mt-0.5 font-semibold text-neutral-800">
+                {#if typeof node.price === "number" && node.price > 0}
+                  {@const cm = cycleMonths(node.billing_cycle)}
+                  {money(node.price, node.currency || "CNY")}{Number.isNaN(cm)
+                    ? node.billing_cycle
+                      ? ` / ${node.billing_cycle}`
+                      : ""
+                    : ` / ${cycleLabel(node.billing_cycle)}`}
+                {:else}
+                  免费 / 未设
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          {#if showBilling}
+            <div class="rounded-lg bg-neutral-50 px-3 py-2">
+              <div class="text-[11px] text-neutral-400">月均折算</div>
+              <div class="tnum mt-0.5 font-semibold text-neutral-800">
+                {mCost !== null ? money(mCost, node.currency || "CNY") : "—"}
+              </div>
+            </div>
+          {/if}
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">到期时间</div>
+            <div
+              class="tnum mt-0.5 font-semibold {exp.level === 'expired'
+                ? 'text-red-600'
+                : exp.level === 'soon'
+                  ? 'text-amber-600'
+                  : 'text-neutral-800'}"
+            >
+              {node.expires_at ? `${node.expires_at} (${exp.text})` : exp.text || FOREVER}
+            </div>
+          </div>
+        </div>
+
+        {#if showBilling}
+          <div class="rounded-lg bg-neutral-50 px-3 py-2">
+            <div class="text-[11px] text-neutral-400">剩余价值估算</div>
+            <div
+              data-testid="remaining-value"
+              class="tnum mt-0.5 font-bold text-neutral-900"
+            >
+              {remVal !== null ? money(remVal, node.currency || "CNY") : "—"}
+            </div>
+          </div>
+        {/if}
+      </div>
+    </section>
+  </div>
 </div>
