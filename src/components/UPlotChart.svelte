@@ -32,10 +32,12 @@
   let hoverIdx = $state<number | null>(null)
   let hoverLeft = $state<number>(0)
   let containerWidth = $state<number>(320)
+  let currentTicksJson = $state<string>("[]")
 
   const pad2 = (n: number) => String(n).padStart(2, "0")
   const fmtHHMM = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
   const fmtMMDD = (d: Date) => `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  const isLocalMidnight = (d: Date) => d.getHours() === 0 && d.getMinutes() === 0
 
   function seriesColor(s: uPlot.Series): string {
     return typeof s.stroke === "string" ? s.stroke : "var(--accent)"
@@ -58,6 +60,104 @@
     return ts ? new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false }) : ""
   })
 
+  function computeXAxisSplits(scaleMin: number, scaleMax: number, width: number, foundSpace?: number): number[] {
+    const xs = (Array.isArray(data[0]) ? data[0] : []) as number[]
+    if (xs.length === 1) {
+      return [xs[0]]
+    }
+    if (!Number.isFinite(scaleMin) || !Number.isFinite(scaleMax) || scaleMax <= scaleMin) {
+      return xs.length > 0 ? [xs[0]] : []
+    }
+
+    const spanSec = scaleMax - scaleMin
+    const plotW = Math.max(120, width - 76)
+    const maxTicks = Math.max(2, Math.min(10, Math.floor(plotW / Math.max(80, foundSpace || 96))))
+
+    // Case 1: Actual data span > 24 hours -> align ticks to local midnight (00:00) with >= 1 day step
+    if (spanSec > 86400) {
+      const totalDays = Math.max(1, spanSec / 86400)
+      const daySteps = [1, 2, 3, 5, 7, 10, 14, 15, 21, 30, 60, 90]
+      const stepDays = daySteps.find((s) => totalDays / s <= maxTicks) ?? Math.ceil(totalDays / maxTicks)
+
+      const first = new Date(scaleMin * 1000)
+      first.setHours(0, 0, 0, 0)
+      if (first.getTime() < scaleMin * 1000) {
+        first.setDate(first.getDate() + 1)
+      }
+
+      const out: number[] = []
+      const cur = new Date(first.getTime())
+      while (cur.getTime() <= scaleMax * 1000) {
+        out.push(Math.floor(cur.getTime() / 1000))
+        cur.setDate(cur.getDate() + stepDays)
+      }
+      if (out.length >= 2) return out
+      // If span is e.g. 25 hours and only 1 midnight fell inside, fall through to sub-day ticks including that midnight
+    }
+
+    // Case 2: Actual data span <= 24 hours (or only 1 midnight inside) -> nice sub-day ticks phased on local midnight
+    const subDaySteps = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 14400, 21600, 43200]
+    const stepSec = subDaySteps.find((s) => spanSec / s <= maxTicks) ?? 43200
+    const tzOffsetSec = new Date(scaleMin * 1000).getTimezoneOffset() * 60
+
+    const firstTick = Math.ceil((scaleMin - tzOffsetSec) / stepSec) * stepSec + tzOffsetSec
+    const out: number[] = []
+    for (let t = firstTick; t <= scaleMax; t += stepSec) {
+      out.push(t)
+    }
+
+    // Ensure if a local midnight lies within [scaleMin, scaleMax], it is included in splits
+    const mid = new Date(scaleMin * 1000)
+    mid.setHours(0, 0, 0, 0)
+    if (mid.getTime() < scaleMin * 1000) {
+      mid.setDate(mid.getDate() + 1)
+    }
+    const midSec = Math.floor(mid.getTime() / 1000)
+    if (midSec >= scaleMin && midSec <= scaleMax && !out.includes(midSec)) {
+      out.push(midSec)
+      out.sort((a, b) => a - b)
+    }
+
+    if (out.length < 2) {
+      return scaleMax > scaleMin ? [Math.ceil(scaleMin), Math.floor(scaleMax)] : [Math.round(scaleMin)]
+    }
+    return out
+  }
+
+  function formatXAxisValues(splits: number[]): string[] {
+    if (!splits.length) return []
+    const xs = (Array.isArray(data[0]) ? data[0] : []) as number[]
+    if (xs.length === 1 || splits.length === 1) {
+      const d = new Date((splits[0] ?? xs[0]) * 1000)
+      return [`${fmtMMDD(d)} ${fmtHHMM(d)}`]
+    }
+
+    const dates = splits.map((s) => new Date(s * 1000))
+    const spanSec = xs.length > 1 ? xs[xs.length - 1] - xs[0] : splits[splits.length - 1] - splits[0]
+
+    let rawLabels: string[]
+    if (spanSec > 86400) {
+      rawLabels = dates.map((d) => (isLocalMidnight(d) ? fmtMMDD(d) : fmtHHMM(d)))
+    } else {
+      rawLabels = dates.map((d) => (isLocalMidnight(d) ? fmtMMDD(d) : fmtHHMM(d)))
+    }
+
+    const seen = new Set<string>()
+    return rawLabels.map((lbl) => {
+      if (!lbl || seen.has(lbl)) return ""
+      seen.add(lbl)
+      return lbl
+    })
+  }
+
+  function syncDataTicks(labels: string[]) {
+    const nonEmpty = labels.filter(Boolean)
+    const json = JSON.stringify(nonEmpty)
+    currentTicksJson = json
+    container?.setAttribute("data-ticks", json)
+    canvasHost?.setAttribute("data-ticks", json)
+  }
+
   function buildOptions(width: number): uPlot.Options {
     const axisColor = "#737373"
     const gridColor = "rgba(0,0,0,0.05)"
@@ -77,7 +177,15 @@
         show: false,
       },
       scales: {
-        x: { time: true },
+        x: {
+          time: true,
+          range: (_u, dataMin, dataMax) => {
+            if (dataMin !== null && dataMax !== null && dataMin === dataMax) {
+              return [dataMin - 1800, dataMax + 1800]
+            }
+            return [dataMin ?? 0, dataMax ?? 1]
+          },
+        },
         y: {
           range: (_u, dataMin, dataMax) => {
             const lo = yMin !== undefined ? yMin : (dataMin ?? 0)
@@ -99,63 +207,12 @@
           size: 22,
           gap: 3,
           font: "11px -apple-system, BlinkMacSystemFont, sans-serif",
-          // Per SPEC-v1.2 §6.d & T13:
-          // - hours > 24: tick interval >= 1 day, aligned to local 00:00, label `MM-DD`
-          // - hours <= 24: label `HH:mm` (first tick `MM-DD HH:mm` when crossing day boundary)
-          // - Never allow two identical labels on the same chart
-          splits:
-            hours > 24
-              ? (_u, _axisIdx, scaleMin, scaleMax, _foundIncr, foundSpace) => {
-                  if (!Number.isFinite(scaleMin) || !Number.isFinite(scaleMax) || scaleMax <= scaleMin) {
-                    return []
-                  }
-                  const plotW = Math.max(120, width - 76)
-                  const maxTicks = Math.max(2, Math.floor(plotW / Math.max(48, foundSpace || 56)))
-                  const totalDays = Math.max(1, (scaleMax - scaleMin) / 86400)
-                  const daySteps = [1, 2, 3, 5, 7, 10, 14, 15, 21, 30, 60, 90]
-                  const stepDays = daySteps.find((s) => totalDays / s <= maxTicks) ?? Math.ceil(totalDays / maxTicks)
-
-                  const first = new Date(scaleMin * 1000)
-                  first.setHours(0, 0, 0, 0)
-                  if (first.getTime() < scaleMin * 1000) {
-                    first.setDate(first.getDate() + 1)
-                  }
-
-                  const out: number[] = []
-                  const cur = new Date(first.getTime())
-                  while (cur.getTime() <= scaleMax * 1000) {
-                    out.push(Math.floor(cur.getTime() / 1000))
-                    cur.setDate(cur.getDate() + stepDays)
-                  }
-                  return out
-                }
-              : undefined,
+          splits: (_u, _axisIdx, scaleMin, scaleMax, _foundIncr, foundSpace) =>
+            computeXAxisSplits(scaleMin, scaleMax, width, foundSpace),
           values: (_u, splits) => {
-            if (!splits.length) return []
-            const dates = splits.map((s) => new Date(s * 1000))
-            let rawLabels: string[]
-            if (hours > 24) {
-              rawLabels = dates.map((d) =>
-                d.getHours() === 0 && d.getMinutes() === 0 ? fmtMMDD(d) : fmtHHMM(d),
-              )
-            } else {
-              const firstDay = dates[0].getDate()
-              const lastDay = dates[dates.length - 1].getDate()
-              const crossesDay =
-                firstDay !== lastDay || dates[0].getMonth() !== dates[dates.length - 1].getMonth()
-              rawLabels = dates.map((d, idx) => {
-                if (crossesDay && idx === 0) {
-                  return `${fmtMMDD(d)} ${fmtHHMM(d)}`
-                }
-                return fmtHHMM(d)
-              })
-            }
-            const seen = new Set<string>()
-            return rawLabels.map((lbl) => {
-              if (!lbl || seen.has(lbl)) return ""
-              seen.add(lbl)
-              return lbl
-            })
+            const formatted = formatXAxisValues(splits)
+            syncDataTicks(formatted)
+            return formatted
           },
         },
         {
@@ -207,6 +264,14 @@
       chart = null
     }
     canvasHost.replaceChildren()
+    // Pre-compute ticks in case canvas is stubbed in unit/jsdom tests
+    const xs = (Array.isArray(data[0]) ? data[0] : []) as number[]
+    if (xs.length > 0) {
+      const prelimSplits = computeXAxisSplits(xs[0], xs[xs.length - 1], width, 56)
+      syncDataTicks(formatXAxisValues(prelimSplits))
+    } else {
+      syncDataTicks([])
+    }
     try {
       chart = new uPlot(buildOptions(width), data, canvasHost)
     } catch {
@@ -247,6 +312,7 @@
 
 <div
   data-testid="chart"
+  data-ticks={currentTicksJson}
   class="relative rounded-[10px] border border-neutral-200 bg-white p-[12px]"
 >
   <!-- Title on the left, compact series legend on the right -->
@@ -281,13 +347,14 @@
   <!-- Chart canvas container & compact cursor-following tooltip -->
   <div
     bind:this={container}
+    data-ticks={currentTicksJson}
     onmouseleave={() => (hoverIdx = null)}
     role="img"
     aria-label={title}
     style="height: {height}px;"
     class="relative w-full overflow-hidden"
   >
-    <div bind:this={canvasHost} class="h-full w-full"></div>
+    <div bind:this={canvasHost} data-ticks={currentTicksJson} class="h-full w-full"></div>
     {#if hoverIdx !== null && hoverTimeStr}
       <div
         class="pointer-events-none absolute z-20 rounded-md border border-neutral-200 bg-white/95 px-2 py-1 text-[11px] shadow-xs backdrop-blur"
