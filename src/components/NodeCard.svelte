@@ -3,7 +3,7 @@
   import CountryFlag from "@/components/CountryFlag.svelte"
   import Meter from "@/components/Meter.svelte"
   import type { Node } from "@/lib/api"
-  import { remainingValue } from "@/lib/finance"
+  import { prefetchDetail } from "@/lib/detail"
   import {
     FOREVER,
     bytes,
@@ -36,7 +36,6 @@
   let isWaiting = $derived(node.online && !m && !isCorrupt)
   let offlineDuration = $derived(!node.online ? offlineFor(node) : null)
   let exp = $derived(expiry(node, Date.now(), expiryWarningDays))
-  let remVal = $derived(remainingValue(node))
 
   function monthUsage(n: Node): number {
     if (typeof n.month_used === "number") return n.month_used
@@ -101,8 +100,8 @@
 <a
   href="/node/{node.id}"
   data-testid="node-card"
-  onclick={handleClick}
-  class="group flex min-w-0 cursor-pointer flex-col justify-between rounded-[10px] border border-neutral-200 bg-white p-[12px] text-inherit no-underline transition-colors hover:border-neutral-400"
+  onclick={handleClick} onpointerenter={prefetchDetail} onfocus={prefetchDetail}
+  class="glass-panel node-card group flex min-w-0 cursor-pointer flex-col justify-between rounded-[8px] border border-neutral-200 bg-white p-[12px] text-inherit no-underline transition-colors hover:border-neutral-400"
 >
   <div>
     <!-- 1. Title Row: Status dot + Name + OS BrandIcon + Flag -->
@@ -137,7 +136,7 @@
     </div>
 
     <!-- 2. Tag Row (small capsules): Online/Offline duration + Price/cycle (+ remark if any) -->
-    <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+    <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[12px]">
       <span class="tnum inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600">
         {#if node.online}
           在线 {m ? uptime(m.uptime) : ""}
@@ -146,11 +145,6 @@
         {/if}
       </span>
 
-      {#if showBilling && billingCapsule}
-        <span class="tnum inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600">
-          {billingCapsule}
-        </span>
-      {/if}
 
       {#if publicRemark}
         <span
@@ -234,9 +228,9 @@
       </div>
     </div>
 
-    <!-- Col 3: 到期与价值 -->
+    <!-- Col 3: 到期 -->
     <div class="min-w-0">
-      <div class="text-[12px] text-neutral-400">{showBilling ? "到期与价值" : "到期"}</div>
+      <div class="text-[12px] text-neutral-400">到期</div>
       <div
         class="tnum mt-0.5 truncate text-[13px] font-medium {exp.level === 'expired'
           ? 'text-red-600'
@@ -255,11 +249,10 @@
       </div>
       {#if showBilling}
         <div
-          data-testid="remaining-value"
           class="tnum truncate text-[13px] font-medium text-neutral-600"
-          title="剩余价值"
+          title={billingCapsule}
         >
-          {remVal !== null ? money(remVal, node.currency || "CNY") : "—"}
+          {billingCapsule || "—"}
         </div>
       {/if}
     </div>

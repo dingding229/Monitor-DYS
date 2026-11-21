@@ -25,8 +25,6 @@ export type ThemeConfig = {
   show_sort: boolean
   announcement: string
   show_billing: boolean
-  finance_currency: "CNY" | "USD" | "EUR" | "HKD" | "JPY" | "GBP" | "CAD" | "SGD"
-  exchange_rate_enabled: boolean
   expiry_warning_days: number
   visitor_info_enabled: boolean
   footer: string
@@ -129,8 +127,16 @@ export function resolveConfig(
   return result as unknown as ThemeConfig
 }
 
-export function loadConfig(opts?: { fetch?: typeof globalThis.fetch }): Promise<ThemeConfig> {
-  return api<Record<string, unknown>>(`/themes/${manifest.short}/config`, opts)
-    .then((saved) => resolveConfig(manifest.config, saved))
-    .catch(() => resolveConfig(manifest.config, {}))
+export async function loadSiteConfig(opts?: { fetch?: typeof globalThis.fetch }) {
+  try {
+    const saved = await api<Record<string, unknown>>(`/themes/${manifest.short}/config`, opts)
+    return { config: resolveConfig(manifest.config, saved), loaded: true }
+  } catch {
+    // Keep the manifest defaults for rendering, but never start geolocation on a failed read.
+    return { config: resolveConfig(), loaded: false }
+  }
+}
+
+export async function loadConfig(opts?: { fetch?: typeof globalThis.fetch }): Promise<ThemeConfig> {
+  return (await loadSiteConfig(opts)).config
 }

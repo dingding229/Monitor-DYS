@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte"
+  import "uplot/dist/uPlot.min.css"
   import uPlot from "uplot"
 
   let {
     title,
-    subtitle = "",
+    subtitle = "", noLoss = false,
     data,
     series,
     yFormat,
@@ -14,6 +15,7 @@
     hours = 6,
   }: {
     title: string
+    noLoss?: boolean
     subtitle?: string
     data: uPlot.AlignedData
     series: uPlot.Series[]
@@ -313,12 +315,13 @@
 <div
   data-testid="chart"
   data-ticks={currentTicksJson}
-  class="relative rounded-[10px] border border-neutral-200 bg-white p-[12px]"
+  class="glass-panel relative rounded-[8px] border border-neutral-200 bg-white p-[12px]"
 >
   <!-- Title on the left, compact series legend on the right -->
   <div class="mb-1.5 flex flex-wrap items-center justify-between gap-1.5">
     <div class="flex items-baseline gap-1.5">
       <h4 class="text-[12px] font-semibold text-neutral-800">{title}</h4>
+      {#if noLoss}<span class="online-pill" data-testid="no-loss">无丢包</span>{/if}
       {#if subtitle}
         <span class="tnum text-[11px] text-neutral-400">{subtitle}</span>
       {/if}

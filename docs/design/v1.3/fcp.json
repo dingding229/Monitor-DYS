@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-22",
+  "browser": "Playwright Chromium 159.0.8154.6",
+  "source": "Production dist served by tests/mock-hub/server.mjs, normal; before = pre-task dist, after = v1.3 build",
+  "metric": "PerformancePaintTiming.first-contentful-paint (ms), with Chrome DevTools Performance traces",
+  "conditions": {
+    "viewport": [
+      1280,
+      800
+    ],
+    "runs": 5,
+    "newBrowserContextEachRun": true,
+    "cacheDisabled": true,
+    "cpuThrottle": 1,
+    "network": "Fast 3G (CDP emulation)",
+    "latencyMs": 562.5,
+    "downloadBytesPerSecond": 180000,
+    "uploadBytesPerSecond": 84375
+  },
+  "fcpMs": {
+    "before": [
+      3108,
+      3048,
+      3044,
+      3044,
+      3044
+    ],
+    "after": [
+      2212,
+      2216,
+      2208,
+      2224,
+      2228
+    ]
+  },
+  "medianMs": {
+    "before": 3044,
+    "after": 2216
+  },
+  "traces": "Trace files contain the third cold navigation of each set (not necessarily the median)."
+}

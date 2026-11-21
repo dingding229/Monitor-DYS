@@ -5,7 +5,6 @@
   import UPlotChart from "@/components/UPlotChart.svelte"
   import { api, type Node } from "@/lib/api"
   import { withAlpha } from "@/lib/color"
-  import { monthlyCost, remainingValue } from "@/lib/finance"
   import {
     FOREVER,
     axisBytes,
@@ -142,8 +141,6 @@
   let isWaiting = $derived(node.online && !m && !isCorrupt)
   let offDur = $derived(!node.online ? offlineFor(node) : null)
   let exp = $derived(expiry(node, Date.now(), expiryWarningDays))
-  let mCost = $derived(monthlyCost(node))
-  let remVal = $derived(remainingValue(node))
 
   let lastSeenSec = $derived.by(() => {
     if ("last_seen_ago" in node && node.last_seen_ago !== undefined) {
@@ -326,6 +323,7 @@
 
     const latencyMatrix: (number | null)[][] = taskIds.map(() => Array(timestamps.length).fill(null))
     const lossMatrix: (number | null)[][] = taskIds.map(() => Array(timestamps.length).fill(null))
+    let hasLossSample = false
     let hasLossPoints = false
 
     const taskIndex = new Map<number, number>()
@@ -337,6 +335,7 @@
       if (tIdx !== undefined && sIdx !== undefined) {
         latencyMatrix[sIdx][tIdx] = p.latency
         if (typeof p.loss === "number") {
+          hasLossSample = true
           if (p.loss > 0) hasLossPoints = true
           lossMatrix[sIdx][tIdx] = p.loss
         }
@@ -361,6 +360,7 @@
       latencyData: [timestamps, ...latencyMatrix] as uPlot.AlignedData,
       lossData: [timestamps, ...lossMatrix] as uPlot.AlignedData,
       hasLossPoints,
+      noLoss: hasLossSample && !hasLossPoints,
     }
   })
 
@@ -421,7 +421,7 @@
   </div>
 
   <!-- 2. Header: Flag + Name + Online Status Capsule + Subtext (地区 · 分组 · 最近上报 N 秒前) -->
-  <div class="rounded-[10px] border border-neutral-200 bg-white p-3.5">
+  <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
     <div class="flex flex-wrap items-center gap-2.5">
       <CountryFlag code={node.country} />
       <h1 class="text-lg font-bold text-neutral-900">{node.name}</h1>
@@ -468,14 +468,14 @@
   </div>
 
   <!-- 3. 4 Stat Cards: CPU (核数、负载) / 内存 (总量) / 磁盘 (总量) / 网络速率 (↑↓) -->
-  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
     <!-- CPU Card -->
-    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">CPU</span>
         <span class="tnum">{node.cpu_cores ? `${node.cpu_cores} 核` : "—"}</span>
       </div>
-      <div class="tnum mt-2 flex items-baseline justify-between">
+      <div class="tnum mt-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <span class="text-[22px] leading-none font-bold text-neutral-900">
           {m ? `${m.cpu.toFixed(1)}%` : "—"}
         </span>
@@ -492,12 +492,12 @@
     </div>
 
     <!-- Memory Card -->
-    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">内存</span>
         <span class="tnum">{bytes(m?.mem_total || node.mem_total)}</span>
       </div>
-      <div class="tnum mt-2 flex items-baseline justify-between">
+      <div class="tnum mt-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <span class="text-[22px] leading-none font-bold text-neutral-900">
           {m ? `${memPct.toFixed(1)}%` : "—"}
         </span>
@@ -514,12 +514,12 @@
     </div>
 
     <!-- Disk Card -->
-    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">磁盘</span>
         <span class="tnum">{bytes(m?.disk_total || node.disk_total)}</span>
       </div>
-      <div class="tnum mt-2 flex items-baseline justify-between">
+      <div class="tnum mt-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <span class="text-[22px] leading-none font-bold text-neutral-900">
           {m ? `${diskPct.toFixed(1)}%` : "—"}
         </span>
@@ -536,7 +536,7 @@
     </div>
 
     <!-- Network Speed Card -->
-    <div class="rounded-[10px] border border-neutral-200 bg-white p-3">
+    <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3">
       <div class="flex items-center justify-between text-[12px] text-neutral-500">
         <span class="font-medium text-neutral-700">网络速率</span>
         <span>实时吞吐</span>
@@ -553,7 +553,7 @@
   </div>
 
   <!-- 4. Info Bar: 负载 1/5/15、Swap、进程、TCP/UDP、运行时长 -->
-  <div class="tnum flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[10px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px]">
+  <div class="detail-info tnum grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-x-6 gap-y-2 glass-panel rounded-[8px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px]">
     <div>
       <span class="text-neutral-400">负载 1/5/15m</span>
       <span class="ml-1.5 font-semibold text-neutral-800">
@@ -642,11 +642,11 @@
     </div>
 
     {#if fetchError}
-      <div class="rounded-[10px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600">
+      <div class="glass-panel rounded-[8px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600">
         读取历史数据失败：{fetchError}
       </div>
     {:else if loading && !processedMetrics && !processedPing}
-      <div class="rounded-[10px] border border-neutral-200 bg-white p-10 text-center text-[12px] text-neutral-400">
+      <div class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-10 text-center text-[12px] text-neutral-400">
         正在加载图表数据…
       </div>
     {:else}
@@ -876,6 +876,7 @@
         <div class="grid grid-cols-1 items-start gap-3 {processedPing.hasLossPoints ? 'lg:grid-cols-2' : ''}">
           <UPlotChart
             title="Ping 延迟"
+            noLoss={processedPing.noLoss}
             height={180}
             hours={selectedHours}
             data={processedPing.latencyData}
@@ -914,7 +915,7 @@
   <!-- 6. Bottom Two-Column Panels: 「硬件与系统」 & 「流量与费用」 -->
   <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
     <!-- Left Panel: 硬件与系统 -->
-    <section class="rounded-[10px] border border-neutral-200 bg-white p-3.5">
+    <section class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
       <h3 class="text-[13px] font-bold text-neutral-900">硬件与系统</h3>
       <p class="text-[11px] text-neutral-400">主控提供的节点资料</p>
 
@@ -995,7 +996,7 @@
     </section>
 
     <!-- Right Panel: 流量与费用 -->
-    <section class="rounded-[10px] border border-neutral-200 bg-white p-3.5">
+    <section class="glass-panel rounded-[8px] border border-neutral-200 bg-white p-3.5">
       <h3 class="text-[13px] font-bold text-neutral-900">流量与费用</h3>
       <p class="text-[11px] text-neutral-400">按主控计费规则与当前节点配置展示</p>
 
@@ -1059,15 +1060,7 @@
           {/if}
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          {#if showBilling}
-            <div class="rounded-lg bg-neutral-50 px-3 py-2">
-              <div class="text-[11px] text-neutral-400">月均折算</div>
-              <div class="tnum mt-0.5 font-semibold text-neutral-800">
-                {mCost !== null ? money(mCost, node.currency || "CNY") : "—"}
-              </div>
-            </div>
-          {/if}
+        <div>
           <div class="rounded-lg bg-neutral-50 px-3 py-2">
             <div class="text-[11px] text-neutral-400">到期时间</div>
             <div
@@ -1082,17 +1075,6 @@
           </div>
         </div>
 
-        {#if showBilling}
-          <div class="rounded-lg bg-neutral-50 px-3 py-2">
-            <div class="text-[11px] text-neutral-400">剩余价值估算</div>
-            <div
-              data-testid="remaining-value"
-              class="tnum mt-0.5 font-bold text-neutral-900"
-            >
-              {remVal !== null ? money(remVal, node.currency || "CNY") : "—"}
-            </div>
-          </div>
-        {/if}
       </div>
     </section>
   </div>

@@ -1,27 +1,25 @@
 /**
- * OS and Browser brand icon key mapping & tree-shaken SVG path data per SPEC-v1.2 §2 & §4.
+ * OS and Browser brand icon key mapping & individually bundled SVG assets per SPEC-v1.2 §2 & §4.
  */
-import {
-  siAlmalinux,
-  siAlpinelinux,
-  siArchlinux,
-  siCentos,
-  siDebian,
-  siFedora,
-  siFirefoxbrowser,
-  siFreebsd,
-  siGooglechrome,
-  siLinux,
-  siMacos,
-  siOpensuse,
-  siOpenwrt,
-  siOpera,
-  siQq,
-  siRockylinux,
-  siSafari,
-  siUbuntu,
-  siWechat,
-} from "simple-icons"
+import siDebian from "simple-icons/icons/debian.svg?no-inline"
+import siUbuntu from "simple-icons/icons/ubuntu.svg?no-inline"
+import siCentos from "simple-icons/icons/centos.svg?no-inline"
+import siRockylinux from "simple-icons/icons/rockylinux.svg?no-inline"
+import siAlmalinux from "simple-icons/icons/almalinux.svg?no-inline"
+import siFedora from "simple-icons/icons/fedora.svg?no-inline"
+import siAlpinelinux from "simple-icons/icons/alpinelinux.svg?no-inline"
+import siArchlinux from "simple-icons/icons/archlinux.svg?no-inline"
+import siOpensuse from "simple-icons/icons/opensuse.svg?no-inline"
+import siOpenwrt from "simple-icons/icons/openwrt.svg?no-inline"
+import siFreebsd from "simple-icons/icons/freebsd.svg?no-inline"
+import siMacos from "simple-icons/icons/macos.svg?no-inline"
+import siLinux from "simple-icons/icons/linux.svg?no-inline"
+import siGooglechrome from "simple-icons/icons/googlechrome.svg?no-inline"
+import siFirefoxbrowser from "simple-icons/icons/firefoxbrowser.svg?no-inline"
+import siSafari from "simple-icons/icons/safari.svg?no-inline"
+import siOpera from "simple-icons/icons/opera.svg?no-inline"
+import siWechat from "simple-icons/icons/wechat.svg?no-inline"
+import siQq from "simple-icons/icons/qq.svg?no-inline"
 
 export type OsKey =
   | "debian"
@@ -104,7 +102,8 @@ export function browserKey(name?: string | null): BrowserKey {
 
 export type IconDef = {
   color: string
-  paths: string[]
+  paths?: string[]
+  src?: string
 }
 
 // Neutral server SVG paths (24x24 viewBox) for unknown OS
@@ -117,39 +116,33 @@ const NEUTRAL_GLOBE_PATHS = [
   "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm7.93 9h-3.02a15.6 15.6 0 0 0-1.18-5.02A8.03 8.03 0 0 1 19.93 11zM12 4.04c.83 1.2 1.85 3.6 2.13 6.96H9.87C10.15 7.64 11.17 5.24 12 4.04zM4.07 13h3.02c.18 1.82.6 3.55 1.18 5.02A8.03 8.03 0 0 1 4.07 13zm3.02-2H4.07a8.03 8.03 0 0 1 4.2-5.02A15.6 15.6 0 0 0 7.09 11zM12 19.96c-.83-1.2-1.85-3.6-2.13-6.96h4.26c-.28 3.36-1.3 5.76-2.13 6.96zm3.73-1.94c.58-1.47 1-3.2 1.18-5.02h3.02a8.03 8.03 0 0 1-4.2 5.02z",
 ]
 
-function fromSi(icon: { hex: string; path: string }, overrideColor?: string): IconDef {
-  const rawHex = overrideColor || `#${icon.hex}`
-  // Ensure dark-colored icons like AlmaLinux/Linux/macOS remain legible on white cards
-  const color = rawHex.toLowerCase() === "#000000" ? "#374151" : rawHex
-  return { color, paths: [icon.path] }
-}
 
 const OS_ICON_MAP: Record<OsKey, IconDef> = {
-  debian: fromSi(siDebian),
-  ubuntu: fromSi(siUbuntu),
-  centos: fromSi(siCentos),
-  rocky: fromSi(siRockylinux),
-  almalinux: fromSi(siAlmalinux, "#0f4266"),
-  fedora: fromSi(siFedora),
-  alpine: fromSi(siAlpinelinux),
-  arch: fromSi(siArchlinux),
-  opensuse: fromSi(siOpensuse),
-  openwrt: fromSi(siOpenwrt),
-  freebsd: fromSi(siFreebsd),
-  macos: fromSi(siMacos, "#374151"),
+  debian: { src: siDebian, color: "#A81D33" },
+  ubuntu: { src: siUbuntu, color: "#E95420" },
+  centos: { src: siCentos, color: "#262577" },
+  rocky: { src: siRockylinux, color: "#10B981" },
+  almalinux: { src: siAlmalinux, color: "#0f4266" },
+  fedora: { src: siFedora, color: "#51A2DA" },
+  alpine: { src: siAlpinelinux, color: "#0D597F" },
+  arch: { src: siArchlinux, color: "#1793D1" },
+  opensuse: { src: siOpensuse, color: "#73BA25" },
+  openwrt: { src: siOpenwrt, color: "#00B5E2" },
+  freebsd: { src: siFreebsd, color: "#AB2B28" },
+  macos: { src: siMacos, color: "#374151" },
   // Per SPEC-v1.2 §2: icons missing from simple-icons (e.g. windows) use Tux (siLinux)
-  windows: fromSi(siLinux, "#4b5563"),
-  linux: fromSi(siLinux, "#4b5563"),
+  windows: { src: siLinux, color: "#4b5563" },
+  linux: { src: siLinux, color: "#4b5563" },
   unknown: { color: "#6b7280", paths: NEUTRAL_SERVER_PATHS },
 }
 
 const BROWSER_ICON_MAP: Record<BrowserKey, IconDef> = {
-  chrome: fromSi(siGooglechrome),
-  firefox: fromSi(siFirefoxbrowser),
-  safari: fromSi(siSafari),
-  opera: fromSi(siOpera),
-  wechat: fromSi(siWechat),
-  qq: fromSi(siQq),
+  chrome: { src: siGooglechrome, color: "#4285F4" },
+  firefox: { src: siFirefoxbrowser, color: "#FF7139" },
+  safari: { src: siSafari, color: "#006CFF" },
+  opera: { src: siOpera, color: "#FF1B2D" },
+  wechat: { src: siWechat, color: "#07C160" },
+  qq: { src: siQq, color: "#1EBAFC" },
   // Per SPEC-v1.2 §4: browsers not in simple-icons (e.g. Edge) use neutral globe icon
   edge: { color: "#0284c7", paths: NEUTRAL_GLOBE_PATHS },
   unknown: { color: "#6b7280", paths: NEUTRAL_GLOBE_PATHS },

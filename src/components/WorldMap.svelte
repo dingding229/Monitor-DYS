@@ -17,7 +17,11 @@
 
   const MAP_W = 360
   const MAP_H = 160
-  const landDots = getWorldLandDots(MAP_W, MAP_H)
+  // One round-capped path per country, rather than thousands of reactive circles.
+  const land = new Map<string, string>()
+  for (const { country, x, y } of getWorldLandDots(MAP_W, MAP_H)) {
+    land.set(country, (land.get(country) ?? "") + `M${x} ${y}h0`)
+  }
 
   type CountryGroup = {
     code: string
@@ -142,14 +146,14 @@
 </script>
 
 <div
-  class="flex flex-col justify-between overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-3"
+  class="glass-overview map-card flex flex-col justify-between overflow-hidden rounded-[8px] border border-neutral-200 bg-white p-3"
 >
   <!-- Top status header -->
   <div class="z-10 flex items-center justify-between gap-2">
     <div class="flex items-center gap-1.5">
       <span class="tnum inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white/95 px-2.5 py-0.5 text-[12px] font-semibold text-neutral-800">
         <span class="h-2 w-2 rounded-full" style="background-color: var(--online);"></span>
-        {onlineTotal}
+        {onlineTotal} 在线
       </span>
       {#if offlineTotal > 0}
         <span class="tnum inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
@@ -171,21 +175,16 @@
       data-testid="world-map"
       class="relative hidden h-[160px] min-[520px]:flex min-[1180px]:col-span-7 items-center justify-center"
     >
-      <div class="relative h-full w-full">
+      <div class="relative aspect-[360/160] w-full max-w-[360px]">
         <svg
           viewBox="0 0 {MAP_W} {MAP_H}"
           class="h-full w-full select-none"
           aria-label="世界节点分布图"
         >
           <!-- Land dots colored by country node presence -->
-          <g>
-            {#each landDots as dot (`${dot.x},${dot.y}`)}
-              <circle
-                cx={dot.x}
-                cy={dot.y}
-                r={countByCode.has(dot.country) ? "0.95" : "0.75"}
-                fill={dotFill(dot.country)}
-              />
+          <g fill="none" stroke-linecap="round">
+            {#each land as [country, path] (country)}
+              <path d={path} stroke={dotFill(country)} stroke-width={countByCode.has(country) ? 1.9 : 1.5}/>
             {/each}
           </g>
 

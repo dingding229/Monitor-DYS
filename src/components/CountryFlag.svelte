@@ -1,4 +1,4 @@
-<script lang="ts">
+<script module lang="ts">
   const FLAGS: Record<string, string> = Object.fromEntries(
     Object.entries(
       import.meta.glob<string>("/node_modules/country-flag-icons/3x2/*.svg", {
@@ -9,6 +9,9 @@
     ).map(([path, url]) => [path.match(/([\w-]+)\.svg$/)?.[1] ?? "", url]),
   )
 
+</script>
+
+<script lang="ts">
   let { code = "" }: { code?: string | null } = $props()
 
   let upper = $derived((code ?? "").trim().toUpperCase())
@@ -18,10 +21,10 @@
 {#if upper}
   {#if src}
     <img
-      {src}
+      {src} width="21" height="14" loading="lazy"
       alt={upper}
       title={upper}
-      class="h-3.5 w-5 shrink-0 rounded-[2px] border border-neutral-200 object-cover"
+      class="h-[14px] w-[21px] shrink-0 rounded-[2px] border border-neutral-200 object-cover"
     />
   {:else}
     <span

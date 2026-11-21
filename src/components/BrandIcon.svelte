@@ -16,6 +16,11 @@
   let iconDef = $derived(getBrandIcon(key, kind))
 </script>
 
+{#if iconDef.src}
+  <span data-testid="brand-icon" data-key={key} role="img" aria-label={title || key} {title}
+    class="inline-block shrink-0" style:width="{size}px" style:height="{size}px" style:background-color={iconDef.color}
+    style:mask-image={`url("${iconDef.src}")`} style:mask-size="contain" style:mask-repeat="no-repeat"></span>
+{:else}
 <svg
   data-testid="brand-icon"
   data-key={key}
@@ -30,7 +35,8 @@
   {#if title}
     <title>{title}</title>
   {/if}
-  {#each iconDef.paths as d (d)}
+  {#each iconDef.paths ?? [] as d (d)}
     <path {d} />
   {/each}
 </svg>
+{/if}

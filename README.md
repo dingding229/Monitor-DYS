@@ -6,31 +6,26 @@
 
 ## 特性
 
-- **紧凑高信息密度浅色风格**：浅灰底色（`#f6f8f7`）搭配顶部柔和主题色微光、`1px` 细边框、`10px` 圆角、表格数字等宽（`tabular-nums`），支持紧凑（宽屏每行 4–5 张）与标准（每行 3–4 张）两种卡片尺寸。
+- **紧凑高信息密度浅色风格**：浅灰底色（`#f3f6f5`）搭配静态柔光与分层毛玻璃、`1px` 细边框、`8px` 圆角、表格数字等宽（`tabular-nums`），支持紧凑（宽屏每行 4–5 张）与标准（每行 3–4 张）两种卡片尺寸。
 - **单主题色（Accent）**：默认 `#10b981`，支持后台配置任意合法 CSS 颜色（通过 `CSS.supports("color", v)` 校验），用于选中状态、进度条与图表主线；资源进度条 ≥80% 自动切换琥珀色提醒，≥90% 切换红色告警。
-- **每日汇率自动折算与明细浮层**：
-  - 支持将多币种节点（`CNY` / `USD` / `EUR` / `HKD` / `JPY` / `GBP` / `CAD` / `SGD`）的剩余价值按每日汇率统一折算至目标币种，悬停或点击「剩余价值」卡片可查看各币种原值小计与折算明细。
-  - 汇率结果在 `localStorage` 中缓存 12 小时；单个节点卡片与详情页仍保持原币种显示。
+- **六格总览**：按分组、国家和搜索结果汇总在线服务器、实时上下行、本月流量及历史上下行；Hub 支持时显示今日流量。
+- **快速首屏**：身份、节点与配置并行读取；先显示骨架，地图单独加载，节点详情与图表按需加载。
 - **真实轮廓点阵世界地图 + 国家列表筛选**：
   - 基于 Natural Earth 110m 边界在构建期生成 1.5° 等距圆柱投影点阵（`scripts/gen-map.mjs` → `src/lib/map-data.ts`），有节点的国家自动以主题色高亮（透明度随节点数加深）。
   - 国家中心点显示圆形数量徽章与国旗（重叠区域自动带引线避让），悬停展示国家名、在线/总数、合计上下行速率与节点列表；右侧/下方附带按节点数降序排列的紧凑国家列表，点击地图国家或列表行即可按国家筛选节点。
 - **发行版与浏览器品牌图标**：按需 tree-shaking 引入 `simple-icons`（CC0），自动识别 Debian、Ubuntu、Rocky、AlmaLinux、CentOS、Fedora、Alpine、Arch、openSUSE、OpenWrt（含 iStoreOS / ImmortalWrt）、FreeBSD、macOS、Linux 以及 Chrome、Firefox、Safari、Opera、微信、QQ 浏览器等品牌图标。
 - **增强详情页**：顶部前后节点切换器与下拉选择、4 张核心指标卡片、系统运行信息条、4 列并排 uPlot 资源趋势图（CPU、含总容量参考虚线的内存与磁盘、网络速率，标题右侧紧凑图例 + 跟随光标纯文本浮层，支持「显示峰值」切换）与 Ping 延迟/丢包图，以及底部「硬件与系统」「流量与费用」双栏详单。
-- **底部访客气泡**：显示访客出口地区中文名与浏览器品牌图标，点击展开设备/系统、浏览器版本、出口 IP、城市、运营商（ISP/ASN）与访问时间。
+- **底部访客气泡**：页脚可见时并入页脚，否则底部悬浮。显示访客出口地区中文名与浏览器品牌图标，点击展开设备/系统、浏览器版本、出口 IP、城市、运营商（ISP/ASN）与访问时间。
 - **未登录零后台入口**：仅在 `/api/me` 返回 `authed === true` 时显示右上角齿轮后台链接（`/admin`），匿名访客界面不展示任何登录或后台按钮。
 
 ## 隐私与外部请求说明
 
-主题默认完全围绕同源 Hub 接口（`/api/*`）运行，仅在以下两项功能开启且站点配置（`/api/themes/dys/config`）加载完成后，才由访客浏览器发起只读公共 API 请求：
+主题主要请求同源 Hub 接口（`/api/*`）。唯一的外部查询是可关闭的访客定位。
 
-1. **汇率换算（`exchange_rate_enabled`，默认 `true`）**：
-   - 开启且 `show_billing=true` 时，浏览器优先读取 `localStorage` 中的 `dys:rates:<BASE>` 缓存（有效期 12 小时）。
-   - 缓存未命中或过期时，向 `https://open.er-api.com/v6/latest/<BASE>` 请求当日汇率（5 秒超时）；若失败则回退请求 `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/<base>.json`。
-   - 将 `exchange_rate_enabled` 设为 `false` 后，**不会发出任何汇率请求**，总览仅累计与目标币种一致的节点。
-2. **底部访客气泡（`visitor_info_enabled`，默认 `true`）**：
+1. **底部访客气泡（`visitor_info_enabled`，默认 `true`）**：成功加载站点配置并确认开启后，等待浏览器空闲再查询。
    - 开启时，浏览器向 `https://api.ip.sb/geoip` 请求出口 IP 与地理定位（5 秒超时）；若失败则回退请求 `https://ipwho.is/`，结果缓存至当前会话 `sessionStorage`。
    - 将 `visitor_info_enabled` 设为 `false` 后，**不会渲染气泡，也不会向 `api.ip.sb` 或 `ipwho.is` 发出任何请求**。
-3. **点阵世界地图**：地图数据在构建期由 `npm run gen:map` 预生成并打包在 `src/lib/map-data.ts` 中，**运行时无任何外部地图或瓦片请求**。
+2. **点阵世界地图**：地图数据在构建期由 `npm run gen:map` 预生成并打包在 `src/lib/map-data.ts` 中，**运行时无任何外部地图或瓦片请求**。
 
 ## 安装方式
 
@@ -60,9 +55,7 @@ https://github.com/dingding229/Monitor-DYS
 | `show_search` | `boolean` | `true` | 显示搜索框 |
 | `show_sort` | `boolean` | `true` | 显示排序下拉选择 |
 | `announcement` | `text` | `""` | 顶部公告（纯文本渲染，保留换行） |
-| `show_billing` | `boolean` | `true` | 显示价格、到期与剩余价值 |
-| `finance_currency` | `select` | `"CNY"` | 剩余价值汇总币种（`CNY` / `USD` / `EUR` / `HKD` / `JPY` / `GBP` / `CAD` / `SGD`） |
-| `exchange_rate_enabled` | `boolean` | `true` | 启用每日汇率自动换算（关闭后只累计同币种节点，不发请求） |
+| `show_billing` | `boolean` | `true` | 显示节点录入价格（到期状态独立显示） |
 | `expiry_warning_days` | `number` | `7` | 到期提醒天数（`1–365`） |
 | `visitor_info_enabled` | `boolean` | `true` | 显示底部访客气泡（关闭后不向 `api.ip.sb` 或 `ipwho.is` 发任何请求） |
 | `footer` | `string` | `""` | 页脚文字 / 备案号 |
@@ -103,13 +96,13 @@ MONITOR_HUB=http://127.0.0.1:9911 npm run dev
 
 ## 发版
 
-1. 确保 `theme.json`、`package.json`、`package-lock.json` 三者的 `version` 完全一致（例如 `1.2.0`）。
+1. 确保 `theme.json`、`package.json`、`package-lock.json` 三者的 `version` 完全一致（例如 `1.3.0`）。
 2. 本地执行完整检查、测试与打包验证：
    ```bash
    npm run check && npm test && npm run build && npm run test:e2e
    bash scripts/pack.sh && node scripts/verify-package.mjs
    ```
-3. 推送与版本号一致的 Git 标签 `v<version>`（例如 `v1.2.0`）触发 `.github/workflows/release.yml`，自动构建、校验并发布包含 `theme.tar.gz` 与 `theme.tar.gz.sha256` 的正式版 GitHub Release。
+3. 推送与版本号一致的 Git 标签 `v<version>`（例如 `v1.3.0`）触发 `.github/workflows/release.yml`，自动构建、校验并发布包含 `theme.tar.gz` 与 `theme.tar.gz.sha256` 的正式版 GitHub Release。
 
 ## 许可
 

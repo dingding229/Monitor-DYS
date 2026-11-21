@@ -2,15 +2,23 @@
   import { onDestroy, onMount } from "svelte"
   import VisitorBubble from "@/components/VisitorBubble.svelte"
   import Home from "@/pages/Home.svelte"
-  import NodeDetail from "@/pages/NodeDetail.svelte"
+  import { loadDetail } from "@/lib/detail"
   import { ALL_GROUP, UNGROUPED, ApiError, api, type GroupKey, type Me, type Node } from "@/lib/api"
   import { withAlpha } from "@/lib/color"
-  import { loadConfig, resolveConfig, type ThemeConfig } from "@/lib/config"
+  import { resolveConfig, type ThemeConfig } from "@/lib/config"
   import { createNodeStore } from "@/lib/nodes.svelte"
   import { loadPrefs, savePref, type SortKey, type VisitorPrefs } from "@/lib/prefs"
-  import { fetchRates, type Rates } from "@/lib/rates"
   import { createRouter } from "@/lib/router.svelte"
 
+  let { initialMe, initialNodes, initialConfig }: {
+    initialMe: Promise<Me>; initialNodes: Promise<{ nodes: Node[] }>; initialConfig: Promise<{ config: ThemeConfig; loaded: boolean }>
+  } = $props()
+  let footerVisible = $state(false)
+  function observeFooter(el: HTMLElement) {
+    const observer = new IntersectionObserver(([entry]) => { footerVisible = entry.isIntersecting })
+    observer.observe(el)
+    return { destroy: () => observer.disconnect() }
+  }
   const router = createRouter()
   const nodeStore = createNodeStore({ autoStart: false })
 
@@ -25,8 +33,6 @@
   let sortKey = $state<SortKey>(loadPrefs().sort ?? "default")
   let searchQuery = $state<string>("")
   let orderedNodes = $state<Node[]>([])
-  let rates = $state<Rates | null>(null)
-  let ratesBaseFetched = $state<string>("")
 
   // Effective layout per SPEC §5.13 & v1.2:
   // theme.json default < Hub config < visitor localStorage (only layout and sort)
@@ -37,25 +43,8 @@
     if (typeof document !== "undefined") {
       const accentColor = siteConfig.accent || "#10b981"
       document.documentElement.style.setProperty("--accent", accentColor)
-      document.documentElement.style.setProperty("--accent-glow", withAlpha(accentColor, 0.07))
+      document.documentElement.style.setProperty("--accent-glow", withAlpha(accentColor, 0.16))
     }
-  })
-
-  // Fetch exchange rates ONLY after configLoaded and when exchange_rate_enabled === true and show_billing === true
-  $effect(() => {
-    if (!configLoaded) return
-    if (!siteConfig.exchange_rate_enabled || !siteConfig.show_billing) {
-      rates = null
-      return
-    }
-    const base = siteConfig.finance_currency || "CNY"
-    if (ratesBaseFetched === base) return
-    ratesBaseFetched = base
-    void fetchRates(base).then((res) => {
-      if (ratesBaseFetched === base) {
-        rates = res
-      }
-    })
   })
 
   // Sync poll_interval from siteConfig to nodeStore
@@ -81,10 +70,10 @@
     savePref("sort", next)
   }
 
-  async function fetchMe() {
+  async function fetchMe(request = api<Me>("/me")) {
     meError = ""
     try {
-      const data = await api<Me>("/me")
+      const data = await request
       me = data
       if (!data.public_page && !data.authed) {
         meUnauthorized = true
@@ -101,12 +90,12 @@
   }
 
   onMount(() => {
-    void fetchMe()
-    void loadConfig().then((cfg) => {
-      siteConfig = cfg
-      configLoaded = true
+    void fetchMe(initialMe)
+    void initialConfig.then(({ config, loaded }) => {
+      siteConfig = config
+      configLoaded = loaded
     })
-    nodeStore.start()
+    nodeStore.start(initialNodes)
   })
 
   onDestroy(() => {
@@ -131,19 +120,14 @@
     return `最后更新 ${hhmmss}`
   })
 
-  // Per SPEC-v1.2 §6.a:
-  // Before first data arrives or before WS finishes handshake (while not degraded to polling), show grey dot '连接中'
-  // When WS connected: green dot '实时更新'
-  // Only when genuinely degraded to polling: amber dot '轮询更新'
-  let connState = $derived.by(() => {
-    if (nodeStore.connected) {
-      return { color: "var(--online)", text: "实时更新" }
-    }
-    if (!nodeStore.nodes || !nodeStore.polling) {
-      return { color: "var(--offline)", text: "连接中" }
-    }
-    return { color: "var(--warn)", text: "轮询更新" }
-  })
+  const statuses = {
+    connecting: { color: "var(--offline)", text: "连接中" },
+    connected: { color: "var(--online)", text: "已连接" },
+    live: { color: "var(--online)", text: "实时更新" },
+    polling: { color: "var(--warn)", text: "轮询更新" },
+  }
+  let connState = $derived(statuses[nodeStore.connectionState])
+  let detailModule = $derived(router.route.page === "node" ? loadDetail() : null)
 
   let groupLabel = $derived(
     selectedGroup === ALL_GROUP
@@ -171,7 +155,7 @@
   <div class="grid min-h-svh place-items-center px-4 py-12">
     <div
       data-testid="login-required"
-      class="w-full max-w-sm rounded-[10px] border border-neutral-200 bg-white p-6 text-center"
+      class="w-full max-w-sm rounded-[8px] border border-neutral-200 bg-white p-6 text-center"
     >
       <h1 class="text-base font-semibold text-neutral-900">需要登录后查看</h1>
       <p class="mt-2 text-[12px] text-neutral-500">
@@ -189,7 +173,7 @@
 {:else}
   <div class="flex min-h-svh flex-col">
     <!-- Top Header per SPEC-v1.1 §B & SPEC-v1.2 §5 (view toggle button removed from top bar) -->
-    <header class="sticky top-0 z-20 border-b border-neutral-200/80 bg-white/85 backdrop-blur">
+    <header class="site-header sticky top-0 z-20 border-b">
       <div class="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-[16px] py-2.5">
         <!-- Left: /favicon.svg + site_name -->
         <a
@@ -202,7 +186,9 @@
           class="inline-flex cursor-pointer items-center gap-2 text-[15px] font-bold tracking-tight text-neutral-900 transition-opacity hover:opacity-75"
         >
           <img src="/favicon.svg" alt="" class="h-5 w-5 shrink-0" />
-          <span>{siteName}</span>
+          <span class="truncate">{siteName}</span>
+          {#if nodeStore.nodes}<span class="online-pill hidden sm:inline-flex">{sortedNodes.filter(n => n.online).length} 在线</span>
+          {:else}<span class="bone hidden h-4 w-12 sm:inline-block"></span>{/if}
         </a>
 
         <!-- Right: conn-status + admin-link (ONLY when me.authed === true) -->
@@ -238,11 +224,11 @@
     </header>
 
     <!-- Main Container (max-w 1440px, px 16px, compact spacing 12px) -->
-    <main class="mx-auto w-full max-w-[1440px] flex-1 space-y-3 px-[16px] py-3.5">
+    <main class="mx-auto w-full max-w-[1440px] flex-1 space-y-3 px-[16px] pt-3.5 pb-[16px]">
       {#if siteConfig.announcement && siteConfig.announcement.trim()}
         <div
           data-testid="announcement"
-          class="rounded-[10px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px] leading-relaxed text-neutral-700 whitespace-pre-line"
+          class="rounded-[8px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px] leading-relaxed text-neutral-700 whitespace-pre-line"
         >
           {siteConfig.announcement}
         </div>
@@ -251,7 +237,7 @@
       {#if (meError || nodeStore.error) && !nodeStore.nodes}
         <div
           role="alert"
-          class="rounded-[10px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600"
+          class="rounded-[8px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600"
         >
           <p>{nodeStore.error || meError}</p>
           <button
@@ -269,7 +255,7 @@
         {#if nodeStore.error}
           <div
             role="alert"
-            class="rounded-[10px] border border-amber-200 bg-amber-50/70 px-3.5 py-2 text-[12px] text-amber-800"
+            class="rounded-[8px] border border-amber-200 bg-amber-50/70 px-3.5 py-2 text-[12px] text-amber-800"
           >
             {nodeStore.error}
           </div>
@@ -277,10 +263,12 @@
 
         {#if router.route.page === "node"}
           {#if !nodeStore.nodes}
-            <div class="rounded-[10px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-400">
+            <div class="rounded-[8px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-400">
               正在加载节点数据…
             </div>
-          {:else if activeNode}
+          {:else if activeNode && detailModule}
+            {#await detailModule}<div class="glass-panel p-6" data-testid="skeleton">加载详情…</div>
+            {:then { default: NodeDetail }}
             <NodeDetail
               node={activeNode}
               orderedNodes={orderedNodes.length > 0 ? orderedNodes : sortedNodes}
@@ -292,8 +280,9 @@
               onBack={() => router.navigate("/")}
               onSelectNode={(id) => router.navigate(id)}
             />
+            {:catch}<p role="alert">详情组件加载失败，请刷新重试。</p>{/await}
           {:else}
-            <div class="rounded-[10px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-500">
+            <div class="rounded-[8px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-500">
               <p>节点不存在或未公开</p>
               <button
                 type="button"
@@ -304,14 +293,9 @@
               </button>
             </div>
           {/if}
-        {:else if !nodeStore.nodes}
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {#each [1, 2, 3, 4] as item (item)}
-              <div class="h-48 animate-pulse rounded-[10px] border border-neutral-200 bg-white p-3"></div>
-            {/each}
-          </div>
         {:else}
           <Home
+            loading={!nodeStore.nodes}
             nodes={sortedNodes}
             accent={siteConfig.accent}
             layout={effectiveLayout}
@@ -321,9 +305,6 @@
             showSearch={siteConfig.show_search}
             showSort={siteConfig.show_sort}
             showBilling={siteConfig.show_billing}
-            financeCurrency={siteConfig.finance_currency}
-            exchangeRateEnabled={siteConfig.exchange_rate_enabled}
-            {rates}
             expiryWarningDays={siteConfig.expiry_warning_days}
             bind:selectedGroup
             bind:selectedCountry
@@ -338,9 +319,8 @@
       {/if}
     </main>
 
-    <!-- Footer per SPEC-v1.1 §F & §G: pb >= 56px so visitor bubble never overlaps -->
-    <footer class="border-t border-neutral-200/80 bg-white/80 pt-3.5 pb-[60px] text-[12px] text-neutral-500">
-      <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2 px-[16px]">
+    <footer use:observeFooter class="border-t border-neutral-200/80 bg-white/80 py-[16px] text-[12px] text-neutral-500">
+      <div class="footer-inner mx-auto max-w-[1440px] px-[16px]">
         <div class="flex flex-wrap items-center gap-1.5">
           <a
             href="https://github.com/monitor-probe/monitor"
@@ -361,6 +341,9 @@
           </a>
         </div>
 
+        {#if configLoaded && siteConfig.visitor_info_enabled}
+          <VisitorBubble enabled docked={footerVisible} />
+        {/if}
         {#if siteConfig.footer && siteConfig.footer.trim()}
           <div>
             {#if siteConfig.footer_url && /^https?:\/\//i.test(siteConfig.footer_url)}
@@ -380,9 +363,5 @@
       </div>
     </footer>
 
-    <!-- Bottom Visitor Bubble: only mounted AFTER loadConfig() resolves -->
-    {#if configLoaded && siteConfig.visitor_info_enabled}
-      <VisitorBubble enabled={siteConfig.visitor_info_enabled} />
-    {/if}
   </div>
 {/if}

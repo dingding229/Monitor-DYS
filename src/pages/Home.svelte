@@ -5,10 +5,9 @@
   import { ALL_GROUP, UNGROUPED, groupsOf, type GroupKey, type Node } from "@/lib/api"
   import { expiry, percentNum, regionName } from "@/lib/format"
   import type { SortKey } from "@/lib/prefs"
-  import type { Rates } from "@/lib/rates"
 
   let {
-    nodes,
+    nodes, loading = false,
     accent = "#10b981",
     layout = "grid",
     cardSize = "compact",
@@ -17,9 +16,6 @@
     showSearch = true,
     showSort = true,
     showBilling = true,
-    financeCurrency = "CNY",
-    exchangeRateEnabled = true,
-    rates = null,
     expiryWarningDays = 7,
     selectedGroup = $bindable<GroupKey>(ALL_GROUP),
     selectedCountry = $bindable<string | null>(null),
@@ -31,6 +27,7 @@
     onUpdateOrderedNodes,
   }: {
     nodes: Node[]
+    loading?: boolean
     accent?: string
     layout?: "grid" | "table"
     cardSize?: "compact" | "standard"
@@ -39,9 +36,6 @@
     showSearch?: boolean
     showSort?: boolean
     showBilling?: boolean
-    financeCurrency?: string
-    exchangeRateEnabled?: boolean
-    rates?: Rates | null
     expiryWarningDays?: number
     selectedGroup?: GroupKey
     selectedCountry?: string | null
@@ -166,6 +160,14 @@
     onUpdateOrderedNodes?.(displayedNodes)
   })
 
+  function fadeOverflow(el: HTMLElement) {
+    const update = () => el.classList.toggle("fade-end", el.scrollLeft + el.clientWidth + 1 < el.scrollWidth)
+    const observer = new ResizeObserver(update)
+    observer.observe(el); observer.observe(el.firstElementChild!)
+    el.addEventListener("scroll", update, { passive: true })
+    return { destroy() { observer.disconnect(); el.removeEventListener("scroll", update) } }
+  }
+
   type TabItem = { key: GroupKey; label: string; count: number }
 
   let tabs = $derived.by<TabItem[]>(() => {
@@ -197,23 +199,24 @@
     {accent}
     {showSummary}
     {showMap}
-    {showBilling}
-    {financeCurrency}
-    {exchangeRateEnabled}
-    {rates}
+    {loading}
     bind:selectedCountry
   />
 
   <!-- 2. Toolbar: Group Tabs + Country Filter Chip + Layout Switch + Sort Select + Search Input -->
   <div class="flex flex-wrap items-center justify-between gap-2">
     <!-- Left: Group Tabs & Country Filter Chip -->
-    <div class="flex flex-wrap items-center gap-1.5">
-      {#if tabs.length > 0}
+    <div class="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
+      {#if loading}
+        <div class="bone h-7 w-52"></div>
+      {:else if tabs.length > 0}
         <div
+          use:fadeOverflow
           role="tablist"
           aria-label="节点分组"
-          class="flex items-center gap-1.5 overflow-x-auto py-0.5"
+          class="min-w-0 max-w-full overflow-x-auto py-0.5"
         >
+          <div class="flex w-max items-center gap-1.5">
           {#each tabs as tab (tab.key)}
             {@const isActive = activeGroup === tab.key}
             <button
@@ -222,7 +225,7 @@
               data-testid="group-tab"
               aria-selected={isActive}
               onclick={() => (selectedGroup = tab.key)}
-              class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors {isActive
+              class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1 text-[12px] font-medium transition-colors {isActive
                 ? 'border-transparent text-white'
                 : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'}"
               style={isActive ? "background-color: var(--accent);" : ""}
@@ -237,6 +240,7 @@
               </span>
             </button>
           {/each}
+          </div>
         </div>
       {/if}
 
@@ -254,7 +258,7 @@
     </div>
 
     <!-- Right: View switcher + Sort dropdown + Search box -->
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="directory-controls flex flex-wrap items-center gap-2">
       <!-- View Switcher (Grid / Table) -->
       <div class="inline-flex rounded-lg border border-neutral-200 bg-white p-0.5">
         <button
@@ -331,7 +335,8 @@
           <input
             type="search"
             data-testid="search-input"
-            placeholder="搜索名称、地区、系统…"
+            placeholder="搜索节点…"
+            aria-label="搜索名称、地区、系统或备注"
             bind:value={searchQuery}
             class="h-7 w-44 rounded-lg border border-neutral-200 bg-white pr-2.5 pl-7 text-[12px] text-neutral-800 placeholder:text-neutral-400 outline-none focus:border-neutral-400 sm:w-52"
           />
@@ -341,9 +346,15 @@
   </div>
 
   <!-- 3. Node Grid or Table -->
-  {#if displayedNodes.length === 0}
-    <div class="rounded-[10px] border border-neutral-200 bg-white py-14 text-center text-[13px] text-neutral-500">
-      暂无匹配节点
+  {#if loading}
+    <div data-testid="skeleton" aria-label="正在加载节点" aria-busy="true" class="node-grid" class:standard={cardSize === 'standard'}>
+      {#each Array(10) as _}<div class="glass-panel card-placeholder" aria-hidden="true"><i class="bone"></i><i class="bone"></i><div class="ghost-meters"></div><i class="bone"></i></div>{/each}
+    </div>
+  {:else if displayedNodes.length === 0}
+    <div data-testid="empty-state" class="glass-panel py-12 text-center">
+      <svg aria-hidden="true" class="mx-auto mb-3 text-neutral-400" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg>
+      <p class="font-semibold">没有匹配的节点</p>
+      <button type="button" class="primary mt-3" onclick={() => {selectedGroup = ALL_GROUP; selectedCountry = null; searchQuery = ""}}>清除筛选</button>
     </div>
   {:else if layout === "table"}
     <NodeTable
@@ -354,9 +365,7 @@
     />
   {:else}
     <div
-      class="grid gap-[12px] {cardSize === 'standard'
-        ? 'grid-cols-1 min-[680px]:grid-cols-2 min-[1024px]:grid-cols-3 min-[1360px]:grid-cols-4'
-        : 'grid-cols-1 min-[560px]:grid-cols-2 min-[880px]:grid-cols-3 min-[1160px]:grid-cols-4 min-[1420px]:grid-cols-5'}"
+      class="node-grid" class:standard={cardSize === "standard"} class:dense={displayedNodes.length > 40}
     >
       {#each displayedNodes as node (node.id)}
         <NodeCard

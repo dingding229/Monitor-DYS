@@ -11,12 +11,11 @@
     type VisitorGeo,
   } from "@/lib/visitor"
 
-  let { enabled = false }: { enabled?: boolean } = $props()
+  let { enabled = false, docked = false }: { enabled?: boolean; docked?: boolean } = $props()
 
   let dismissed = $state<boolean>(false)
   let expanded = $state<boolean>(false)
   let geo = $state<VisitorGeo | null>(null)
-  let fetched = $state<boolean>(false)
   let visitTime = $state<string>("")
 
   let uaInfo = $derived(
@@ -29,15 +28,12 @@
       dismissed = true
       return
     }
-    if (!visitTime) {
-      visitTime = new Date().toLocaleString("zh-CN", { hour12: false })
-    }
-    if (!fetched) {
-      fetched = true
-      void fetchVisitor().then((res) => {
-        geo = res
-      })
-    }
+    visitTime = new Date().toLocaleString("zh-CN", { hour12: false })
+    let active = true
+    const locate = () => { if (active && !dismissed) void fetchVisitor().then(res => { if (active) geo = res }) }
+    const idle = typeof window.requestIdleCallback === 'function'
+    const id = idle ? window.requestIdleCallback(locate) : window.setTimeout(locate, 1500)
+    return () => { active = false; if (idle) window.cancelIdleCallback(id); else window.clearTimeout(id) }
   })
 
   // Per SPEC-v1.2 §4: Bubble shows Chinese region name from countryCode (city only in expanded panel)
@@ -59,11 +55,11 @@
 </script>
 
 {#if enabled && !dismissed}
-  <div class="fixed bottom-[12px] left-1/2 z-40 -translate-x-1/2 max-w-[92vw]">
+  <div class="visitor-anchor" class:docked>
     {#if expanded}
       <div
         data-testid="visitor-panel"
-        class="mb-2 w-72 max-w-[90vw] rounded-[10px] border border-neutral-200 bg-white/98 p-3 text-[12px] shadow-md backdrop-blur"
+        class="visitor-popover w-72 max-w-[90vw] rounded-[8px] border border-neutral-200 bg-white/98 p-3 text-[12px] shadow-md backdrop-blur"
       >
         <div class="flex items-center justify-between border-b border-neutral-100 pb-2">
           <span class="font-bold text-neutral-900">访客连接信息</span>

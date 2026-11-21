@@ -2,7 +2,7 @@
   import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
   import type { Node } from "@/lib/api"
-  import { remainingValue } from "@/lib/finance"
+  import { prefetchDetail } from "@/lib/detail"
   import {
     FOREVER,
     bytes,
@@ -63,7 +63,7 @@
   }
 </script>
 
-<div class="overflow-x-auto rounded-[10px] border border-neutral-200 bg-white">
+<div class="overflow-x-auto rounded-[8px] border border-neutral-200 bg-white">
   <table class="w-full border-collapse text-left text-[12px]">
     <thead class="sticky top-0 z-10 bg-neutral-50/95 backdrop-blur">
       <tr class="border-b border-neutral-200 text-neutral-500">
@@ -89,7 +89,6 @@
         {@const memPct = m ? percentNum(m.mem_used, m.mem_total) : 0}
         {@const diskPct = m ? percentNum(m.disk_used, m.disk_total) : 0}
         {@const usedTraffic = monthUsage(node)}
-        {@const remVal = remainingValue(node)}
         <tr
           data-testid="node-row"
           onclick={() => onSelect(node.id)}
@@ -122,7 +121,7 @@
                 title={node.os || "未知系统"}
               />
               <a
-                href="/node/{node.id}"
+                href="/node/{node.id}" onfocus={prefetchDetail} onpointerenter={prefetchDetail}
                 onclick={(e) => handleLinkClick(e, node.id)}
                 class="font-semibold text-neutral-900 hover:underline"
               >
@@ -232,9 +231,9 @@
             {:else}
               <div class="text-neutral-400">长期</div>
             {/if}
-            {#if showBilling && remVal !== null}
-              <div data-testid="remaining-value" class="text-[11px] text-neutral-500">
-                {money(remVal, node.currency || "CNY")}
+            {#if showBilling && node.price > 0}
+              <div class="text-[11px] text-neutral-500">
+                {money(node.price, node.currency || "CNY")}
               </div>
             {/if}
           </td>

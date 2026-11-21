@@ -3,6 +3,9 @@
  */
 import { ApiError, api, safeNodes, sample, speedHistory, type Node } from "@/lib/api"
 
+export type ConnectionState = "connecting" | "connected" | "live" | "polling"
+type Snapshot = { nodes: Node[] }
+
 export type NodeStoreOptions = {
   WebSocket?: typeof globalThis.WebSocket
   fetch?: typeof globalThis.fetch
@@ -74,9 +77,9 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     closed = false
   }
 
-  function fetchOnce(): Promise<void> {
+  function fetchOnce(initial?: Promise<Snapshot>): Promise<void> {
     const started = epoch
-    return api<{ nodes: Node[] }>("/nodes", { fetch: fetchFn, retries: 2 })
+    return (initial ?? api<Snapshot>("/nodes", { fetch: fetchFn, retries: 2 }))
       .then((d) => {
         if (started === epoch && d && Array.isArray(d.nodes)) {
           receive(d.nodes)
@@ -209,12 +212,12 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     retryTimer = silentTimer = null
   }
 
-  function resume() {
+  function resume(initial?: Promise<Snapshot>) {
     pause()
     retryAttempts = 0
     gap = true
     const resumedEpoch = epoch
-    void fetchOnce().then(() => {
+    void fetchOnce(initial).then(() => {
       if (resumedEpoch === epoch && !doc?.hidden) connect()
     })
   }
@@ -227,12 +230,14 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     }
   }
 
-  function start() {
+  function start(initial?: Promise<Snapshot>) {
     if (active) return
     active = true
     doc?.addEventListener?.("visibilitychange", onVisibilityChange)
     if (!doc?.hidden) {
-      resume()
+      resume(initial)
+    } else {
+      void initial?.catch(() => {}) // Hidden launches ignore this snapshot, including its errors.
     }
   }
 
@@ -265,6 +270,9 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     },
     get closed() {
       return closed
+    },
+    get connectionState(): ConnectionState {
+      return connected ? "live" : polling ? "polling" : lastUpdated !== null ? "connected" : "connecting"
     },
     get connected() {
       return connected
