@@ -60,7 +60,6 @@
     return `${Math.floor(seconds / 60)} 分`
   }
   let duration = $derived(snapshotOnly ? "状态待确认" : node.online ? `在线${m ? " " + cardUptime(m.uptime) : ""}` : `离线 ${offlineDuration ?? ""}`)
-  let info = $derived(duration + (showBilling && billingPrice !== "—" ? ` · ${billingPrice}` : ""))
   let expiryText = $derived(exp.level === "none" ? "长期" : exp.days !== null && exp.days > 0 ? `剩余 ${exp.days} 天` : exp.text)
 
   function handleClick(e: MouseEvent) {
@@ -111,7 +110,7 @@
       </div>
     </div>
 
-    <div class="card-info tnum mt-2 truncate text-[12px] text-neutral-500" title={info}>{info}</div>
+    <div class="card-info tnum mt-2 truncate text-[12px] text-neutral-500" title={duration}>{duration}</div>
 
 
     <!-- 3. 2x2 Metric Grid or Status Notice -->
