@@ -69,6 +69,12 @@
       (typeof m?.swap_total === "number" && m.swap_total > 0),
   )
 
+  let info = $derived([
+    ['负载 1/5/15m', m?.load.map(v=>v.toFixed(2)).join(' / ') ?? '—'],
+    ['Swap',hasSwap ? m?.swap_used != null && m.swap_total != null ? pair(m.swap_used,m.swap_total) : bytes(node.swap_total??0) : null],
+    ['进程',m?.procs], ['TCP / UDP',m?.tcp != null || m?.udp != null ? `${m?.tcp??'—'} / ${m?.udp??'—'}` : null],
+    ['系统运行',m ? uptime(m.uptime) : '—'],
+  ])
   let periodUsed = $derived(monthUsage(node))
   let trafficPct = $derived(node.traffic_limit > 0 ? percentNum(periodUsed, node.traffic_limit) : 0)
 
@@ -93,7 +99,7 @@
     <button
       type="button"
       onclick={onBack}
-      class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-[12px] font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+      class="nav-control back"
     >
       <span>← 返回列表</span>
     </button>
@@ -103,16 +109,7 @@
       class="flex flex-wrap items-center gap-1.5 text-[12px]"
     >
       <span class="tnum text-neutral-500">{groupLabel} · {switcherList.length} 台</span>
-      <button
-        type="button"
-        disabled={!prevNode}
-        onclick={() => prevNode && onSelectNode?.(prevNode.id)}
-        title="上一个节点"
-        aria-label="上一个节点"
-        class="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        ‹
-      </button>
+      {@render stepButton(prevNode,"上一个节点","‹")}
       <select
         aria-label="切换节点"
         value={node.id}
@@ -120,22 +117,13 @@
           const nextId = Number((e.currentTarget as HTMLSelectElement).value)
           if (nextId && nextId !== node.id) onSelectNode?.(nextId)
         }}
-        class="h-7 max-w-[200px] cursor-pointer truncate rounded-lg border border-neutral-200 bg-white px-2 text-[12px] font-medium text-neutral-800 outline-none focus:border-neutral-400"
+        class="nav-control select"
       >
         {#each switcherList as item (item.id)}
           <option value={item.id}>{item.name}</option>
         {/each}
       </select>
-      <button
-        type="button"
-        disabled={!nextNode}
-        onclick={() => nextNode && onSelectNode?.(nextNode.id)}
-        title="下一个节点"
-        aria-label="下一个节点"
-        class="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        ›
-      </button>
+      {@render stepButton(nextNode,"下一个节点","›")}
     </div>
   </div>
 
@@ -172,58 +160,13 @@
         </p>
       </div>
       <div data-testid="detail-stats" class="detail-stats tnum">
-        <div>
-          <span class="text-neutral-400">负载 1/5/15m</span>
-          <span class="ml-1.5 font-semibold text-neutral-800">
-            {m ? m.load.map((v) => v.toFixed(2)).join(" / ") : "—"}
-          </span>
-        </div>
-        {#if hasSwap}
-          <div>
-            <span class="text-neutral-400">Swap</span>
-            <span class="ml-1.5 font-semibold text-neutral-800">
-              {m && typeof m.swap_used === "number" && typeof m.swap_total === "number"
-                ? pair(m.swap_used, m.swap_total)
-                : bytes(node.swap_total ?? 0)}
-            </span>
-          </div>
-        {/if}
-        {#if m && typeof m.procs === "number"}
-          <div>
-            <span class="text-neutral-400">进程</span>
-            <span class="ml-1.5 font-semibold text-neutral-800">{m.procs}</span>
-          </div>
-        {/if}
-        {#if m && (typeof m.tcp === "number" || typeof m.udp === "number")}
-          <div>
-            <span class="text-neutral-400">TCP / UDP</span>
-            <span class="ml-1.5 font-semibold text-neutral-800">
-              {m.tcp ?? "—"} / {m.udp ?? "—"}
-            </span>
-          </div>
-        {/if}
-        <div>
-          <span class="text-neutral-400">系统运行</span>
-          <span class="ml-1.5 font-semibold text-neutral-800">
-            {m ? uptime(m.uptime) : "—"}
-          </span>
-        </div>
+        {#each info as [label,value]}{#if value != null}
+          <div><span class="text-neutral-400">{label}</span><span class="ml-1.5 font-semibold text-neutral-800">{value}</span></div>
+        {/if}{/each}
       </div>
     </div>
-    {#if isCorrupt}
-      <div
-        data-testid="status-unavailable"
-        class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-[12px] text-neutral-500"
-      >
-        不可用
-      </div>
-    {:else if isWaiting}
-      <div
-        data-testid="status-waiting"
-        class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-[12px] text-neutral-500"
-      >
-        等待数据
-      </div>
+    {#if isCorrupt || isWaiting}
+      <div data-testid={isCorrupt?'status-unavailable':'status-waiting'} class="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-4 text-center text-[12px] text-neutral-500">{isCorrupt?'不可用':'等待数据'}</div>
     {/if}
   </div>
 
@@ -250,8 +193,24 @@
     {/each}
   </div>
 </div>
+{#snippet stepButton(target:Node|null,label:string,glyph:string)}
+  <button
+        type="button"
+        disabled={!target}
+        onclick={() => target && onSelectNode?.(target.id)}
+        title={label}
+        aria-label={label}
+        class="nav-control step"
+      >
+        {glyph}
+      </button>
+{/snippet}
 {#snippet bar(pct: number)}<div class="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100"><div class="h-full" style:width="{Math.min(100, Math.max(0,pct))}%" style:background="var(--accent)"></div></div>{/snippet}
 <style>
+  .nav-control { border:1px solid var(--border); border-radius:6px; background:white; color:#404040; cursor:pointer; font-family:inherit; font-size:12px; font-weight:500 }
+  .nav-control:hover {background:#fafafa}.nav-control:disabled {opacity:.4;cursor:not-allowed}
+  .back {padding:.375rem .75rem}.step,.select {height:1.75rem}.step {width:1.75rem}.select {max-width:200px;padding-inline:.5rem;text-overflow:ellipsis}
+
   .node-identity { display: grid; align-items: center; gap: 10px; }
   .detail-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 14px; font-size: 12px; }
   .detail-stats > div { white-space: nowrap; }

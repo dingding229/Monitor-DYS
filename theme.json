@@ -2,7 +2,7 @@
   "name": "DYS",
   "short": "dys",
   "description": "紧凑卡片风格 Monitor 状态主题：流量总览、国家地图、延迟丢包、搜索排序、访客气泡，Svelte 5 + uPlot",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "author": "dingding229",
   "url": "https://github.com/dingding229/Monitor-DYS",
   "config": [

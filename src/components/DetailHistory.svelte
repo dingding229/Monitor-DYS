@@ -2,7 +2,7 @@
   import { speed } from "@/lib/format"
   import ChartCard from "./ChartCard.svelte"
   import { api, type Node } from "@/lib/api"
-  import { rangesFor, rangeLabel, metricCharts, pingCharts, type MetricsResponse } from "@/lib/detail-series"
+  import { rangesFor, rangeLabel, metricCharts, pingCharts, probeSelection, toggleProbe, readProbes, saveProbes, type MetricsResponse } from "@/lib/detail-series"
   let { node, accent, historyDays, showPing }: { node: Node; accent: string; historyDays: number; showPing: boolean } = $props()
   let rangeHoursList = $derived(rangesFor(historyDays))
   let selectedHours = $state<number>(6)
@@ -43,6 +43,17 @@
   let mem = $derived(node.metrics?.mem_total || node.mem_total), disk = $derived(node.metrics?.disk_total || node.disk_total)
   let metrics = $derived(metricCharts(metricsResp, accent, showPeak, mem, disk))
   let ping = $derived(pingCharts(pingResp, accent))
+  let saved = $state.raw(readProbes())
+  let selection = $derived(probeSelection(ping.probes,saved))
+  function choose(next:string[]|null){ saved=next; saveProbes(next) }
+  let tap = { name:'', time:0 }
+  function clickProbe(e:MouseEvent, name:string){
+    // Touch browsers do not all dispatch dblclick. Only pair consecutive taps on the same chip.
+    const touch = 'pointerType' in e && e.pointerType==='touch'
+    const twice = touch && tap.name===name && e.timeStamp-tap.time<400
+    tap = {name:touch && !twice ? name:'',time:e.timeStamp}
+    choose(toggleProbe(selection.names,selection.active,name,e.altKey || twice || e.detail===2))
+  }
 </script>
   <!-- 5. Resource Trends Section: Range buttons + Show Peak checkbox + Refresh button + 4 side-by-side charts -->
   <div class="space-y-2.5" bind:this={chartContainerEl}>
@@ -111,17 +122,39 @@
       </div>
     {:else}
       <div class="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {#each metrics.slice(0,4) as spec (spec.title)}<ChartCard {...spec} subtitle={spec.title === "CPU 使用率" && node.metrics ? `${node.metrics.cpu.toFixed(1)}%` : spec.title === "网络速率" && node.metrics ? `↓ ${speed(node.metrics.net_rx)} ↑ ${speed(node.metrics.net_tx)}` : spec.subtitle} hours={selectedHours} />{/each}
+        {#each metrics.slice(0,4) as spec (spec.title)}<ChartCard {...spec} subtitle={spec.title === "CPU 使用率" && node.metrics ? `${node.metrics.cpu.toFixed(1)}%` : spec.title === "网络速率" && node.metrics ? `↓ ${speed(node.metrics.net_rx)} ↑ ${speed(node.metrics.net_tx)}` : spec.subtitle} />{/each}
       </div>
-      {#each metrics.slice(4) as spec (spec.title)}<ChartCard {...spec} hours={selectedHours} />{/each}
-      {#if showPing && ping.length}
-        <div class="grid gap-3" class:two={ping.length > 1}>
-          {#each ping as spec (spec.title)}<ChartCard {...spec} hours={selectedHours} />{/each}
+      {#each metrics.slice(4) as spec (spec.title)}<ChartCard {...spec} />{/each}
+      {#if showPing && ping.charts.length}
+        <div class="grid gap-3" class:two={selection.hasLoss}>
+          {#each ping.charts as spec,i (spec.title)}
+            <div hidden={i===1 && !selection.hasLoss} class="min-w-0"><ChartCard {...spec} show={selection.show}
+              noLoss={i===0 && selection.noLoss} controls={i===0 && selection.names.length>1 ? probeControls : undefined} /></div>
+          {/each}
         </div>
       {/if}
     {/if}
   </div>
+{#snippet probeControls()}
+  <div class="probe-controls" role="group" aria-label="选择探测节点">
+    {#each ping.probes as p,i (p.id)}
+      <button type="button" class="probe" data-testid="probe-chip" data-probe={p.name} aria-pressed={selection.show[i]} style:--probe={p.color}
+        onclick={e=>clickProbe(e,p.name)} ondblclick={()=>choose([p.name])} title="Alt/⌥ 点击或双击仅看此探针">
+        <i aria-hidden="true"></i>{p.name} <span class="tnum">{p.avg==null?'—':`${p.avg}ms`}</span>
+      </button>
+    {/each}
+    <button type="button" class="probe-all" data-testid="probe-all" disabled={selection.show.every(Boolean)} onclick={()=>choose(null)}>全部</button>
+  </div>
+{/snippet}
 <style>
+  .probe-controls{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:6px 0 10px}
+  .probe-controls button{font-size:12px;padding:4px 9px;cursor:pointer;touch-action:manipulation}
+  button.probe{display:inline-flex;align-items:center;gap:5px;border-radius:999px;border:1px solid #dedede;background:#f5f5f5;color:#666}
+  .probe i{width:7px;height:7px;border-radius:50%;background:#aaa}
+  .probe[aria-pressed=true]{color:#262626;border-color:color-mix(in srgb,var(--probe) 55%,white);background:color-mix(in srgb,var(--probe) 9%,white)}
+  .probe[aria-pressed=true] i{background:var(--probe)}
+  .probe-all{color:#404040;text-decoration:underline}.probe-all:disabled{color:#888;text-decoration:none;cursor:default}
+
   @media(min-width:1024px){.two{grid-template-columns:1fr 1fr}}
   .mobile-peak, .refresh-icon { display: none; }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte"
+  import { untrack, onDestroy, onMount, type Snippet } from "svelte"
   import "uplot/dist/uPlot.min.css"
   import { computeXAxisSplits, formatXAxisValues } from "@/lib/detail-series"
   import uPlot from "uplot"
@@ -7,29 +7,27 @@
   let {
     title,
     subtitle = "", noLoss = false,
-    data,
+    data, show, controls,
     series,
     yFormat,
-    yMin = 0,
     yMax,
     height = 160,
-    hours = 6,
   }: {
+    show?: boolean[]
+    controls?: Snippet
     title: string
     noLoss?: boolean
     subtitle?: string
     data: uPlot.AlignedData
     series: uPlot.Series[]
     yFormat?: (v: number) => string
-    yMin?: number
     yMax?: number
     height?: number
-    hours?: number
   } = $props()
 
   let container: HTMLDivElement | undefined = $state()
   let canvasHost: HTMLDivElement | undefined = $state()
-  let chart: uPlot | null = null
+  let chart = $state.raw<uPlot | null>(null)
   let resizeObserver: ResizeObserver | null = null
 
   let hoverIdx = $state<number | null>(null)
@@ -57,14 +55,6 @@
     const ts = tsCol ? tsCol[hoverIdx] : undefined
     return ts ? new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false }) : ""
   })
-
-  function syncDataTicks(labels: string[]) {
-    const nonEmpty = labels.filter(Boolean)
-    const json = JSON.stringify(nonEmpty)
-    currentTicksJson = json
-    container?.setAttribute("data-ticks", json)
-    canvasHost?.setAttribute("data-ticks", json)
-  }
 
   function buildOptions(width: number): uPlot.Options {
     const axisFont = "11px -apple-system, BlinkMacSystemFont, sans-serif"
@@ -98,16 +88,7 @@
           },
         },
         y: {
-          range: (_u, dataMin, dataMax) => {
-            const lo = yMin !== undefined ? yMin : (dataMin ?? 0)
-            const hi =
-              yMax !== undefined
-                ? yMax
-                : dataMax !== null && dataMax !== undefined && dataMax > lo
-                  ? dataMax * 1.1
-                  : lo + 10
-            return [lo, hi]
-          },
+          range: (_u, _min, max) => [0, yMax ?? (max > 0 ? max * 1.1 : 10)],
         },
       },
       axes: [
@@ -122,7 +103,7 @@
             computeXAxisSplits(timestamps, scaleMin, scaleMax, width, foundSpace),
           values: (_u, splits) => {
             const formatted = formatXAxisValues(timestamps, splits)
-            syncDataTicks(formatted)
+            currentTicksJson = JSON.stringify(formatted.filter(Boolean))
             return formatted
           },
         },
@@ -177,10 +158,8 @@
     if (!container || !canvasHost) return
     const width = container.clientWidth || 320
     containerWidth = width
-    if (chart) {
-      chart.destroy()
-      chart = null
-    }
+    untrack(() => chart)?.destroy()
+    chart = null
     canvasHost.replaceChildren()
     try {
       chart = new uPlot(buildOptions(width), data, canvasHost)
@@ -206,12 +185,18 @@
     void data
     void series
     void yMax
-    void hours
     if (container) {
       renderChart()
     }
   })
 
+  // Visibility changes use uPlot's own scale invalidation, not the construction effect.
+  $effect(() => {
+    const u=chart, mask=show
+    if(u && mask) u.batch(()=>mask.forEach((visible,i)=>{
+      if(u.series[i+1]?.show !== visible) u.setSeries(i+1,{show:visible})
+    }))
+  })
   onDestroy(() => {
     resizeObserver?.disconnect()
     chart?.destroy()
@@ -234,25 +219,13 @@
       {/if}
     </div>
 
-    <div class="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-      {#each series as s, i (s.label ?? i)}
-        <span class="inline-flex items-center gap-1">
-          {#if s.dash}
-            <span
-              class="inline-block h-0.5 w-2.5 border-b border-dashed"
-              style="border-color: {seriesColor(s)};"
-            ></span>
-          {:else}
-            <span
-              class="inline-block h-2 w-2 rounded-[2px]"
-              style="background-color: {seriesColor(s)};"
-            ></span>
-          {/if}
-          <span>{s.label}</span>
-        </span>
-      {/each}
-    </div>
+    {#if !controls}<div class="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+      {#each series as s, i}{#if show?.[i] !== false}
+        {@render legendItem(s)}
+      {/if}{/each}
+    </div>{/if}
   </div>
+  {@render controls?.()}
 
   <!-- Chart canvas container & compact cursor-following tooltip -->
   <div
@@ -273,19 +246,22 @@
           : `left: ${Math.max(4, Math.round(hoverLeft + 10))}px;`}"
       >
         <div class="tnum font-medium text-neutral-500">{hoverTimeStr}</div>
-        {#each series as s, i (s.label ?? i)}
+        {#each series as s, i}{#if show?.[i] !== false}
           <div class="tnum flex items-center justify-between gap-2 text-neutral-800">
-            <span class="inline-flex items-center gap-1 text-neutral-600">
-              <span
-                class="inline-block h-1.5 w-1.5 rounded-full"
-                style="background-color: {seriesColor(s)};"
-              ></span>
-              <span>{s.label}</span>
-            </span>
+            {@render legendItem(s)}
             <span class="font-semibold">{formatHoverValue(s, hoverIdx, i)}</span>
           </div>
-        {/each}
+        {/if}{/each}
       </div>
     {/if}
   </div>
 </div>
+
+{#snippet legendItem(s:uPlot.Series)}
+  <span class="legend-item"><i class:dashed={!!s.dash} style:color={seriesColor(s)}></i>{s.label}</span>
+{/snippet}
+<style>
+  .legend-item {display:inline-flex;align-items:center;gap:4px}
+  .legend-item i {width:7px;height:7px;border-radius:2px;background:currentColor}
+  .legend-item .dashed {width:9px;height:0;border-top:1px dashed;background:none}
+</style>

@@ -134,16 +134,49 @@ export function metricCharts(resp: MetricsResponse | null, accent: string, peaks
   if(rows.some(r=>r.tcp!=null || r.udp!=null || r.procs!=null)) charts.push({title:'TCP / UDP / 进程数',height:180,data:[ts,col('tcp'),col('udp'),col('procs')],series:[line('TCP',accent,integer),line('UDP','#0284c7',integer),line('进程','#d97706',integer,true)]})
   return charts
 }
-export function pingCharts(resp: MetricsResponse | null, accent:string): Chart[] {
-  const rows = resp?.ping ?? []; if(!rows.length) return []
+const probeKey = 'dys:probes'
+export function readProbes(): string[] | null {
+  try { const saved = JSON.parse(localStorage.getItem(probeKey) ?? 'null'); return Array.isArray(saved) && saved.every(n=>typeof n==='string') ? saved : null } catch { return null }
+}
+export function saveProbes(names: string[] | null) {
+  try { if (names) localStorage.setItem(probeKey, JSON.stringify(names)); else localStorage.removeItem(probeKey) } catch { /* selection still works without storage */ }
+}
+export function visibleProbes(all: string[], saved?: readonly string[] | null): string[] {
+  const matches = all.filter(name => saved?.includes(name))
+  return matches.length ? matches : all
+}
+export function probeSelection(probes:{name:string;known:boolean;loss:number}[], saved:string[]|null) {
+  const names=[...new Set(probes.map(p=>p.name))], active=visibleProbes(names,saved)
+  const show=probes.map(p=>active.includes(p.name)), visible=probes.filter((_,i)=>show[i])
+  const hasLoss=visible.some(p=>p.loss>0)
+  return {names,active,show,hasLoss,noLoss:!hasLoss && visible.every(p=>p.known)}
+}
+export function toggleProbe(all:string[], active:string[], name:string, only:boolean) {
+  if(only) return [name]
+  if(active.includes(name)) return active.length > 1 ? active.filter(n=>n!==name) : active
+  const next = all.filter(n=>n===name || active.includes(n))
+  return next.length === all.length ? null : next
+}
+export function pingCharts(resp: MetricsResponse | null, accent:string) {
+  const rows = resp?.ping ?? []
   const ids = [...new Set(rows.map(r=>r.task_id))], times=[...new Set(rows.map(r=>r.ts))].sort((a,b)=>a-b)
   const buckets = new Map(rows.map(r=>[`${r.task_id}:${r.ts}`,r]))
   const colors=[accent,'#2563eb','#d97706','#9333ea','#dc2626','#0891b2']
-  const loss = rows.some(r=>(r.loss ?? 0)>0)
-  return (loss ? ['latency','loss'] as const : ['latency'] as const).map(k=>{
-    const latency=k==='latency', fmt=latency ? (v:number)=>`${Math.round(v)} ms` : pct
-    return {title:latency?'Ping 延迟':'Ping 丢包率',height:180,noLoss:latency && !loss && (resp?.loss != null || rows.some(r=>r.loss!=null)),yFormat:latency ? fmt : percentTick,yMax:latency?undefined:100,
-      data:[times,...ids.map(id=>times.map(ts=>{const r=buckets.get(`${id}:${ts}`); return r ? r[k] ?? (latency?null:0) : null}))],
-      series:ids.map((id,i)=>{const name=resp?.probes?.[id] ?? `探测 #${id}`, l=resp?.loss?.[id]; return line(name+(latency && l ? ` (丢 ${pct(l)})`:''),colors[i%colors.length],fmt,false,false,latency ? "超时" : "0%")})}
+  const probes = ids.map((id,i)=>{
+    let sum=0,count=0,loss=resp?.loss?.[id]??0,known=resp?.loss!=null
+    for(const ts of times){const r=buckets.get(`${id}:${ts}`); if(!r)continue
+      if(r.latency!=null && Number.isFinite(r.latency)){sum+=r.latency;count++}
+      if(r.loss!=null){known=true;loss=Math.max(loss,r.loss)}
+    }
+    return {id,name:resp?.probes?.[id]??`探测 #${id}`,color:colors[i%colors.length],avg:count?Math.round(sum/count):null,loss,known}
   })
+  const charts:Chart[] = []
+  for(const k of ['latency','loss'] as const){
+    const latency=k==='latency', fmt=latency ? (v:number)=>`${Math.round(v)} ms` : pct
+    if(!probes.length || (!latency && !probes.some(p=>p.loss>0))) continue
+    charts.push({title:latency?'Ping 延迟':'Ping 丢包率',height:180,yFormat:v=>Number(v.toFixed(1))+(latency?' ms':'%'),
+      data:[times,...ids.map(id=>times.map(ts=>{const r=buckets.get(`${id}:${ts}`); return r ? r[k] ?? (latency?null:0) : null}))],
+      series:probes.map(p=>{const loss=resp?.loss?.[p.id]; return line(p.name+(latency && loss ? ` (丢 ${pct(loss)})`:''),p.color,fmt,false,false,latency ? "超时" : "0%")})})
+  }
+  return {charts,probes}
 }

@@ -74,6 +74,38 @@ test("opening detail renders charts and the stats in the node header", async ({ 
   await expect(nameCard.getByTestId("chart")).toHaveCount(0)
 })
 
+test("detail Ping keeps at least one probe selected and restores the selection after reload", async ({ page }) => {
+  await page.goto(mockUrl("normal", "/node/1"))
+  const chips = page.getByTestId("probe-chip")
+  const all = page.getByTestId("probe-all")
+  await expect(chips).toHaveCount(2)
+  const names = await chips.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-probe")))
+  expect([...names].sort()).toEqual(["东京探测", "法兰克福探测"])
+  const probes = names.map((name) => chips.and(page.locator(`[data-probe=${JSON.stringify(name)}]`)))
+  for (const probe of probes) await expect(probe).toHaveAttribute("aria-pressed", "true")
+  await expect(all).toBeDisabled()
+
+  const hidden = probes.slice(0, -1)
+  const last = probes[probes.length - 1]
+  for (const probe of hidden) {
+    await probe.click()
+    await expect(probe).toHaveAttribute("aria-pressed", "false")
+    await expect(all).toBeEnabled()
+  }
+  // The last selected chip may be disabled or its handler may refuse to deselect it.
+  await last.click({ force: true })
+  await expect(last).toHaveAttribute("aria-pressed", "true")
+  for (const probe of hidden) await expect(probe).toHaveAttribute("aria-pressed", "false")
+
+  await page.reload()
+  for (const probe of hidden) await expect(probe).toHaveAttribute("aria-pressed", "false")
+  await expect(last).toHaveAttribute("aria-pressed", "true")
+  await expect(all).toBeEnabled()
+  await all.click()
+  for (const probe of probes) await expect(probe).toHaveAttribute("aria-pressed", "true")
+  await expect(all).toBeDisabled()
+})
+
 test("a WS handshake 503 falls back to polling the nodes API", async ({ page }) => {
   const errors: string[] = []
   const snapshots: number[] = []
