@@ -1,7 +1,7 @@
 {
   "name": "DYS",
   "short": "dys",
-  "description": "服务器监控探针风格的 Monitor 主题：大屏总览、点阵地图与地区统计、指标条与负载趋势、延迟丢包、6 套主题色，Svelte 5 + uPlot",
+  "description": "服务器监控探针风格的 Monitor 主题：大屏总览、点阵地图与地区统计、指标条与负载趋势、延迟丢包、自定义主题色，Svelte 5 + uPlot",
   "version": "2.0.0",
   "author": "dingding229",
   "url": "https://github.com/dingding229/Monitor-DYS",
@@ -45,37 +45,11 @@
       ]
     },
     {
-      "key": "theme",
-      "type": "select",
-      "default": "emerald",
+      "key": "accent_color",
+      "type": "string",
+      "default": "#10b981",
       "label": "主题色",
-      "help": "状态色（在线绿、告警橙、故障红）固定不变；主题色用于选中态、指标条、趋势线和图表主线",
-      "options": [
-        {
-          "value": "emerald",
-          "label": "翡翠青"
-        },
-        {
-          "value": "ocean",
-          "label": "海洋蓝"
-        },
-        {
-          "value": "indigo",
-          "label": "靛蓝紫"
-        },
-        {
-          "value": "amber",
-          "label": "琥珀金"
-        },
-        {
-          "value": "rose",
-          "label": "玫红"
-        },
-        {
-          "value": "slate",
-          "label": "石墨灰"
-        }
-      ]
+      "help": "填写十六进制色值，如 #10b981、#3b82f6、#8b5cf6；用于选中态、指标条、趋势线和图表主线。按钮和文字使用的深色版本会自动计算，保证对比度。状态色（在线绿、告警橙、故障红）固定不变。无效值回退 #10b981"
     },
     {
       "type": "title",

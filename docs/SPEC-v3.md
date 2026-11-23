@@ -41,3 +41,18 @@
 
 ## 4. testid
 保留 SPEC-v2.0 附录中的全部 testid（`world-map`、`country-list`、`country-row`、`map-country` 等）。新增：`status-strip`（服务器状态色块条）、`load-spark`（卡片负载小折线）、`fleet-spark`（总览趋势线）、`region-summary`（地区汇总条）。
+
+## 5. v2.0.1 变更：自定义主题色（替代 §2.1 的 6 套预设）
+用户反馈：预设颜色偏深，且刷新时会先显示默认色。改为：
+- theme.json：`theme`（select）替换为 `accent_color`（string，默认 `#10b981`）。旧键 `theme`、`accent`、`color_scheme` 全部忽略。
+- **`src/lib/theme.ts`（后端）**：
+  - `resolveAccent(v: unknown): string`：接受 `#rgb` / `#rrggbb`（可带空白，大小写不限），归一为小写 `#rrggbb`；其他值回退 `#10b981`。
+  - `accentPalette(hex: string): AccentPalette`，`AccentPalette = { accent, strong, soft, border, text }`，全部为 `#rrggbb`：
+    - `accent` = 输入色（指标条、折线、地图着色）；
+    - `strong` = 输入色逐步加深，直到与白色对比度 ≥ 4.5（按钮底色、选中态，白字在上）；输入色本身已满足就用输入色；
+    - `text` = 与 `soft` 对比度 ≥ 4.5 的深色版本（可与 `strong` 相同）；
+    - `soft` = 输入色 8% 混白；`border` = 输入色 35% 混白。
+  - `applyAccent(p: AccentPalette)`：在 `document.documentElement.style` 上设置 `--accent`、`--accent-strong`、`--accent-soft`、`--accent-border`、`--accent-text`，并把 `JSON.stringify(p)` 缓存到 `localStorage['dys:accent']`。
+- `config.accent_color: string`（已归一）。`app-state` 在配置加载后调用 `applyAccent(accentPalette(config.accent_color))`。删除 `ThemeKey`、`resolveTheme`、`data-theme`、`dys:theme`。
+- **首帧不闪色**：`index.html` 内联脚本读取 `dys:accent`，五个值都匹配 `^#[0-9a-f]{6}$` 时写入 html 的 style；`main.ts` 在**没有有效缓存**时等配置返回后再 `mount`（最多等 1500ms，超时用默认色挂载），有缓存时立即挂载。
+- `app.css`：`:root` 的默认变量等于 `accentPalette("#10b981")` 的结果；删除 6 个 `html[data-theme]` 块。uPlot 和其他读 CSS 变量的组件改为监听 html 的 `style` 属性变化。
