@@ -1,85 +1,88 @@
 <script module lang="ts">
+  import type { Node } from "@/lib/api"
   import type { PingSummary } from "@/lib/ping.svelte"
+  import { monthUsage, FOREVER, bytes, expiry, priceShort, offlineFor, pair, percentNum, speed } from "@/lib/format"
 
-  function cardUptime(s: number) {
-    return s >= 86400 ? `${Math.floor(s / 86400)} 天` : s >= 3600 ? `${Math.floor(s / 3600)} 时` : `${Math.floor(s / 60)} 分`
-  }
-  function level(pct: number | null) {
-    return pct === null ? "" : pct >= 90 ? "danger" : pct >= 80 ? "warn" : ""
-  }
-  function formatProbes(sample: PingSummary | undefined, key: "latency" | "loss") {
+  const BAR_SLOTS = Array.from({ length: 12 }, (_, i) => i)
+  const level = (p: number | null) => (p === null ? "" : p >= 90 ? "danger" : p >= 80 ? "warn" : "")
+  const cardUptime = (s: number) => (s >= 86400 ? `${Math.floor(s / 86400)} 天` : s >= 3600 ? `${Math.floor(s / 3600)} 时` : `${Math.floor(s / 60)} 分`)
+  const shortOs = (os: string | undefined) => (os ? os.replace(/\s+GNU\/Linux/i, "").replace(/\s+LTS$/i, "").slice(0, 18) : "未知系统")
+
+  function formatProbes(sample: PingSummary | undefined, key: "latency" | "loss", online: boolean) {
+    if (!online) return "—"
     if (!sample) return "…"
     if (!sample.probes.length) return "—"
-    return sample.probes
-      .slice(0, 3)
-      .map((p) => {
-        const v = p[key]
-        return v == null ? "—" : key === "loss" ? String(Number(v.toFixed(1))) : String(Math.round(v))
-      })
-      .join("·")
+    return sample.probes.slice(0, 3).map((p) => (p[key] == null ? "—" : key === "loss" ? String(Number(p[key].toFixed(1))) : String(Math.round(p[key])))).join("·")
   }
-  function barClass(v: number | null | undefined, loss: boolean) {
-    return v == null ? "" : v <= (loss ? 0 : 99) ? "g" : v <= (loss ? 5 : 200) ? "w" : "d"
+  function barClass(v: number | null | undefined, loss: boolean, online: boolean) {
+    return !online || v == null ? "" : v <= (loss ? 0 : 99) ? "g" : v <= (loss ? 5 : 200) ? "w" : "d"
   }
-  const BAR_SLOTS = Array.from({ length: 12 }, (_, i) => i)
+  export function sparkPts(vals: readonly number[], hi: number, w: number, h: number, pad: number): string {
+    const n = vals.length, bot = h - pad
+    if (!n) return `0,${bot} ${w},${bot}`
+    const y = (v: number) => (bot - (Math.min(hi, Math.max(0, v)) / hi) * (bot - pad)).toFixed(1)
+    return n === 1 ? `0,${y(vals[0])} ${w},${y(vals[0])}` : vals.map((v, i) => `${((i / (n - 1)) * w).toFixed(1)},${y(v)}`).join(" ")
+  }
+
+  function buildCard(node: Node, snapshotOnly: boolean, showBilling: boolean, expiryWarningDays: number) {
+    const m = node.metrics, isCorrupt = Boolean(node._corrupt), isWaiting = node.online && !m && !isCorrupt
+    const exp = expiry(node, Date.now(), expiryWarningDays), used = monthUsage(node)
+    const hasT = node.online || node.cpu_cores > 0 || node.mem_total > 0 || used > 0, lim = node.traffic_limit > 0
+    const memTot = m?.mem_total || node.mem_total, diskTot = m?.disk_total || node.disk_total
+    const memPct = m && memTot > 0 ? percentNum(m.mem_used, memTot) : null
+    const diskPct = m && diskTot > 0 ? percentNum(m.disk_used, diskTot) : null
+    const loadTxt = m ? m.load.slice(0, 2).map((v) => v.toFixed(2)).join(", ") : "—"
+    const hi = m ? Math.max(m.cpu, memPct ?? 0, diskPct ?? 0) : 0
+    const danger = node.online && (exp.level === "expired" || hi >= 90)
+    const warn = node.online && !danger && (exp.level === "soon" || hi >= 80)
+    const expTxt = exp.level === "none" ? "长期" : exp.days !== null && exp.days > 0 ? `剩余 ${exp.days} 天` : exp.text
+    const expCls = exp.level === "expired" ? "danger" : exp.level === "soon" ? "warn" : ""
+    const price = showBilling && node.price > 0 ? priceShort(node.price, node.currency || "CNY", node.billing_cycle) : showBilling ? "—" : ""
+    return {
+      m, isCorrupt, isWaiting, loadTxt,
+      ledCls: !node.online || snapshotOnly ? "offline" : danger ? "danger" : warn ? "warn" : "",
+      osTxt: shortOs(node.os),
+      duration: snapshotOnly ? "状态待确认" : node.online ? `在线${m ? " " + cardUptime(m.uptime) : ""}` : `离线 ${offlineFor(node) ?? ""}`,
+      meters: [
+        ["CPU", m ? m.cpu : null, loadTxt, "—"],
+        ["内存", memPct, m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total), "—"],
+        ["硬盘", diskPct, m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total), "—"],
+        ["流量", lim && hasT ? percentNum(used, node.traffic_limit) : null, !hasT ? "—" : lim ? pair(used, node.traffic_limit) : `${bytes(used)} / ${FOREVER}`, !hasT ? "—" : lim ? "0.0%" : FOREVER],
+      ] as [string, number | null, string, string][],
+      f0: `↑\u202f${speed(m?.net_tx ?? 0).replace(" ", "")}`,
+      f1: `↑\u202f${bytes(node.month_tx ?? m?.month_tx ?? 0)}`,
+      f3: `↓\u202f${speed(m?.net_rx ?? 0).replace(" ", "")}`,
+      f4: `↓\u202f${bytes(node.month_rx ?? m?.month_rx ?? 0)}`,
+      expTxt, expCls, price,
+    }
+  }
 </script>
 
 <script lang="ts">
   import { freezeNode } from "@/lib/viewport.svelte"
   import BrandIcon from "@/components/BrandIcon.svelte"
   import CountryFlag from "@/components/CountryFlag.svelte"
-  import { probeTitle, type PingStore } from "@/lib/ping.svelte"
-  import type { Node } from "@/lib/api"
+  import { probeTitle } from "@/lib/ping.svelte"
+  import type { createApp } from "@/lib/app-state.svelte"
   import { prefetchDetail } from "@/lib/detail"
-  import { monthUsage, FOREVER, bytes, expiry, priceShort, offlineFor, pair, percentNum, speed } from "@/lib/format"
   import { osKey } from "@/lib/icons"
 
-  let {
-    node: incoming,
-    defer = false,
-    ping,
-    showPing,
-    snapshotOnly,
-    showBilling = true,
-    expiryWarningDays = 7,
-    onSelect,
-  }: {
-    node: Node
-    defer?: boolean
-    ping: PingStore
-    snapshotOnly: boolean
-    showPing: boolean
-    showBilling?: boolean
-    expiryWarningDays?: number
-    onSelect: (id: number) => void
+  let { node: incoming, defer = false, app, showPing }: {
+    node: Node; defer?: boolean; app: ReturnType<typeof createApp>; showPing: boolean
   } = $props()
 
   const view = freezeNode(() => incoming, () => defer)
   const observeView = view.observe
-  const observePing = (el: Element, id: number) => ping.observe(el, id)
+  const observePing = (el: Element, id: number) => app.ping.observe(el, id)
 </script>
-
-{#snippet meter(label: string, pct: number | null, foot: string, empty = "—")}
-  {@const tone = level(pct)}
-  <div class="nc-m">
-    <span class="nc-ml">{label}</span>
-    <b class="nc-mv tnum {tone}">{pct === null ? empty : `${pct.toFixed(1)}%`}</b>
-    <i class="nc-bar {tone}" style:--v="{pct === null ? 0 : Math.min(100, Math.max(0, pct))}%"></i>
-    <small class="nc-ms tnum" title={foot}>{foot}</small>
-  </div>
-{/snippet}
 
 <a
   href="/node/{view.node.id}"
   use:observeView
   use:observePing={showPing && view.node.online ? view.node.id : 0}
   data-testid="node-card"
-  data-status={!snapshotOnly && view.node.online ? "online" : "offline"}
-  onclick={(e) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
-    e.preventDefault()
-    onSelect(view.node.id)
-  }}
+  data-status={!app.snapshotOnly && view.node.online ? "online" : "offline"}
+  onclick={(e) => { if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0) { e.preventDefault(); app.selectNode(view.node.id) } }}
   onpointerenter={prefetchDetail}
   onfocus={prefetchDetail}
   class="nc"
@@ -88,76 +91,61 @@
     <div class="nc-stub">{view.node.name}</div>
   {:else}
     {@const node = view.node}
-    {@const m = node.metrics}
-    {@const isCorrupt = Boolean(node._corrupt)}
-    {@const isWaiting = node.online && !m && !isCorrupt}
-    {@const exp = expiry(node, Date.now(), expiryWarningDays)}
-    {@const periodUsed = monthUsage(node)}
-    {@const hasTraffic = node.online || node.cpu_cores > 0 || node.mem_total > 0 || periodUsed > 0}
-    {@const limited = node.traffic_limit > 0}
-    {@const trafficPct = limited && hasTraffic ? percentNum(periodUsed, node.traffic_limit) : null}
-    {@const duration = snapshotOnly ? "状态待确认" : node.online ? `在线${m ? " " + cardUptime(m.uptime) : ""}` : `离线 ${offlineFor(node) ?? ""}`}
-    {@const expiryText = exp.level === "none" ? "长期" : exp.days !== null && exp.days > 0 ? `剩余 ${exp.days} 天` : exp.text}
-    {@const billingPrice = showBilling && node.price > 0 ? priceShort(node.price, node.currency || "CNY", node.billing_cycle) : "—"}
-    {@const memTotal = m?.mem_total || node.mem_total}
-    {@const diskTotal = m?.disk_total || node.disk_total}
-    {@const txStr = speed(m?.net_tx ?? 0)}
-    {@const rxStr = speed(m?.net_rx ?? 0)}
-    {@const mtxStr = bytes(node.month_tx ?? m?.month_tx ?? 0)}
-    {@const mrxStr = bytes(node.month_rx ?? m?.month_rx ?? 0)}
+    {@const c = buildCard(node, app.snapshotOnly, app.config.show_billing, app.config.expiry_warning_days)}
+    {@const loadArr = (void app.history.version, app.history.load(node.id))}
 
-    <div class="nc-head">
-      <h3 class="nc-name" title={node.name}>{node.name}</h3>
-      <BrandIcon key={osKey(node.os)} kind="os" size={14} title={node.os || "未知系统"} />
+    <div class="nc-top">
+      <div class="nc-id"><i class="led {c.ledCls}"></i><h3 class="nc-name" title={node.name}>{node.name}</h3></div>
       <CountryFlag code={node.country} />
     </div>
 
-    <div class="nc-sub tnum" title={duration}>{duration}</div>
-
-    {#if isCorrupt || isWaiting}
-      <div data-testid={isCorrupt ? "status-unavailable" : "status-waiting"} class="nc-notice">
-        {isCorrupt ? "不可用" : "等待数据"}
-      </div>
-    {:else}
-      <div class="nc-metrics">
-        {@render meter("CPU", m ? m.cpu : null, m ? m.load.map((v) => v.toFixed(2)).join(", ") : "—")}
-        {@render meter("内存", m && memTotal > 0 ? percentNum(m.mem_used, memTotal) : null, m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total))}
-        {@render meter("硬盘", m && diskTotal > 0 ? percentNum(m.disk_used, diskTotal) : null, m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total))}
-        {@render meter("本期流量", trafficPct, !hasTraffic ? "—" : limited ? pair(periodUsed, node.traffic_limit) : `${bytes(periodUsed)} / ${FOREVER}`, !hasTraffic ? "—" : limited ? "0.0%" : FOREVER)}
-      </div>
-    {/if}
-
-    <div class="nc-foot">
-      <span class="nc-fl">实时速率</span>
-      <span class="nc-fl">当期流量</span>
-      <span class="nc-fl">到期</span>
-      <b class="nc-fv tnum tx" title="↑ {txStr}">↑&#8239;{txStr.replace(" ", "")}</b>
-      <b class="nc-fv tnum" title="↑ {mtxStr}">↑&#8239;{mtxStr}</b>
-      <b class="nc-fv tnum {exp.level === 'expired' ? 'danger' : exp.level === 'soon' ? 'warn' : ''}" title={expiryText}>{expiryText}</b>
-      <b class="nc-fv tnum rx" title="↓ {rxStr}">↓&#8239;{rxStr.replace(" ", "")}</b>
-      <b class="nc-fv tnum" title="↓ {mrxStr}">↓&#8239;{mrxStr}</b>
-      <b class="nc-fv tnum muted" title={showBilling ? billingPrice : ""}>{showBilling ? billingPrice : ""}</b>
+    <div class="nc-sub">
+      <BrandIcon key={osKey(node.os)} kind="os" size={13} title={node.os || "未知系统"} />
+      <span>{c.osTxt}</span><span aria-hidden="true">·</span><span class="tnum">{c.duration}</span>
     </div>
 
-    {#if showPing && node.online}
-      {@const sample = ping.get(node.id)}
+    <div class="nc-viz">
+      {#if c.isCorrupt || c.isWaiting}
+        <div data-testid={c.isCorrupt ? "status-unavailable" : "status-waiting"} class="nc-notice">{c.isCorrupt ? "不可用" : "等待数据"}</div>
+      {:else}
+        <div class="m-grid">
+          {#each c.meters as [label, pct, foot, empty]}
+            {@const tone = level(pct)}
+            <div class="m-item">
+              <span class="m-lbl">{label}</span>
+              <b class="m-val mono {tone}">{pct === null ? empty : `${pct.toFixed(1)}%`}</b>
+              <i class="hbar {tone}" style="--v:{pct === null ? 0 : Math.min(100, Math.max(0, pct))}%"></i>
+              <small class="m-sub mono" title={foot}>{foot}</small>
+            </div>
+          {/each}
+        </div>
+        <div class="spark-row">
+          <span class="spark-lbl">负载</span>
+          <svg class="spark-svg" data-testid="load-spark" viewBox="0 0 154 16" preserveAspectRatio="none" aria-hidden="true">
+            <polyline fill="none" stroke={node.online ? "var(--accent)" : "var(--offline)"} stroke-width="1.6" points={sparkPts(loadArr, Math.max(0.5, ...loadArr, c.m?.load[0] ?? 0), 154, 16, 3)} />
+          </svg>
+          <span class="spark-lbl mono">{c.loadTxt}</span>
+        </div>
+      {/if}
+    </div>
+
+    <div class="nc-foot">
+      <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+      <b class="nc-fv mono tx">{c.f0}</b><b class="nc-fv mono">{c.f1}</b><b class="nc-fv tnum {c.expCls}">{c.expTxt}</b>
+      <b class="nc-fv mono rx">{c.f3}</b><b class="nc-fv mono">{c.f4}</b><b class="nc-fv tnum muted">{c.price}</b>
+    </div>
+
+    {#if showPing}
+      {@const sample = node.online ? app.ping.get(node.id) : undefined}
       {@const offset = (sample?.buckets.length ?? 0) - 12}
-      <div
-        class="nc-ping"
-        class:pending={!sample?.probes.length}
-        data-testid="node-ping"
-        data-latency={sample?.latency ?? ""}
-        data-loss={sample?.loss ?? ""}
-        title={probeTitle(sample)}
-      >
-        <div class="ping-caption">延迟 ms{" "}<b class="nc-pv tnum">{formatProbes(sample, "latency")}</b></div>
-        <div class="ping-caption nc-pr">丢包 %{" "}<b class="nc-pv tnum">{formatProbes(sample, "loss")}</b></div>
-        <div data-testid="ping-bars" class="nc-pbars" aria-hidden="true">
-          {#each BAR_SLOTS as i}<i class={barClass(sample?.buckets[i + offset]?.latency, false)}></i>{/each}
-        </div>
-        <div data-testid="ping-bars" class="nc-pbars nc-pr" aria-hidden="true">
-          {#each BAR_SLOTS as i}<i class={barClass(sample?.buckets[i + offset]?.loss, true)}></i>{/each}
-        </div>
+      <div class="nc-ping {!node.online || !sample?.probes.length ? 'muted' : ''}" data-testid="node-ping" data-latency={sample?.latency ?? ""} data-loss={sample?.loss ?? ""} title={node.online ? probeTitle(sample) : "节点离线"}>
+        <div class="ping-caption">延迟 ms{" "}<b class="nc-pv mono">{formatProbes(sample, "latency", node.online)}</b></div>
+        <div class="ping-caption nc-pr">丢包 %{" "}<b class="nc-pv mono">{formatProbes(sample, "loss", node.online)}</b></div>
+        {#each [false, true] as isLoss}
+          <div data-testid="ping-bars" class="nc-pbars {isLoss ? 'nc-pr' : ''}" aria-hidden="true">
+            {#each BAR_SLOTS as i}<i class={barClass(isLoss ? sample?.buckets[i + offset]?.loss : sample?.buckets[i + offset]?.latency, isLoss, node.online)}></i>{/each}
+          </div>
+        {/each}
       </div>
     {/if}
   {/if}

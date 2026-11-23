@@ -17,6 +17,8 @@ type NodeStoreOptions = {
   reconnectBaseMs?: number
   cachedNodes?: Node[] | null
   onHttpSnapshot?: (nodes: Node[]) => void
+  /** After each accepted network frame, even when all node references are reused. */
+  onFrame?: () => void
   onRemoved?: (id: number) => void
   autoStart?: boolean
 }
@@ -97,6 +99,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     lastUpdated = Date.now()
     error = null
     closed = false
+    opts.onFrame?.()
   }
 
   function fetchOnce(initial?: Promise<Snapshot>): Promise<void> {

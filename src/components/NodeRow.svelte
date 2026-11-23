@@ -80,7 +80,7 @@
         {@const tone = pct != null && pct >= 90 ? "danger" : pct != null && pct >= 80 ? "warn" : ""}
         <td>
           <span class={tone ? `fg-${tone}` : ""}>{pct == null ? "—" : `${pct.toFixed(1)}%`}</span>
-          <i class="nc-bar row-bar {tone}" style:--v="{Math.min(100, pct ?? 0)}%"></i>
+          <i class="hbar row-bar {tone}" style="--v:{Math.min(100, pct ?? 0)}%"></i>
         </td>
       {/each}
     {/if}
@@ -95,7 +95,7 @@
       <span class={exp.level === "expired" ? "fg-danger fw6" : exp.level === "soon" ? "fg-warn fw6" : ""}>{expLabel}</span>
     </td>
     <td class="fg-muted">
-      <i class="status-dot" style:background={!snapshotOnly && n.online ? "var(--online)" : "var(--offline)"}></i>{state}
+      <i class="status-dot" style="background:{!snapshotOnly && n.online ? 'var(--online)' : 'var(--offline)'}"></i>{state}
     </td>
   {:else}
     <td colspan={showPing ? 11 : 9} class="row-stub"></td>

@@ -59,6 +59,14 @@ function resultCell() {
 /** One scheduler per app. Card and row subscriptions share results, cooldowns and capacity. */
 export function createPingStore() {
   const results = new Map<number, ReturnType<typeof resultCell>>()
+  let published = $state(0)
+  function peek(id: number): PingSummary | undefined {
+    // A missing cache entry subscribes to publications without installing a cell.
+    const cell = results.get(id)
+    if (cell) return cell.value
+    void published
+    return undefined
+  }
   function result(id: number) {
     let cell = results.get(id)
     if (!cell) results.set(id, cell = resultCell())
@@ -95,7 +103,11 @@ export function createPingStore() {
       clearTimeout(timeout)
       if (flight.get(id) === ctrl) {
         flight.delete(id)
-        if (!disposed && (!ctrl.signal.aborted || timedOut)) { result(id).value = value; next.set(id, Date.now() + delay) }
+        if (!disposed && (!ctrl.signal.aborted || timedOut)) {
+          result(id).value = value
+          published++
+          next.set(id, Date.now() + delay)
+        }
       }
       schedule()
     }
@@ -160,6 +172,6 @@ export function createPingStore() {
     for (const ctrl of flight.values()) ctrl.abort()
     targets.clear(); visible.clear(); flight.clear(); next.clear(); results.clear()
   }
-  return { observe, get: (id: number) => result(id).value, forget, destroy }
+  return { observe, get: (id: number) => result(id).value, peek, forget, destroy }
 }
 export type PingStore = ReturnType<typeof createPingStore>

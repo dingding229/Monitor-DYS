@@ -1,76 +1,115 @@
-<script lang="ts">
-  import type { Node } from "@/lib/api"
+<script module lang="ts">
   import type { summarizeNodes } from "@/lib/home-view.svelte"
   import { bytes, speed } from "@/lib/format"
 
-  let {
-    summary,
-    mapNodes,
-    accent,
-    loading,
-    showSummary,
-    showMap,
-    selectedCountry = null,
-    onSelectCountry,
-  }: {
-    summary: ReturnType<typeof summarizeNodes>
-    mapNodes: readonly Node[]
-    accent: string
-    loading: boolean
-    showSummary: boolean
-    showMap: boolean
-    selectedCountry?: string | null
-    onSelectCountry: (code: string | null) => void
-  } = $props()
+  type StripStatus = "online" | "warn" | "offline"
+  type Fleet = { tx: readonly number[]; rx: readonly number[]; cpu: readonly number[] }
 
-  let mapModule = $derived(showMap ? import("./WorldMap.svelte") : null)
+  function compressStrip(strip: readonly StripStatus[]): StripStatus[] {
+    if (strip.length <= 40) return strip as StripStatus[]
+    const out: StripStatus[] = [], step = strip.length / 40
+    for (let i = 0; i < 40; i++) {
+      let w: StripStatus = "online"
+      for (let j = Math.floor(i * step), e = Math.max(j + 1, Math.floor((i + 1) * step)); j < e && j < strip.length; j++) {
+        if (strip[j] === "offline") { w = "offline"; break }
+        if (strip[j] === "warn") w = "warn"
+      }
+      out.push(w)
+    }
+    return out
+  }
+
+  function pts(vals: readonly number[], hi: number): string {
+    const n = vals.length
+    if (!n) return "0,24 220,24"
+    const y = (v: number) => (25 - (Math.min(hi, Math.max(0, v)) / hi) * 21).toFixed(1)
+    if (n === 1) return `0,${y(vals[0])} 220,${y(vals[0])}`
+    return vals.map((v, i) => `${((i / (n - 1)) * 220).toFixed(1)},${y(v)}`).join(" ")
+  }
+
+  const split = (s: string) => { const i = s.indexOf(" "); return i > 0 ? [s.slice(0, i), s.slice(i + 1)] : [s, ""] }
+
+  function buildTiles(s: ReturnType<typeof summarizeNodes>, fleet: Fleet, loading: boolean) {
+    const net = split(speed(s.tx + s.rx)), mSum = s.month_tx + s.month_rx, tSum = s.total_tx + s.total_rx, mon = split(bytes(mSum))
+    const netMax = Math.max(1, ...fleet.tx, ...fleet.rx), cpu = fleet.cpu.at(-1) ?? null, pk = s.peakCpu
+    const notes = [s.offline && `${s.offline} 离线`, s.warn && `${s.warn} 告警`, s.expired ? `${s.expired} 到期` : s.expiring && `${s.expiring} 临期`].filter(Boolean).join(" · ") || "全部正常"
+    return {
+      strip: compressStrip(s.statusStrip ?? []),
+      rxPts: pts(fleet.rx, netMax), txPts: pts(fleet.tx, netMax), cpuPts: pts(fleet.cpu, 100),
+      mShare: tSum > 0 ? Math.min(100, Math.max(2, (mSum / tSum) * 100)).toFixed(1) : "0",
+      tiles: [
+        ["strip", "summary-servers", "服务器状态", loading ? "—" : `${(s.uptimeRatio * 100).toFixed(1)}%`, "mono fg-online", String(s.online), `/ ${s.total} 台`, notes, `${s.countries.size} 地区`, "", "mono", 9],
+        ["net", undefined, "实时吞吐", "实时", "tx", net[0], net[1], `↑ ${speed(s.tx)}`, `↓ ${speed(s.rx)}`, "tx mono", "rx mono", 26],
+        ["cpu", undefined, "平均 CPU", loading || s.cores == null ? "" : `${s.cores} 核`, "mono", cpu == null ? "—" : cpu.toFixed(1), cpu == null ? "" : "%", pk ? `峰值 ${pk.name}` : "暂无在线节点", pk ? `${pk.value.toFixed(1)}%` : "", "", `mono fw6 ${pk && pk.value >= 90 ? "fg-danger" : pk && pk.value >= 80 ? "fg-warn" : ""}`, 26],
+        ["bar", undefined, "本期流量", "当期", "", mon[0], mon[1], `↑ ${bytes(s.month_tx)} · ↓ ${bytes(s.month_rx)}`, `总计 ${bytes(tSum)}`, "mono", "mono hide-sm", 8],
+      ] as const,
+    }
+  }
 </script>
 
-{#if showSummary || showMap}
-  {@const tiles = [
-    { label: "服务器", value: `${summary.online} / ${summary.total}`, note: `${summary.offline ? `${summary.offline} 离线` : "全部在线"} · ${summary.countries.size} 个地区`, id: "summary-servers", icon: "M2 2.5h12v4.5H2zM2 9h12v4.5H2zM4.5 4.75h.5M4.5 11.25h.5" },
-    { label: "实时上行", value: speed(summary.tx), note: `本月上行 ${bytes(summary.month_tx)}`, icon: "M8 13V3M4.5 6.5 8 3l3.5 3.5" },
-    { label: "实时下行", value: speed(summary.rx), note: `本月下行 ${bytes(summary.month_rx)}`, icon: "M8 3v10M4.5 9.5 8 13l3.5-3.5" },
-    { label: "累计流量", value: bytes(summary.month_tx + summary.month_rx), note: `历史总计 ${bytes(summary.total_tx + summary.total_rx)}`, icon: "M2.5 13h11M4.5 10.5V7.5M8 10.5V3.5M11.5 10.5V6" },
-    { label: "累计上行", value: bytes(summary.total_tx), note: summary.day_tx === null ? "" : `今日上行 ${bytes(summary.day_tx)}`, id: "summary-total-up", icon: "M2.5 10.5v2.5h11v-2.5M8 9.5V2.5M5 5.5 8 2.5l3 3" },
-    { label: "累计下行", value: bytes(summary.total_rx), note: summary.day_rx === null ? "" : `今日下行 ${bytes(summary.day_rx)}`, id: "summary-total-down", icon: "M2.5 10.5v2.5h11v-2.5M8 2.5v7M5 6.5l3 3 3-3" },
-  ]}
-  <section data-testid="summary" aria-label="节点总览" class="overview" class:split={showSummary && showMap}>
-    {#if showSummary}
+<script lang="ts">
+  import type { Component } from "svelte"
+  import type { createApp } from "@/lib/app-state.svelte"
+
+  let { app }: { app: ReturnType<typeof createApp> } = $props()
+  let MapComp = $state.raw<Component<any> | null>(null)
+  let mapErr = $state(false)
+  $effect(() => {
+    if (!app.config.show_map || MapComp) return
+    let cur = true
+    import("./WorldMap.svelte").then((m) => { if (cur) MapComp = m.default }, () => { if (cur) mapErr = true })
+    return () => { cur = false }
+  })
+</script>
+
+{#if app.config.show_summary || app.config.show_map}
+  {@const s = buildTiles(app.home.summary, app.history.fleet, app.loading)}
+  <section data-testid="summary" aria-label="节点总览" class="overview {app.config.show_summary && app.config.show_map ? 'split' : ''}">
+    {#if app.config.show_summary}
       <div class="tiles">
-        {#each tiles as tile (tile.label)}
+        {#each s.tiles as [k, id, label, r, rCls, v, u, fl, fr, flCls, frCls, bh] (k)}
           <div class="panel tile" data-testid="summary-tile">
-            <div data-testid={tile.id}>
-              <div class="tile-label">
-                <span>{tile.label}</span>
-                <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
-                  <path d={tile.icon} />
-                </svg>
-              </div>
-              {#if loading}
-                <div class="bone" style="margin-top:8px;height:24px;width:66%"></div>
+            <div data-testid={id} class="kpi-inner">
+              <div class="tile-label"><span>{label}</span><span class={rCls}>{r}</span></div>
+              {#if app.loading}
+                <div class="bone" style="height:26px;width:60%"></div>
+                <div class="bone" style="height:{bh}px;width:100%"></div>
               {:else}
-                {@const parts = tile.value.split(" ")}
-                <div class="tile-value tnum">{parts[0]}<small>{" " + parts.slice(1).join(" ")}</small></div>
+                <div class="tile-value mono">{v}<small>{u}</small></div>
+                {#if k === "strip"}
+                  <div class="health-strip" data-testid="status-strip" aria-hidden="true">{#each s.strip as st}<i class={st === "warn" ? "w" : st === "offline" ? "o" : ""}></i>{/each}</div>
+                {:else if k === "bar"}
+                  <i class="hbar" style="--v:{s.mShare}%;height:8px"></i>
+                {:else}
+                  <svg class="kpi-spark" data-testid="fleet-spark" viewBox="0 0 220 28" preserveAspectRatio="none" aria-hidden="true">
+                    {#if k === "cpu"}
+                      <polygon fill="var(--accent-soft)" points="0,28 {s.cpuPts} 220,28" />
+                      <polyline fill="none" stroke="var(--accent)" stroke-width="1.8" points={s.cpuPts} />
+                    {:else}
+                      <polyline fill="none" stroke="var(--rx)" stroke-width="1.8" points={s.rxPts} />
+                      <polyline fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 2" points={s.txPts} />
+                    {/if}
+                  </svg>
+                {/if}
               {/if}
-              <div class="tile-note tnum" title={tile.note}>{loading ? "" : tile.note}</div>
+              <div class="tile-note">
+                <span class={flCls}>{app.loading ? "" : fl}</span>
+                {#if !app.loading && fr}<span class={frCls}>{fr}</span>{/if}
+              </div>
             </div>
           </div>
         {/each}
       </div>
     {/if}
 
-    {#if mapModule}
-      {#snippet placeholder()}
-        <div class="panel map-placeholder" aria-label="加载地区分布"><span class="bone" style="display:block;height:16px;width:25%"></span></div>
-      {/snippet}
-      {#await mapModule}
-        {@render placeholder()}
-      {:then { default: WorldMap }}
-        {#if loading}{@render placeholder()}{:else}<WorldMap nodes={mapNodes} {accent} {selectedCountry} {onSelectCountry} />{/if}
-      {:catch}
+    {#if app.config.show_map}
+      {#if mapErr}
         <div class="panel fg-muted" style="padding:16px;font-size:12px">地图加载失败，请刷新重试。</div>
-      {/await}
+      {:else if MapComp && !app.loading}
+        <MapComp nodes={app.home.directory.grouped} readPing={app.ping.peek} selectedCountry={app.country} onSelectCountry={(c: string | null) => app.setCountry(c)} />
+      {:else}
+        <div class="panel map-placeholder" aria-label="加载地区分布"><span class="bone" style="display:block;height:16px;width:25%"></span></div>
+      {/if}
     {/if}
   </section>
 {/if}

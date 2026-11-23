@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="emerald">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light dark" />
-    <script>{let s;try{s=localStorage.getItem('dys:scheme')}catch{}document.documentElement.dataset.scheme=s==='light'||s==='dark'?s:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}</script>
+    <meta name="color-scheme" content="light" />
+    <script>{let t;try{t=localStorage.getItem('dys:theme')}catch{}document.documentElement.dataset.theme=/^(?:emerald|ocean|indigo|amber|rose|slate)$/.test(t||'')?t:'emerald'}</script>
     <!-- Critical paint: keep in sync with --bg/--surface/--border in app.css. -->
-    <style>html,body{background:#f4f6f8;color:#0f172a;margin:0}.boot-header{height:48px;background:#fff;border-bottom:1px solid #e2e8f0}:root[data-scheme="dark"],:root[data-scheme="dark"] body{background:#0b0f14;color:#f1f5f9}:root[data-scheme="dark"] .boot-header{background:#11161d;border-bottom-color:#222c38}</style>
+    <style>html,body{background:#eaedf2;color:#0b1320;margin:0}.boot-header{height:50px;background:#fff;border-bottom:1px solid #d4dde8}</style>
     <link rel="preload" href="/api/nodes" as="fetch" crossorigin="anonymous" />
     <link rel="icon" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

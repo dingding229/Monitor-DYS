@@ -2,40 +2,16 @@
   import { getBrandIcon } from "@/lib/icons"
 
   let { key = "unknown", kind = "os", size = 14, title = "" }: {
-    key?: string
-    kind?: "os" | "browser"
-    size?: number
-    title?: string
+    key?: string; kind?: "os" | "browser"; size?: number; title?: string
   } = $props()
 
-  let iconDef = $derived(getBrandIcon(key, kind))
+  let d = $derived(getBrandIcon(key, kind))
 </script>
 
-{#if iconDef.src}
-  <span
-    data-testid="brand-icon"
-    data-key={key}
-    role="img"
-    aria-label={title || key}
-    {title}
-    class="brand-ico"
-    style:width="{size}px"
-    style:height="{size}px"
-    style:background-color={iconDef.color}
-    style:mask-image={`url("${iconDef.src}")`}
-  ></span>
+{#if d.src}
+  <span data-testid="brand-icon" data-key={key} role="img" aria-label={title || key} {title} class="brand-ico" style="width:{size}px;height:{size}px;background-color:{d.color};mask-image:url('{d.src}')"></span>
 {:else}
-  <svg
-    data-testid="brand-icon"
-    data-key={key}
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill={iconDef.color}
-    role="img"
-    aria-label={title || key}
-    class="brand-ico"
-  >
-    {#each iconDef.paths ?? [] as d (d)}<path {d} />{/each}
+  <svg data-testid="brand-icon" data-key={key} width={size} height={size} viewBox="0 0 24 24" fill={d.color} role="img" aria-label={title || key} class="brand-ico">
+    {#each d.paths ?? [] as p (p)}<path d={p} />{/each}
   </svg>
 {/if}

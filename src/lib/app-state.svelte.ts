@@ -8,15 +8,19 @@
  * tabs, grouped map input and filtered/sorted nodes. `orderedNodes` is the same
  * filtered order for the detail switcher; `activeNode` can still be a deep link
  * outside that list. `snapshotOnly` means no live/HTTP frame has arrived yet.
+ * v3: `config.theme` selects the CSS preset. `history.fleet` stores fleet trends;
+ * read `history.version` before `history.load(id)` in a reactive expression.
+ * Pass `ping.peek` to the map for cache-only Ping lookups (no new cache cells).
  *
  * Use `setLayout`, `setSort`, `setGroup`, `setCountry`, `setQuery`, `selectNode`,
  * `back` (navigate home, not history.back), and `retry` to change session state.
  */
 import { onDestroy, onMount } from "svelte"
 import { ALL_GROUP, UNGROUPED, ApiError, api, type GroupKey, type Me, type Node } from "./api"
-import { resolveColorScheme, resolveConfig, type ColorScheme, type ThemeConfig } from "./config"
+import { resolveConfig, type ThemeConfig } from "./config"
 import { loadDetail } from "./detail"
 import { createHomeView } from "./home-view.svelte"
+import { createHistory } from "./history.svelte"
 import { createNodeStore } from "./nodes.svelte"
 import { createPingStore } from "./ping.svelte"
 import { createRouter } from "./router.svelte"
@@ -36,18 +40,13 @@ const connectionLabels = {
   live: { color: "var(--online)", text: "实时更新" },
   polling: { color: "var(--warn)", text: "轮询更新" },
 } as const
-const SCHEME_KEY = "dys:scheme"
-
-function cachedScheme(): ColorScheme {
-  try { return resolveColorScheme(localStorage.getItem(SCHEME_KEY)) }
-  catch { return "auto" }
-}
 
 export function createApp(initial: AppStartup) {
   const router = createRouter()
   const ping = createPingStore()
+  const history = createHistory((): readonly Node[] => nodeStore.nodes ?? [])
   const nodeStore = createNodeStore({
-    autoStart: false, cachedNodes: readSnapshot(), onRemoved: ping.forget,
+    autoStart: false, cachedNodes: readSnapshot(), onRemoved: ping.forget, onFrame: history.sample,
     onHttpSnapshot(nodes) { if (canCachePublic()) saveSnapshot(nodes) },
   })
   const prefs = loadPrefs()
@@ -57,7 +56,6 @@ export function createApp(initial: AppStartup) {
   let meUnauthorized = $state(false)
   let config = $state.raw(resolveConfig())
   let configLoaded = $state(false)
-  let scheme = $state(cachedScheme())
   let mounted = false
 
   const initialView = readView()
@@ -71,7 +69,7 @@ export function createApp(initial: AppStartup) {
   )
   const home = createHomeView(() => sortedNodes, () => ({
     group, country, query: config.show_search ? debounced : "", sort: config.show_sort ? sort : "default",
-  }))
+  }), ping.peek, () => config.expiry_warning_days)
   const activeNode = $derived.by(() => {
     const id = router.route.nodeId
     return id === null ? null : sortedNodes.find(n => n.id === id) ?? null
@@ -101,17 +99,6 @@ export function createApp(initial: AppStartup) {
     sort = view.sort
   }
 
-  $effect(() => { document.documentElement.style.setProperty("--accent", config.accent || "#10b981") })
-  $effect(() => {
-    const selected = scheme
-    const media = selected === "auto" ? window.matchMedia?.("(prefers-color-scheme: dark)") : undefined
-    const apply = () => {
-      document.documentElement.dataset.scheme = selected === "auto" ? (media?.matches ? "dark" : "light") : selected
-    }
-    apply()
-    media?.addEventListener?.("change", apply)
-    return () => media?.removeEventListener?.("change", apply)
-  })
   $effect(() => { document.title = activeNode ? `${activeNode.name} · ${siteName}` : siteName })
   $effect(() => { nodeStore.setPollInterval(config.poll_interval) })
   $effect(() => {
@@ -153,9 +140,9 @@ export function createApp(initial: AppStartup) {
       if (!mounted) return
       config = next
       configLoaded = loaded
-      scheme = next.color_scheme
-      // This cache is only a first-paint hint, never a visitor override.
-      try { localStorage.setItem(SCHEME_KEY, next.color_scheme) } catch { /* storage unavailable */ }
+      document.documentElement.dataset.theme = next.theme
+      // First-paint hint only; the site config still decides the preset.
+      try { localStorage.setItem("dys:theme", next.theme) } catch { /* storage unavailable */ }
     })
     // The root props can retain the settled Promise for the page lifetime.
     nodeStore.start(initial.initialNodes.then(payload => {
@@ -203,6 +190,7 @@ export function createApp(initial: AppStartup) {
     get connectionLabel() { return connectionLabels[nodeStore.connectionState] },
     get lastUpdateTitle() { return lastUpdateTitle },
     home, ping,
+    history: { get fleet() { return history.fleet }, get version() { return history.version }, load: history.load },
     get pingEnabled() { return configLoaded && config.show_ping },
     setLayout(next: ThemeConfig["layout"]) {
       layoutPref = next

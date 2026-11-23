@@ -1,4 +1,6 @@
 /**
+ * v3: `ThemeConfig.theme` is one of the six `ThemeKey` presets; use
+ * `resolveTheme(value)` for untrusted input. Old color settings are ignored.
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
 import manifest from "../../theme.json"
@@ -15,17 +17,17 @@ type ConfigField = {
   max?: number
 }
 
-export type ColorScheme = "auto" | "light" | "dark"
+const themes = ["emerald", "ocean", "indigo", "amber", "rose", "slate"] as const
+export type ThemeKey = typeof themes[number]
 
-export function resolveColorScheme(value: unknown): ColorScheme {
-  return value === "light" || value === "dark" ? value : "auto"
+export function resolveTheme(value: unknown): ThemeKey {
+  return themes.find(theme => theme === value) ?? "emerald"
 }
 
 export type ThemeConfig = {
-  color_scheme: ColorScheme
+  theme: ThemeKey
   layout: "grid" | "table"
   card_size: "compact" | "standard"
-  accent: string
   show_summary: boolean
   show_ping: boolean
   show_map: boolean
@@ -38,21 +40,6 @@ export type ThemeConfig = {
   footer: string
   footer_url: string
   poll_interval: number
-}
-
-function isValidCssColor(v: string): boolean {
-  const s = v.trim()
-  if (!s) return false
-  if (typeof CSS !== "undefined" && typeof CSS.supports === "function") {
-    return CSS.supports("color", s)
-  }
-  if (typeof document !== "undefined" && typeof document.createElement === "function") {
-    const span = document.createElement("span")
-    span.style.color = ""
-    span.style.color = s
-    return span.style.color !== ""
-  }
-  return false
 }
 
 function isValidHttpUrl(v: string): boolean {
@@ -80,12 +67,11 @@ export function resolveConfig(
 ): ThemeConfig {
   const fields = extractFields(declared)
   const raw = isObj(saved) ? saved : {}
-  // Support this built-in setting before the manifest exposes it in the Hub.
-  const result: Record<string, unknown> = { color_scheme: resolveColorScheme(raw.color_scheme) }
+  const result: Record<string, unknown> = { theme: resolveTheme(raw.theme) }
 
   for (const field of fields) {
-    if (field.type === "title" || !field.key || field.key === "color_scheme") continue
-    const key = field.key
+    const { key } = field
+    if (!key || field.type === "title" || key === "theme" || key === "accent" || key === "color_scheme") continue
     const def = field.default
     const val = raw[key]
 
@@ -95,11 +81,11 @@ export function resolveConfig(
       case 'number': valid = num(val) && val >= (field.min ?? -Infinity) && val <= (field.max ?? Infinity); break
       case 'select': valid = !!field.options?.some(o => o.value === val); break
       case 'string': case 'text':
-        valid = typeof val === 'string' && (key==='accent' ? isValidCssColor(val) : key==='footer_url' ? isValidHttpUrl(val) : true)
+        valid = typeof val === 'string' && (key !== 'footer_url' || isValidHttpUrl(val))
         break
       default: valid = typeof val === typeof def
     }
-    result[key] = !valid ? def : typeof val === 'string' && (key==='accent' || key==='footer_url') ? val.trim() : val
+    result[key] = !valid ? def : typeof val === 'string' && key === 'footer_url' ? val.trim() : val
   }
   return result as unknown as ThemeConfig
 }

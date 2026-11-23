@@ -36,7 +36,7 @@
 </script>
 
 {#if enabled && !dismissed}
-  <div class="visitor-anchor" class:docked>
+  <div class="visitor-anchor {docked ? 'docked' : ''}">
     {#if expanded}
       <div data-testid="visitor-panel" class="visitor-popover panel vb-panel">
         <div class="vb-head">
@@ -95,8 +95,8 @@
   .vb-row dt { flex-shrink: 0; color: var(--fg-subtle); }
   .vb-row dd { display: inline-flex; min-width: 0; align-items: center; gap: 6px; font-weight: 500; color: var(--fg); }
   .vb-trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .vb-pill { display: inline-flex; height: 30px; cursor: pointer; align-items: center; gap: 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); padding: 0 12px; font-size: 12px; font-weight: 500; color: var(--fg-muted); }
-  .vb-pill:hover { border-color: var(--border-strong); color: var(--fg); }
+  .vb-pill { display: inline-flex; height: 28px; cursor: pointer; align-items: center; gap: 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); padding: 0 11px; font-size: 11.5px; font-weight: 500; color: var(--fg-muted); }
+  .vb-pill:hover { border-color: var(--border-strong); background: var(--surface); color: var(--fg); }
   .vb-item { display: inline-flex; align-items: center; gap: 6px; }
   .vb-reg { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .vb-sep { color: var(--border-strong); }
