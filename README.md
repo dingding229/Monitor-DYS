@@ -1,25 +1,34 @@
 # Monitor-DYS
 
-紧凑信息型 [Monitor](https://github.com/monitor-probe/monitor) 状态主题，基于 **Svelte 5 (runes) + Vite + Tailwind CSS v4 + uPlot** 构建。
+面向 [Monitor](https://github.com/monitor-probe/monitor) 的紧凑型状态主题。**v2.0** 带来全新的浅色总览、地区统计和节点详情，基于 **Svelte 5 (runes) + Vite + Tailwind CSS v4 + uPlot** 构建。
+
+![Monitor-DYS v2.0 首页：总览、地图与地区统计、节点卡片](preview.png)
 
 部分数据格式化与实时流逻辑参考并移植自官方默认主题 `monitor-theme-default`（MIT License, Copyright (c) 2026 stqfdyr）。
 
 ## 特性
 
-- **紧凑高信息密度浅色风格**：浅灰底色（`#f5f6f7`）和不透明白色面板，无阴影、无渐变高光，卡片悬停仅加深边框。使用`1px` 细边框、`8px` 圆角、表格数字等宽（`tabular-nums`），支持紧凑（最小宽 236px）与标准（最小宽 280px）两种卡片尺寸。
-- **单主题色（Accent）**：默认 `#10b981`，支持后台配置任意合法 CSS 颜色（通过 `CSS.supports("color", v)` 校验），用于选中状态、进度条与图表主线；资源进度条 ≥80% 自动切换琥珀色提醒，≥90% 切换红色告警。
-- **大量节点**：超过 60 台时首批显示 40 台，随后空闲时分批追加；屏幕外冻结数据，返回视口时同步最新帧。超过 500 台只缓存前 120 台。
-- **可分享的筛选**：分组、地区、搜索和排序写入 `g`、`c`、`q`、`sort`。首页 `/` 聚焦搜索，`Esc` 清空；详情页 `←` / `→` 沿筛选顺序切换，返回时恢复滚动位置。
-- **六格总览**：按分组、国家和搜索结果汇总在线服务器、实时上下行、本月流量及历史上下行；Hub 支持时显示今日流量。
-- **快速首屏**：身份、节点与配置并行读取；预加载节点和地图；再次访问时可先显示 24 小时内的公开节点快照（上限 200KB，不缓存身份、后台信息），首次访问先绘制浅灰底与静态顶栏，再显示骨架，节点详情与图表按需加载。
-- **真实轮廓点阵世界地图 + 国家列表筛选**：
-  - 基于 Natural Earth 110m 边界在构建期生成 1.5° 等距圆柱投影点阵（`scripts/gen-map.mjs` → `src/lib/map-data.ts`），有节点的国家自动以主题色高亮（透明度随节点数加深）。
-  - 国家中心点显示圆形数量徽章与国旗（重叠区域自动带引线避让），悬停展示国家名、在线/总数、合计上下行速率与节点列表；右侧/下方附带按节点数降序排列的紧凑国家列表，点击地图国家或列表行即可按国家筛选节点。
-- **发行版与浏览器品牌图标**：按需 tree-shaking 引入 `simple-icons`（CC0），自动识别 Debian、Ubuntu、Rocky、AlmaLinux、CentOS、Fedora、Alpine、Arch、openSUSE、OpenWrt（含 iStoreOS / ImmortalWrt）、FreeBSD、macOS、Linux 以及 Chrome、Firefox、Safari、Opera、微信、QQ 浏览器等品牌图标。
-- **增强详情页**：顶部前后节点切换器与下拉选择、4 张核心指标卡片、名称卡片内的系统运行信息、4 列并排 uPlot 资源趋势图（CPU、含总容量参考虚线的内存与磁盘、网络速率，标题右侧紧凑图例 + 跟随光标纯文本浮层，支持「显示峰值」切换）与 Ping 延迟/丢包图，以及底部「硬件与系统」「流量与费用」双栏详单。
-- **Ping 探测节点选择**：点击胶囊联动筛选延迟与丢包曲线，胶囊显示窗口内的平均延迟；Alt/⌥ 点击或双击（手机双击）仅看一个探针，「全部」恢复，选择按名称在本机保存。
-- **底部访客气泡**：页脚可见时并入页脚，否则底部悬浮。显示访客出口地区中文名与浏览器品牌图标，点击展开设备/系统、浏览器版本、出口 IP、城市、运营商（ISP/ASN）与访问时间。
-- **未登录零后台入口**：仅在 `/api/me` 返回 `authed === true` 时显示右上角齿轮后台链接（`/admin`），匿名访客界面不展示任何登录或后台按钮。
+- **首页总览**：四块面板展示服务器状态、实时吞吐、平均 CPU 和本期流量。状态色块区分在线、告警与离线；吞吐和 CPU 折线随实时数据更新。
+- **世界地图与地区统计**：点阵地图按地区节点数着色，悬停可看在线/总数、上下行速率和平均延迟。点击地图标记或地区列表可筛选节点；手机端以地区列表为主。
+- **节点卡片与列表**：卡片展示 CPU、内存、磁盘与流量指标，附最近负载趋势、速率、当期流量和到期信息。开启 Ping 后，卡片显示最多三个探针的延迟和丢包，以及最近 12 段色条；列表显示平均值。支持紧凑和标准卡片尺寸。
+- **节点详情**：查看资源趋势、Ping 延迟与丢包、硬件与系统、流量与费用；支持选择时间范围、查看峰值和筛选探针。点击探针标签切换，Alt/⌥ 点击或双击可仅看一个探针，「全部」恢复显示。
+- **只提供浅色模式**：从后台「主题色」选择翡翠青、海洋蓝、靛蓝紫、琥珀金、玫红或石墨灰。主题色用于选中态和趋势线等，在线、告警、危险与离线状态色保持不变。
+- **可分享的筛选**：分组、地区、搜索和排序保存在 URL 的 `g`、`c`、`q`、`sort` 参数里。首页按 `/` 聚焦搜索、按 `Esc` 清空；详情页按 `←` / `→` 沿筛选顺序切换，返回首页时恢复滚动位置。
+- **大量节点与快速首屏**：身份、节点与配置并行读取；大量节点分批渲染，离屏卡片冻结更新。再次访问时可先显示近期公开节点快照；详情页及图表按需加载。
+- **访客信息与后台入口**：可选的访客气泡显示出口地区、浏览器与设备信息。公开页仅对已登录管理员显示后台入口；状态页不公开时显示登录提示。
+
+## 体积与性能
+
+以下为 v2.0 的[基准测量](docs/perf/current.json)。JS 体积为 gzip（1 KB = 1,000 字节）；交互指标取 Chromium、1440 × 900 下 500 节点场景的三次运行中位数。
+
+| 指标 | 实测 |
+|---|---:|
+| 入口 JS | 41.7 KB |
+| 首屏 JS（含地图） | 59.8 KB |
+| 详情 JS | 30.0 KB |
+| 首张卡片出现 | 73 ms |
+| 500 节点运行 60 秒后的 JS 堆 | 8.2 MiB |
+| 单张卡片后代元素 | 79 个 |
 
 ## 隐私与外部请求说明
 
@@ -42,21 +51,20 @@ https://github.com/dingding229/Monitor-DYS
 
 ## 更新
 
-在管理面板 **「主题」** 页面中，找到已安装的 **DYS** 主题，点击 **「从 GitHub 更新」**（或重新填入 `https://github.com/dingding229/Monitor-DYS` 安装最新 Release），无需重启 Hub 即可生效。已保存的主题设置会保留。
+在管理面板 **「主题」** 页面中，找到已安装的 **DYS** 主题，点击 **「从 GitHub 更新」**（或重新填入 `https://github.com/dingding229/Monitor-DYS` 安装最新 Release），无需重启 Hub 即可生效。仍受支持的主题设置会保留。
 
 ## 主题设置（`theme.json`）
 
-站长可在后台「主题 → 设置」中调整以下参数（未保存或旧版 Hub 不支持时自动使用默认值）：
+站长可在后台「主题 → 设置」中调整以下参数（未保存或旧版 Hub 不支持时自动使用默认值）。从旧版升级时，`accent`（自定义颜色）和 `color_scheme`（深浅模式）已移除，旧值会被忽略；请通过「主题色」重新选择预设。
 
 | 键名 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `layout` | `select` | `"grid"` | 默认布局：`"grid"`（卡片）或 `"table"`（列表）；访客可在页面切换并保存在浏览器 `localStorage` |
 | `card_size` | `select` | `"compact"` | 卡片尺寸：`"compact"`（紧凑）或 `"standard"`（标准） |
-| `accent` | `string` | `"#10b981"` | 主题色（任意合法 CSS 颜色，无效值回退 `#10b981`） |
-| `color_scheme`（v2.0） | `select` | `"auto"` | 配色：`"auto"` 跟随系统，`"light"` / `"dark"` 固定浅色 / 深色；非法值回退 `"auto"`。 |
-| `show_summary` | `boolean` | `true` | 显示首页六格总览卡片 |
+| `theme` | `select` | `"emerald"` | 主题色：翡翠青 (`emerald`)、海洋蓝 (`ocean`)、靛蓝紫 (`indigo`)、琥珀金 (`amber`)、玫红 (`rose`)、石墨灰 (`slate`) |
+| `show_summary` | `boolean` | `true` | 显示首页的状态、吞吐、CPU 和流量总览 |
 | `show_ping` | `boolean` | `true` | 卡片底部显示最多三个探针的读数，以及最近 12 段延迟和丢包色条；列表显示平均值。关闭后首页和详情页均不请求 Ping。首页仅在空闲时读取视口附近的在线节点，每分钟更新，并发最多 3 个。 |
-| `show_map` | `boolean` | `true` | 显示首页点阵世界地图与国家列表 |
+| `show_map` | `boolean` | `true` | 显示首页点阵世界地图及地区统计 |
 | `show_search` | `boolean` | `true` | 显示搜索框 |
 | `show_sort` | `boolean` | `true` | 显示排序下拉选择 |
 | `announcement` | `text` | `""` | 顶部公告（纯文本渲染，保留换行） |
@@ -96,19 +104,19 @@ MONITOR_HUB=http://127.0.0.1:9911 npm run dev
 - `npm run gen:map`：从 `world-atlas` (Natural Earth 110m) 重新生成 `src/lib/map-data.ts`
 - `npm run check`：运行 `svelte-check` 与 TypeScript 类型检查
 - `npm run build`：构建生产包至 `dist/`
-- `node scripts/check-size.mjs`：检查构建资产的 gzip 体积（v2 入口 / 首屏 / 详情 JS 分别为 42 / 60 / 30 KB，CSS 总量 ≤ 8.936 KB）。重写期间可用 `SIZE_BUDGET=v1` 验证旧 JS 预算；GitHub Actions 暂时默认 v1，可用 `SIZE_BUDGET=v2` 切换。
+- `node scripts/check-size.mjs`：检查构建资产的 gzip 体积（v2 入口 / 首屏 / 详情 JS 分别为 42 / 60 / 30 KB，CSS 总量 ≤ 8.936 KB）。本地和 GitHub Actions 默认使用 v2；如需手动验证旧 JS 预算，可指定 `SIZE_BUDGET=v1`。
 - `npm test`：运行 Vitest 单元测试
 - `npm run test:e2e`：运行 Playwright 端到端测试
 
 ## 发版
 
-1. 确保 `theme.json`、`package.json`、`package-lock.json` 三者的 `version` 完全一致（例如 `1.3.0`）。
+1. 确保 `theme.json`、`package.json`、`package-lock.json` 三者的 `version` 完全一致。
 2. 本地执行完整检查、测试与打包验证：
    ```bash
-   npm run check && npm test && npm run build && npm run test:e2e
+   npm run check && npm test && npm run build && node scripts/check-size.mjs && npm run test:e2e
    bash scripts/pack.sh && node scripts/verify-package.mjs
    ```
-3. 推送与版本号一致的 Git 标签 `v<version>`（例如 `v1.3.0`）触发 `.github/workflows/release.yml`，自动构建、校验并发布包含 `theme.tar.gz` 与 `theme.tar.gz.sha256` 的正式版 GitHub Release。
+3. 推送与版本号一致的 Git 标签 `v<version>` 触发 `.github/workflows/release.yml`，自动构建、校验并发布包含 `theme.tar.gz` 与 `theme.tar.gz.sha256` 的正式版 GitHub Release。
 
 ## 许可
 

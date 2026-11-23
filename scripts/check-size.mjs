@@ -153,8 +153,7 @@ function main() {
       return total + cache.get(file)
     }, 0)
   }
-  // Keep current GitHub workflows on v1 until the v2 UI lands. An explicit override always wins.
-  const version = process.env.SIZE_BUDGET ?? (process.env.GITHUB_ACTIONS === "true" ? "v1" : "v2")
+  const version = process.env.SIZE_BUDGET ?? "v2"
   if (version !== "v1" && version !== "v2") throw new Error("SIZE_BUDGET must be v1 or v2")
   const [entryLimit, initialLimit, detailLimit] = version === "v1" ? [60, 85, 40] : [42, 60, 30]
   const limits = [
