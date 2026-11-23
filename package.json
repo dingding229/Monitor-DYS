@@ -11,7 +11,9 @@
     "e2e": "playwright test",
     "test:e2e": "npm run e2e",
     "preview": "vite preview",
-    "gen:map": "node scripts/gen-map.mjs"
+    "gen:map": "node scripts/gen-map.mjs",
+    "perf": "node tests/perf/measure.mjs --out docs/perf/current.json",
+    "perf:compare": "node tests/perf/compare.mjs docs/perf/baseline-v1.6.json docs/perf/current.json"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.0",
