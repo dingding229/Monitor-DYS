@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>方向 C · 硬件机架与终端 HUD（Server Blade HUD）</title>
+<style>
+:root {
+  --bg: #eeede8;
+  --surface: #faf9f6;
+  --surface-2: #e7e5de;
+  --surface-hover: #dfddd5;
+  --border: #d2cfc5;
+  --border-strong: #a8a498;
+  --border-sub: #e2dfd7;
+  --fg: #141517;
+  --fg-muted: #4b4d55;
+  --fg-subtle: #73757e;
+  --accent: #ea580c;
+  --accent-soft: rgba(234, 88, 12, 0.1);
+  --online: #10b981;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --offline: #8c8e96;
+  --tx: #059669;
+  --rx: #0284c7;
+  --track: #dcd9d0;
+  --chart-grid: #e5e2da;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+[data-theme="dark"] {
+  --bg: #101114;
+  --surface: #181a1f;
+  --surface-2: #121418;
+  --surface-hover: #21242b;
+  --border: #2a2d36;
+  --border-strong: #424754;
+  --border-sub: #21242c;
+  --fg: #f3f4f6;
+  --fg-muted: #9ca3af;
+  --fg-subtle: #6b7280;
+  --accent: #f97316;
+  --accent-soft: rgba(249, 115, 22, 0.14);
+  --online: #34d399;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --offline: #525866;
+  --tx: #34d399;
+  --rx: #38bdf8;
+  --track: #252830;
+  --chart-grid: #22252d;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { font-family: var(--font-sans); font-size: 13px; line-height: 1.45; color: var(--fg); background: var(--bg); -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; }
+h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
+a { color: inherit; text-decoration: none; }
+button, select, input { font-family: inherit; font-size: 12px; color: inherit; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.tnum { font-variant-numeric: tabular-nums; }
+.tx { color: var(--tx); }
+.rx { color: var(--rx); }
+.w { color: var(--warn); }
+.d { color: var(--danger); }
+.hidden { display: none !important; }
+.wrap { width: 100%; max-width: 1440px; margin: 0 auto; padding-inline: 16px; }
+.rack { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; min-width: 0; }
+
+/* Hardware HUD Top Bar */
+.hud-bar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); }
+.hud-in { height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hud-brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-weight: 700; font-size: 13.5px; letter-spacing: 0.02em; }
+.sq-led { width: 9px; height: 9px; border-radius: 2px; background: var(--online); display: inline-block; flex-shrink: 0; }
+.sq-led.accent { background: var(--accent); }
+.sq-led.warn { background: var(--warn); }
+.sq-led.danger { background: var(--danger); }
+.sq-led.offline { background: var(--offline); }
+.hud-right { display: flex; align-items: center; gap: 8px; }
+.hbtn { height: 28px; padding: 0 10px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg-muted); font-family: var(--font-mono); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.hbtn:hover { border-color: var(--border-strong); color: var(--fg); }
+.hbtn[aria-pressed="true"] { background: var(--fg); color: var(--surface); border-color: var(--fg); }
+.hseg { display: inline-flex; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.hseg button { height: 26px; padding: 0 9px; border: 0; background: var(--surface-2); color: var(--fg-muted); font-family: var(--font-mono); font-size: 11px; font-weight: 600; cursor: pointer; }
+.hseg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
+/* Main */
+main { flex: 1; padding: 14px 0 24px; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+
+/* Asymmetric Bento Overview */
+.bento { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 960px) { .bento { grid-template-columns: 3fr 4fr 5fr; } }
+.b-box { padding: 14px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
+.b-tag { display: flex; align-items: center; justify-content: space-between; font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-subtle); letter-spacing: 0.06em; text-transform: uppercase; }
+.b-big { font-family: var(--font-mono); font-size: 34px; font-weight: 700; line-height: 1; letter-spacing: -0.04em; color: var(--fg); }
+.b-big small { font-size: 14px; color: var(--fg-subtle); font-weight: 500; }
+.b-sub { font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted); display: flex; justify-content: space-between; gap: 8px; }
+
+/* Pure-CSS 10-Segment LED Block Meter (htop style, 1 DOM element!) */
+.led-bar {
+  display: block; height: 8px; border-radius: 2px; position: relative; overflow: hidden;
+  background: repeating-linear-gradient(to right, var(--track) 0 calc(10% - 2px), transparent calc(10% - 2px) 10%);
+}
+.led-bar::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v, 0%);
+  background: repeating-linear-gradient(to right, var(--c, var(--online)) 0 8px, transparent 8px 10px);
+  background-size: 100% 100%;
+}
+/* Exact 10-block mask using CSS linear-gradient on ::after to carve clean 2px gaps */
+.led-bar { background: var(--track); }
+.led-bar::before { background: var(--c, var(--online)); }
+.led-bar::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(to right, transparent 0 calc(10% - 2px), var(--surface) calc(10% - 2px) 10%);
+}
+.led-bar.w { --c: var(--warn); }
+.led-bar.d { --c: var(--danger); }
+
+.osc-svg { width: 100%; height: 78px; display: block; background: var(--surface-2); border: 1px solid var(--border-sub); border-radius: 3px; }
+.reg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.reg-cell { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border-sub); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; cursor: pointer; }
+.reg-cell:hover { border-color: var(--accent); }
+
+/* Toolbar */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; }
+.tab { height: 28px; padding: 0 10px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-muted); font-family: var(--font-mono); font-size: 11.5px; cursor: pointer; white-space: nowrap; }
+.tab[aria-selected="true"] { background: var(--fg); color: var(--surface); border-color: var(--fg); font-weight: 700; }
+.tools-r { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ctrl { height: 28px; padding: 0 8px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface); font-family: var(--font-mono); font-size: 11.5px; }
+.search { width: 190px; }
+
+/* Server Blade Cards (4-col on 1440px) */
+.blade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 12px; align-items: start; }
+.blade { display: flex; flex-direction: column; padding: 12px; gap: 10px; white-space: nowrap; cursor: pointer; transition: border-color 120ms; }
+.blade:hover { border-color: var(--accent); }
+.blade[data-st="warn"] { border-top: 2px solid var(--warn); }
+.blade[data-st="danger"] { border-top: 2px solid var(--danger); }
+.blade[data-st="offline"] { opacity: 0.65; }
+
+.bl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--border); }
+.bl-hl { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.bl-idx { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--fg-subtle); padding: 1px 4px; border-radius: 2px; background: var(--surface-2); }
+.bl-name { font-size: 13.5px; font-weight: 700; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.bl-hr { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-subtle); flex-shrink: 0; }
+
+/* 4-Row htop LED Meters */
+.bl-meters { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px; }
+.bm { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bm-top { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; }
+.bm-top span { color: var(--fg-subtle); }
+.bm-top b { color: var(--fg); font-weight: 700; }
+.bm-sub { font-family: var(--font-mono); font-size: 10px; color: var(--fg-subtle); overflow: hidden; text-overflow: ellipsis; }
+
+/* Telemetry KV Strip */
+.bl-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 8px; padding: 8px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border-sub); font-family: var(--font-mono); }
+.kvl { font-size: 9.5px; color: var(--fg-subtle); letter-spacing: 0.05em; }
+.kvv { font-size: 11.5px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.kvv.mut { font-weight: 400; color: var(--fg-muted); font-size: 10.5px; }
+
+/* Vertical Signal-Height Ping Histogram */
+.bl-ping { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr); gap: 4px 10px; align-items: end; }
+.pcap { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-subtle); }
+.pcap b { color: var(--fg); font-weight: 600; }
+.hist { display: grid; grid-template-columns: repeat(12, 1fr); align-items: end; gap: 2px; height: 14px; }
+.hist i { display: block; border-radius: 1px; background: var(--track); height: var(--h, 25%); }
+.hist i.g { background: var(--online); }
+.hist i.w { background: var(--warn); }
+.hist i.d { background: var(--danger); }
+
+/* Table */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11.5px; text-align: left; }
+th { padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--fg-subtle); font-weight: 600; white-space: nowrap; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border-sub); white-space: nowrap; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface-hover); }
+
+/* Detail */
+.d-chassis { padding: 14px 16px; display: grid; gap: 10px; }
+@media (min-width: 900px) { .d-chassis { grid-template-columns: 1fr auto; align-items: center; } }
+.d-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 900px) { .d-charts { grid-template-columns: 1fr 1fr; } }
+.ch-box { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.ch-svg { width: 100%; height: auto; display: block; }
+.probes { display: flex; flex-wrap: wrap; gap: 6px; }
+.probe { height: 26px; padding: 0 9px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg-muted); font-family: var(--font-mono); font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.probe i { width: 7px; height: 7px; border-radius: 1px; background: var(--offline); }
+.probe[aria-pressed="true"] { border-color: var(--p); background: color-mix(in srgb, var(--p) 12%, var(--surface)); color: var(--fg); font-weight: 600; }
+.probe[aria-pressed="true"] i { background: var(--p); }
+
+@media (max-width: 639px) {
+  .hide-sm { display: none; }
+  .b-big { font-size: 26px; }
+  .search { width: 100%; flex: 1; }
+  .tools-r { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header class="hud-bar">
+  <div class="wrap hud-in">
+    <a class="hud-brand" href="#home" onclick="setView('home');return false">
+      <i class="sq-led accent"></i>
+      <span>PROBE://DINGDING</span>
+      <span class="hide-sm" style="color:var(--fg-subtle);font-weight:500">[07/08 ONLINE]</span>
+    </a>
+    <div class="hud-right">
+      <div class="hseg">
+        <button type="button" id="vh" aria-pressed="true" onclick="setView('home')">RACK</button>
+        <button type="button" id="vd" aria-pressed="false" onclick="setView('detail')">DETAIL</button>
+      </div>
+      <button type="button" class="hbtn" onclick="toggleTheme()" id="tbtn">DARK</button>
+      <span class="hbtn hide-sm" style="cursor:default;color:var(--online)">● WS:1s</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="v-home">
+  <div class="stack">
+    <!-- Asymmetric Bento Hardware Overview -->
+    <section class="bento">
+      <div class="rack b-box">
+        <div class="b-tag"><span>RACK_HEALTH</span><span style="color:var(--online)">87.5%</span></div>
+        <div class="b-big">07<small>/08</small></div>
+        <div class="led-bar" style="--v:88%"></div>
+        <div class="b-sub"><span>1 OFFLINE · 1 WARN</span><span>5 REGIONS</span></div>
+      </div>
+
+      <div class="rack b-box">
+        <div class="b-tag"><span>IO_OSCILLOSCOPE</span><span class="tx">↑2.18M <span class="rx">↓6.97M</span></span></div>
+        <svg class="osc-svg" viewBox="0 0 360 78" preserveAspectRatio="none">
+          <g stroke="var(--chart-grid)" stroke-width="1"><line x1="0" y1="20" x2="360" y2="20"/><line x1="0" y1="40" x2="360" y2="40"/><line x1="0" y1="60" x2="360" y2="60"/></g>
+          <polyline fill="none" stroke="var(--rx)" stroke-width="1.8" points="0,56 30,44 60,50 90,26 120,40 150,18 180,34 210,22 240,32 270,16 300,28 330,20 360,25"/>
+          <polyline fill="none" stroke="var(--tx)" stroke-width="1.5" stroke-dasharray="4 2" points="0,66 30,60 60,58 90,48 120,56 150,42 180,50 210,44 240,48 270,38 300,46 330,40 360,44"/>
+        </svg>
+        <div class="b-sub"><span>CYCLE 1.64 TB</span><span>CPU AVG 18.4%</span></div>
+      </div>
+
+      <div class="rack b-box">
+        <div class="b-tag"><span>REGION_MATRIX</span><span>5 ZONES</span></div>
+        <div class="reg-grid">
+          <div class="reg-cell"><span>🇨🇳 CN</span><span style="color:var(--online)">2/2</span><span class="tx">↑215K</span></div>
+          <div class="reg-cell"><span>🇭🇰 HK</span><span class="w">1/1</span><span class="tx">↑1.08M</span></div>
+          <div class="reg-cell"><span>🇯🇵 JP</span><span style="color:var(--online)">2/2</span><span class="tx">↑21K</span></div>
+          <div class="reg-cell"><span>🇩🇪 DE</span><span class="w">1/2</span><span class="tx">↑25K</span></div>
+          <div class="reg-cell"><span>🇺🇸 US</span><span style="color:var(--online)">1/1</span><span class="tx">↑13K</span></div>
+          <div class="reg-cell" style="border-style:dashed;color:var(--fg-subtle)"><span>ALL</span><span>7/8</span><span>FILTER</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true">ALL [8]</button>
+        <button class="tab" role="tab" aria-selected="false">CN [2]</button>
+        <button class="tab" role="tab" aria-selected="false">APAC [3]</button>
+        <button class="tab" role="tab" aria-selected="false">EU [2]</button>
+        <button class="tab" role="tab" aria-selected="false">US [1]</button>
+      </div>
+      <div class="tools-r">
+        <div class="hseg">
+          <button type="button" id="lg" aria-pressed="true" onclick="setLayout('grid')">BLADE</button>
+          <button type="button" id="lt" aria-pressed="false" onclick="setLayout('table')">LIST</button>
+        </div>
+        <select class="ctrl"><option>SORT: DEFAULT</option><option>SORT: CPU</option><option>SORT: MEM</option><option>SORT: EXPIRY</option></select>
+        <input type="search" class="ctrl search" placeholder="FILTER / ..." />
+      </div>
+    </div>
+
+    <section class="blade-grid" id="grid-sec"></section>
+    <section class="rack tbl-wrap hidden" id="tbl-sec">
+      <table>
+        <thead><tr><th>UNIT</th><th>NODE</th><th>LOC</th><th>CPU</th><th>MEM</th><th>DISK</th><th>NET_IO</th><th>PING</th><th>LOSS</th><th>QUOTA</th><th>EXPIRY</th></tr></thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<!-- DETAIL -->
+<main class="wrap hidden" id="v-detail">
+  <div class="stack">
+    <div class="toolbar">
+      <button type="button" class="hbtn" onclick="setView('home')">← BACK TO RACK</button>
+      <div class="tools-r mono" style="font-size:11px;color:var(--fg-subtle)">
+        <span>UNIT #01 / 08</span>
+        <select class="ctrl"><option>#01 PortChannel Zero 上海</option><option>#03 Aliyun 香港</option><option>#04 Hetzner 德国</option></select>
+      </div>
+    </div>
+
+    <section class="rack d-chassis">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="bl-idx">#01</span>
+          <i class="sq-led"></i>
+          <h1 style="font-size:18px;font-weight:700">PortChannel Zero 上海</h1>
+          <span class="bl-idx">🇨🇳 CN · DEBIAN 12</span>
+        </div>
+        <p class="mono" style="margin-top:5px;font-size:11px;color:var(--fg-subtle)">AMD EPYC 7763 · 2C / 1.92G / 18.6G · KVM · UPTIME 98d 14h · LAST SEEN 1s AGO</p>
+      </div>
+      <div class="mono" style="display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11.5px">
+        <span>LOAD <b>0.08/0.05/0.02</b></span>
+        <span>SWAP <b>64M/1G</b></span>
+        <span>PROCS <b>97</b></span>
+        <span>TCP/UDP <b>16/2</b></span>
+      </div>
+    </section>
+
+    <section class="bento" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="rack b-box"><div class="b-tag"><span>CPU · 2C</span><b>14.2%</b></div><div class="led-bar" style="--v:20%"></div><div class="b-sub"><span>LOAD 0.08</span><span>OK</span></div></div>
+      <div class="rack b-box"><div class="b-tag"><span>MEM · 1.92G</span><b>28.1%</b></div><div class="led-bar" style="--v:30%"></div><div class="b-sub"><span>540 MB USED</span><span>OK</span></div></div>
+      <div class="rack b-box"><div class="b-tag"><span>DISK · 18.6G</span><b>10.3%</b></div><div class="led-bar" style="--v:10%"></div><div class="b-sub"><span>1.92 GB USED</span><span>OK</span></div></div>
+      <div class="rack b-box"><div class="b-tag"><span>NET_IO</span><span>LIVE</span></div><div class="mono" style="font-size:14px;font-weight:700"><span class="tx">↑ 180 KB/s</span> · <span class="rx">↓ 420 KB/s</span></div><div class="b-sub"><span>QUOTA 114/800G</span><span>14.2%</span></div></div>
+    </section>
+
+    <div class="d-charts">
+      <div class="rack ch-box">
+        <div class="b-tag"><span>OSC // CPU_USAGE</span><b style="color:var(--online)">14.2%</b></div>
+        <svg class="ch-svg" viewBox="0 0 560 150">
+          <g stroke="var(--chart-grid)"><line x1="36" y1="16" x2="548" y2="16"/><line x1="36" y1="52" x2="548" y2="52"/><line x1="36" y1="88" x2="548" y2="88"/><line x1="36" y1="124" x2="548" y2="124"/></g>
+          <g fill="var(--fg-subtle)" font-size="10" font-family="var(--font-mono)"><text x="30" y="20" text-anchor="end">100%</text><text x="30" y="56" text-anchor="end">66%</text><text x="30" y="92" text-anchor="end">33%</text><text x="30" y="127" text-anchor="end">0%</text><text x="44" y="144">15:00</text><text x="200" y="144">17:00</text><text x="360" y="144">19:00</text><text x="512" y="144">21:00</text></g>
+          <polyline fill="none" stroke="var(--accent)" stroke-width="1.8" points="36,112 90,104 144,108 198,92 252,102 306,96 360,84 414,98 468,106 548,100"/>
+        </svg>
+      </div>
+      <div class="rack ch-box">
+        <div class="b-tag"><span>OSC // MEM_USAGE</span><b>540M / 1.92G</b></div>
+        <svg class="ch-svg" viewBox="0 0 560 150">
+          <g stroke="var(--chart-grid)"><line x1="42" y1="16" x2="548" y2="16"/><line x1="42" y1="52" x2="548" y2="52"/><line x1="42" y1="88" x2="548" y2="88"/><line x1="42" y1="124" x2="548" y2="124"/></g>
+          <g fill="var(--fg-subtle)" font-size="10" font-family="var(--font-mono)"><text x="36" y="20" text-anchor="end">2.0G</text><text x="36" y="56" text-anchor="end">1.3G</text><text x="36" y="92" text-anchor="end">640M</text><text x="36" y="127" text-anchor="end">0</text><text x="50" y="144">15:00</text><text x="206" y="144">17:00</text><text x="364" y="144">19:00</text><text x="512" y="144">21:00</text></g>
+          <polyline fill="none" stroke="var(--rx)" stroke-width="1.8" points="42,96 120,94 200,92 280,95 360,91 440,93 548,92"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="rack ch-box">
+      <div class="b-tag"><span>PING_PROBES // LATENCY</span><span style="color:var(--online)">0.0% LOSS</span></div>
+      <div class="probes">
+        <button class="probe" aria-pressed="true" style="--p:var(--online)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>浙江电信 23ms</button>
+        <button class="probe" aria-pressed="true" style="--p:var(--rx)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>浙江联通 25ms</button>
+        <button class="probe" aria-pressed="true" style="--p:var(--accent)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>浙江移动 29ms</button>
+        <button class="probe" aria-pressed="false" style="--p:var(--warn)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>Cloudflare 4ms</button>
+      </div>
+      <svg class="ch-svg" viewBox="0 0 1120 140">
+        <g stroke="var(--chart-grid)"><line x1="42" y1="16" x2="1108" y2="16"/><line x1="42" y1="52" x2="1108" y2="52"/><line x1="42" y1="88" x2="1108" y2="88"/><line x1="42" y1="120" x2="1108" y2="120"/></g>
+        <g fill="var(--fg-subtle)" font-size="11" font-family="var(--font-mono)"><text x="36" y="20" text-anchor="end">60ms</text><text x="36" y="56" text-anchor="end">40ms</text><text x="36" y="92" text-anchor="end">20ms</text><text x="36" y="123" text-anchor="end">0ms</text></g>
+        <polyline fill="none" stroke="var(--online)" stroke-width="1.8" points="42,84 160,82 280,80 400,85 520,78 640,83 760,81 880,79 1000,84 1108,82"/>
+        <polyline fill="none" stroke="var(--rx)" stroke-width="1.8" points="42,76 160,74 280,78 400,73 520,75 640,70 760,74 880,76 1000,72 1108,73"/>
+        <polyline fill="none" stroke="var(--accent)" stroke-width="1.8" points="42,66 160,64 280,69 400,62 520,66 640,61 760,65 880,67 1000,63 1108,64"/>
+      </svg>
+    </div>
+  </div>
+</main>
+
+<script>
+const NODES = [
+  { id:"01", name:"PortChannel Zero 上海", flag:"🇨🇳", cc:"CN", up:"98d", st:"ok", cpu:14, load:"0.08,0.05", mem:28, mt:"540M/1.9G", disk:10, dt:"1.9/18.6G", q:14, qt:"114/800G", tx:"↑180K/s", rx:"↓420K/s", mTx:"↑56.4G", mRx:"↓57.6G", exp:"剩 80 天", ec:"", price:"¥1,188/年", lat:"23·25·29", loss:"0·0·0", lh:[30,32,28,35,30,34,32,28,30,35,32,30], lc:"gggggggggggg", dh:[20,20,20,20,20,20,20,20,20,20,20,20], dc:"gggggggggggg" },
+  { id:"02", name:"Tencent 广州", flag:"🇨🇳", cc:"CN", up:"42d", st:"ok", cpu:6, load:"0.11,0.04", mem:47, mt:"456/973M", disk:15, dt:"6.0/39.1G", q:0, qt:"1.01G/∞", tx:"↑34.8K/s", rx:"↓4.73M/s", mTx:"↑358M", mRx:"↓671M", exp:"剩 843 天", ec:"", price:"¥629/一次", lat:"26·26·28", loss:"0·0·0", lh:[32,34,30,32,35,32,30,34,32,30,34,32], lc:"gggggggggggg", dh:[20,20,20,20,20,20,20,20,20,20,20,20], dc:"gggggggggggg" },
+  { id:"03", name:"Aliyun 香港", flag:"🇭🇰", cc:"HK", up:"168d", st:"warn", cpu:86, load:"3.42,2.91", mem:93, mt:"1.78/1.9G", disk:74, dt:"29.6/40G", q:83, qt:"412/500G", tx:"↑1.08M/s", rx:"↓4.20M/s", mTx:"↑204G", mRx:"↓208G", exp:"剩 218 天", ec:"", price:"US$86.4/年", lat:"142·168·215", loss:"0·1.2·2.4", lh:[45,65,70,68,92,72,66,95,70,68,74,90], lc:"gwwwdwwdwwwd", dh:[20,20,55,20,60,20,20,55,20,20,50,20], dc:"ggwgwggwggwg" },
+  { id:"04", name:"Hetzner 德国", flag:"🇩🇪", cc:"DE", up:"OFF 3h", st:"offline", cpu:0, load:"—", mem:0, mt:"4.00 GB", disk:0, dt:"40.0 GB", q:2, qt:"360G/20T", tx:"↑0 B/s", rx:"↓0 B/s", mTx:"↑180G", mRx:"↓180G", exp:"剩 120 天", ec:"", price:"€4.51/月", lat:null, loss:null, lh:[], lc:"", dh:[], dc:"" },
+  { id:"05", name:"Neburst 日本", flag:"🇯🇵", cc:"JP", up:"36d", st:"ok", cpu:11, load:"0.07,0.06", mem:41, mt:"797M/1.9G", disk:45, dt:"8.9/19.9G", q:1, qt:"653M/800G", tx:"↑10.6K/s", rx:"↓11.5K/s", mTx:"↑653M", mRx:"↓652M", exp:"剩 3 天", ec:"w", price:"US$22.4/月", lat:"64·72·68", loss:"0·0·0", lh:[42,46,44,48,45,42,44,46,43,45,44,46], lc:"gggggggggggg", dh:[20,20,20,20,20,20,20,20,20,20,20,20], dc:"gggggggggggg" },
+  { id:"06", name:"RFCHOST CO 日本", flag:"🇯🇵", cc:"JP", up:"12d", st:"danger", cpu:22, load:"0.04,0.08", mem:34, mt:"425M/1.9G", disk:8, dt:"1.6/40.0G", q:1, qt:"7.1G/1.5T", tx:"↑10.2K/s", rx:"↓10.5K/s", mTx:"↑3.75G", mRx:"↓3.32G", exp:"已到期", ec:"d", price:"US$6.29/月", lat:"—·—·222", loss:"100·100·0", lh:[100,100,70,100,100,100,72,100,100,100,75,100], lc:"ddwdddwdddwd", dh:[100,100,100,100,100,100,100,100,100,100,100,100], dc:"dddddddddddd" },
+  { id:"07", name:"V.PS 法兰克福", flag:"🇩🇪", cc:"DE", up:"17d", st:"ok", cpu:4, load:"0.15,0.11", mem:21, mt:"415M/1.9G", disk:12, dt:"2.4/19.6G", q:1, qt:"3.3/750G", tx:"↑25.1K/s", rx:"↓24.6K/s", mTx:"↑1.65G", mRx:"↓1.66G", exp:"剩 300 天", ec:"", price:"€299.9/年", lat:"—", loss:"—", lh:[22,22,22,22,22,22,22,22,22,22,22,22], lc:"............", dh:[22,22,22,22,22,22,22,22,22,22,22,22], dc:"............" },
+  { id:"08", name:"BWH MEGABOX 洛杉矶", flag:"🇺🇸", cc:"US", up:"25d", st:"ok", cpu:9, load:"0.00,0.01", mem:21, mt:"427M/2.0G", disk:10, dt:"3.9/40.2G", q:59, qt:"1.19/2.0T", tx:"↑12.9K/s", rx:"↓14.8K/s", mTx:"↑593G", mRx:"↓595G", exp:"剩 184 天", ec:"", price:"US$45.7/年", lat:"136·142·132", loss:"0·0·0", lh:[62,66,60,64,65,62,60,64,66,62,64,60], lc:"wwwwwwwwwwww", dh:[20,20,20,20,20,20,20,20,20,20,20,20], dc:"gggggggggggg" },
+];
+const lv = v => v >= 90 ? "d" : v >= 80 ? "w" : "";
+const snap = v => v <= 0 ? 0 : Math.min(100, Math.ceil(v / 10) * 10);
+const hist = (hs, cs) => hs.map((h, i) => `<i class="${cs[i]==='.'?'':cs[i]}" style="--h:${h}%"></i>`).join("");
+
+document.getElementById("grid-sec").innerHTML = NODES.map(n => `
+  <a class="rack blade" data-st="${n.st}" href="#detail" onclick="setView('detail');return false">
+    <div class="bl-head">
+      <div class="bl-hl"><span class="bl-idx">#${n.id}</span><i class="sq-led ${n.st==='ok'?'':n.st}"></i><h3 class="bl-name" title="${n.name}">${n.name}</h3></div>
+      <div class="bl-hr"><span>${n.flag} ${n.cc}</span><span>${n.up}</span></div>
+    </div>
+    <div class="bl-meters">
+      <div class="bm"><div class="bm-top"><span>CPU</span><b class="${lv(n.cpu)}">${n.st==='offline'?'—':n.cpu+'%'}</b></div><i class="led-bar ${lv(n.cpu)}" style="--v:${snap(n.cpu)}%"></i><span class="bm-sub">${n.load}</span></div>
+      <div class="bm"><div class="bm-top"><span>MEM</span><b class="${lv(n.mem)}">${n.st==='offline'?'—':n.mem+'%'}</b></div><i class="led-bar ${lv(n.mem)}" style="--v:${snap(n.mem)}%"></i><span class="bm-sub">${n.mt}</span></div>
+      <div class="bm"><div class="bm-top"><span>DISK</span><b class="${lv(n.disk)}">${n.st==='offline'?'—':n.disk+'%'}</b></div><i class="led-bar ${lv(n.disk)}" style="--v:${snap(n.disk)}%"></i><span class="bm-sub">${n.dt}</span></div>
+      <div class="bm"><div class="bm-top"><span>QUOTA</span><b class="${lv(n.q)}">${n.q===0&&n.qt.includes('∞')?'∞':n.q+'%'}</b></div><i class="led-bar ${lv(n.q)}" style="--v:${snap(n.q)}%"></i><span class="bm-sub">${n.qt}</span></div>
+    </div>
+    <div class="bl-kv">
+      <span class="kvl">NET_IO</span><span class="kvl">TRAFFIC</span><span class="kvl">EXPIRY</span>
+      <b class="kvv tx">${n.tx}</b><b class="kvv">${n.mTx}</b><b class="kvv ${n.ec}">${n.exp}</b>
+      <b class="kvv rx">${n.rx}</b><b class="kvv">${n.mRx}</b><b class="kvv mut">${n.price}</b>
+    </div>
+    ${n.lat !== null ? `<div class="bl-ping">
+      <div class="pcap"><span>PING_MS</span><b>${n.lat}</b></div>
+      <div class="pcap"><span>LOSS_%</span><b>${n.loss}</b></div>
+      <div class="hist">${hist(n.lh, n.lc)}</div>
+      <div class="hist">${hist(n.dh, n.dc)}</div>
+    </div>` : ``}
+  </a>
+`).join("");
+
+document.getElementById("tbl-body").innerHTML = NODES.slice(0,5).map(n => `
+  <tr onclick="setView('detail')">
+    <td>#${n.id}</td><td style="font-weight:700"><i class="sq-led ${n.st==='ok'?'':n.st}" style="margin-right:6px"></i>${n.name}</td>
+    <td>${n.flag} ${n.cc}</td><td>${n.st==='offline'?'—':n.cpu+'%'}</td><td>${n.st==='offline'?'—':n.mem+'%'}</td><td>${n.st==='offline'?'—':n.disk+'%'}</td>
+    <td><span class="tx">${n.tx}</span> <span class="rx">${n.rx}</span></td>
+    <td>${n.lat??'—'}</td><td>${n.loss??'—'}</td><td>${n.qt}</td><td class="${n.ec}">${n.exp}</td>
+  </tr>
+`).join("");
+
+function setView(v){
+  const d = v === 'detail';
+  document.getElementById('v-home').classList.toggle('hidden', d);
+  document.getElementById('v-detail').classList.toggle('hidden', !d);
+  document.getElementById('vh').setAttribute('aria-pressed', String(!d));
+  document.getElementById('vd').setAttribute('aria-pressed', String(d));
+}
+function setLayout(m){
+  const t = m === 'table';
+  document.getElementById('grid-sec').classList.toggle('hidden', t);
+  document.getElementById('tbl-sec').classList.toggle('hidden', !t);
+  document.getElementById('lg').setAttribute('aria-pressed', String(!t));
+  document.getElementById('lt').setAttribute('aria-pressed', String(t));
+}
+function toggleTheme(){
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.getElementById('tbtn').textContent = dark ? 'LIGHT' : 'DARK';
+}
+const p = new URLSearchParams(location.search);
+if (p.get('theme') === 'dark') toggleTheme();
+if (p.get('view') === 'detail') setView('detail');
+</script>
+</body>
+</html>

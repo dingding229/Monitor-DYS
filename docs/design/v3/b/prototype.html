@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>方向 B · 现代仪表盘（Modern SaaS Telemetry）</title>
+<style>
+:root {
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --border-sub: #eef2f6;
+  --fg: #0f172a;
+  --fg-muted: #475569;
+  --fg-subtle: #64748b;
+  --hero-grad: linear-gradient(135deg, #065f46 0%, #0f766e 52%, #0369a1 100%);
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 8px 24px -6px rgba(15, 23, 42, 0.12);
+  --accent: #059669;
+  --online: #10b981;
+  --online-bg: #ecfdf5;
+  --online-fg: #047857;
+  --warn: #f59e0b;
+  --warn-bg: #fffbeb;
+  --warn-fg: #b45309;
+  --danger: #ef4444;
+  --danger-bg: #fef2f2;
+  --danger-fg: #b91c1c;
+  --offline: #94a3b8;
+  --offline-bg: #f1f5f9;
+  --cpu: #0284c7; --cpu-bg: #e0f2fe;
+  --mem: #7c3aed; --mem-bg: #ede9fe;
+  --disk: #d97706; --disk-bg: #fef3c7;
+  --net: #059669; --net-bg: #d1fae5;
+  --track: #e2e8f0;
+  --chart-grid: #eef2f6;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+[data-theme="dark"] {
+  --bg: #0c111d;
+  --surface: #131b2c;
+  --surface-2: #192338;
+  --surface-hover: #202c46;
+  --border: #25334d;
+  --border-sub: #1d283e;
+  --fg: #f1f5f9;
+  --fg-muted: #94a3b8;
+  --fg-subtle: #64748b;
+  --hero-grad: linear-gradient(135deg, #064e3b 0%, #115e59 52%, #0c4a6e 100%);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 10px 28px -6px rgba(0, 0, 0, 0.45);
+  --online-bg: rgba(16, 185, 129, 0.14); --online-fg: #34d399;
+  --warn-bg: rgba(245, 158, 11, 0.14); --warn-fg: #fbbf24;
+  --danger-bg: rgba(239, 68, 68, 0.14); --danger-fg: #f87171;
+  --offline-bg: rgba(148, 163, 184, 0.12);
+  --cpu: #38bdf8; --cpu-bg: rgba(56, 189, 248, 0.14);
+  --mem: #a78bfa; --mem-bg: rgba(167, 139, 250, 0.14);
+  --disk: #fbbf24; --disk-bg: rgba(251, 191, 36, 0.14);
+  --net: #34d399; --net-bg: rgba(52, 211, 153, 0.14);
+  --track: #24324a;
+  --chart-grid: #1f2b42;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { font-family: var(--font-sans); font-size: 13px; line-height: 1.45; color: var(--fg); background: var(--bg); -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; }
+h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
+a { color: inherit; text-decoration: none; }
+button, select, input { font-family: inherit; font-size: 12px; color: inherit; }
+.tnum { font-variant-numeric: tabular-nums; }
+.hidden { display: none !important; }
+.wrap { width: 100%; max-width: 1440px; margin: 0 auto; padding-inline: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); min-width: 0; }
+
+/* Hero Gradient Banner */
+.hero-band { background: var(--hero-grad); color: #fff; padding-bottom: 58px; }
+.topbar { height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; color: #fff; }
+.brand-ic { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.28); display: grid; place-items: center; }
+.top-r { display: flex; align-items: center; gap: 8px; }
+.glass-btn { height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.24); background: rgba(255,255,255,0.14); color: #fff; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.glass-btn:hover { background: rgba(255,255,255,0.24); }
+.glass-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.18); gap: 2px; }
+.glass-seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: rgba(255,255,255,0.8); cursor: pointer; font-weight: 500; }
+.glass-seg button[aria-pressed="true"] { background: #fff; color: #065f46; font-weight: 700; }
+.hero-copy { padding: 8px 0 6px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hero-copy h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.hero-copy p { font-size: 12.5px; color: rgba(255,255,255,0.82); }
+
+/* Floating Overview */
+main { flex: 1; margin-top: -44px; padding-bottom: 28px; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 960px) { .overview { grid-template-columns: 1.15fr 1fr; } }
+.ov-4 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ov-tile { padding: 14px; display: flex; align-items: center; gap: 12px; box-shadow: var(--shadow-lg); }
+.ico-box { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.ov-meta { min-width: 0; flex: 1; }
+.ov-lbl { font-size: 12px; color: var(--fg-subtle); font-weight: 500; }
+.ov-val { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--fg); line-height: 1.2; white-space: nowrap; }
+.ov-val small { font-size: 12px; font-weight: 500; color: var(--fg-subtle); margin-left: 2px; }
+.ov-sub { font-size: 11px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.map-card { padding: 14px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 10px; }
+.map-head { display: flex; align-items: center; justify-content: space-between; }
+.map-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px; align-items: center; flex: 1; }
+.map-box { height: 148px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border-sub); display: grid; place-items: center; overflow: hidden; }
+.map-box svg { width: 100%; height: 100%; }
+.c-list { display: flex; flex-direction: column; gap: 4px; }
+.c-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 8px; background: var(--surface-2); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.c-row:hover { background: var(--surface-hover); }
+
+/* Toolbar */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; max-width: 100%; }
+.tab { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-muted); font-weight: 500; cursor: pointer; white-space: nowrap; box-shadow: var(--shadow); }
+.tab[aria-selected="true"] { background: var(--accent); border-color: transparent; color: #fff; font-weight: 600; }
+.tab .c { font-size: 11px; opacity: 0.85; }
+.tools-r { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); }
+.seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-muted); cursor: pointer; font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--surface-hover); color: var(--fg); font-weight: 600; }
+.ctrl { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+.search { width: 204px; }
+
+/* SaaS Node Cards (4-col on 1440px) */
+.node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 14px; align-items: start; }
+.nc { display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; cursor: pointer; transition: border-color 140ms, box-shadow 140ms; }
+.nc:hover { border-color: var(--accent); box-shadow: var(--shadow-lg); }
+.nc[data-st="offline"] { opacity: 0.74; }
+
+.nc-head { padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border-sub); background: var(--surface-2); }
+.nc-hl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nc-name { font-size: 13.5px; font-weight: 700; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.ok { background: var(--online-bg); color: var(--online-fg); }
+.pill.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.pill.danger { background: var(--danger-bg); color: var(--danger-fg); }
+.pill.offline { background: var(--offline-bg); color: var(--offline); }
+
+.nc-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+/* 2 Semi-Circular Arc Gauges */
+.arcs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.arc-tile { padding: 8px 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border-sub); display: flex; flex-direction: column; align-items: center; }
+.arc-svg { width: 88px; height: 48px; overflow: visible; }
+.arc-val { font-size: 14px; font-weight: 700; color: var(--fg); margin-top: -14px; }
+.arc-lbl { font-size: 11px; color: var(--fg-subtle); margin-top: 2px; }
+.arc-sub { font-size: 10.5px; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* 2 Icon-Badged Pill Bars (Disk & Traffic) */
+.bars-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bm { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bm-h { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; }
+.bm-l { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-muted); font-weight: 500; }
+.bm-dot { width: 16px; height: 16px; border-radius: 5px; display: grid; place-items: center; font-size: 10px; font-weight: 700; }
+.pbar { height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; position: relative; }
+.pbar::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); border-radius: 999px; background: var(--c, var(--accent)); }
+.bm-s { font-size: 10.5px; color: var(--fg-subtle); overflow: hidden; text-overflow: ellipsis; }
+
+/* Footer Well */
+.nc-well { padding: 10px 14px; background: var(--surface-2); border-top: 1px solid var(--border-sub); display: flex; flex-direction: column; gap: 8px; }
+.nc-foot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 8px; }
+.fl { font-size: 10.5px; color: var(--fg-subtle); }
+.fv { font-size: 12px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.fv.mut { font-weight: 400; color: var(--fg-muted); font-size: 11px; }
+.tx { color: var(--net); }
+.rx { color: var(--cpu); }
+.w { color: var(--warn-fg); }
+.d { color: var(--danger-fg); }
+
+.nc-ping { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr); gap: 4px 8px; padding-top: 7px; border-top: 1px solid var(--border-sub); }
+.pcap { display: flex; justify-content: space-between; font-size: 11px; color: var(--fg-subtle); }
+.pcap b { color: var(--fg-muted); font-weight: 600; }
+.pbars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
+.pbars i { height: 5px; border-radius: 999px; background: var(--track); }
+.pbars i.g { background: var(--online); }
+.pbars i.w { background: var(--warn); }
+.pbars i.d { background: var(--danger); }
+
+/* Table */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+th { padding: 10px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--fg-muted); font-weight: 600; white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border-sub); white-space: nowrap; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface-hover); }
+
+/* Detail */
+.d-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.d-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 900px) { .d-charts { grid-template-columns: 1fr 1fr; } }
+.ch-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ch-svg { width: 100%; height: auto; display: block; }
+.probes { display: flex; flex-wrap: wrap; gap: 6px; }
+.probe { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg-muted); cursor: pointer; font-weight: 500; }
+.probe i { width: 7px; height: 7px; border-radius: 50%; background: var(--offline); }
+.probe[aria-pressed="true"] { border-color: var(--p); background: color-mix(in srgb, var(--p) 12%, var(--surface)); color: var(--fg); }
+.probe[aria-pressed="true"] i { background: var(--p); }
+
+@media (max-width: 639px) {
+  .hide-sm { display: none; }
+  .ov-val { font-size: 18px; }
+  .ico-box { width: 32px; height: 32px; }
+  .map-body { grid-template-columns: 1fr; }
+  .map-box { height: 112px; }
+  .search { width: 100%; flex: 1; }
+  .tools-r { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="hero-band">
+  <div class="wrap">
+    <header class="topbar">
+      <a class="brand" href="#home" onclick="setView('home');return false">
+        <span class="brand-ic">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.6"><path d="M2 11 5.5 6.5 8.5 9 13.5 3.5"/><circle cx="13.5" cy="3.5" r="1.3" fill="#fff"/></svg>
+        </span>
+        <span>DingDing's Server</span>
+      </a>
+      <div class="top-r">
+        <div class="glass-seg">
+          <button type="button" id="vh" aria-pressed="true" onclick="setView('home')">仪表盘</button>
+          <button type="button" id="vd" aria-pressed="false" onclick="setView('detail')">节点详情</button>
+        </div>
+        <button type="button" class="glass-btn" onclick="toggleTheme()" id="tbtn">深色</button>
+        <span class="glass-btn hide-sm" style="display:inline-flex;align-items:center;gap:6px;cursor:default"><i style="width:7px;height:7px;border-radius:50%;background:#34d399;display:inline-block"></i>实时更新</span>
+      </div>
+    </header>
+    <div class="hero-copy" id="hero-home">
+      <h1>全球基础设施实时监控</h1>
+      <p class="tnum">7/8 台节点在线 · 5 个地区 · 平均延迟 68ms</p>
+    </div>
+    <div class="hero-copy hidden" id="hero-detail">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button type="button" class="glass-btn" onclick="setView('home')">← 返回列表</button>
+        <h1>🇨🇳 PortChannel Zero 上海</h1>
+        <span class="glass-btn" style="height:24px;font-size:11px;cursor:default">● 在线 98 天 14 小时</span>
+      </div>
+      <p class="tnum">华东 · Debian 12 · AMD EPYC 7763 · 负载 0.08 / 0.05 / 0.02</p>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<main class="wrap" id="v-home">
+  <div class="stack">
+    <section class="overview">
+      <div class="ov-4">
+        <div class="card ov-tile">
+          <div class="ico-box" style="background:var(--net-bg);color:var(--net)">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3.5" width="14" height="5" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/><circle cx="6.5" cy="6" r=".8" fill="currentColor"/><circle cx="6.5" cy="14" r=".8" fill="currentColor"/></svg>
+          </div>
+          <div class="ov-meta">
+            <div class="ov-lbl">在线节点</div>
+            <div class="ov-val tnum">7<small>/ 8</small></div>
+            <div class="ov-sub">1 离线 · 1 高负载告警</div>
+          </div>
+        </div>
+        <div class="card ov-tile">
+          <div class="ico-box" style="background:var(--cpu-bg);color:var(--cpu)">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6.5 15V5M3.5 8l3-3 3 3M13.5 5v10m-3-3 3 3 3-3"/></svg>
+          </div>
+          <div class="ov-meta">
+            <div class="ov-lbl">实时总吞吐</div>
+            <div class="ov-val tnum">9.15<small>MB/s</small></div>
+            <div class="ov-sub tnum"><span class="tx">↑ 2.18M</span> · <span class="rx">↓ 6.97M</span></div>
+          </div>
+        </div>
+        <div class="card ov-tile">
+          <div class="ico-box" style="background:var(--mem-bg);color:var(--mem)">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="12" height="12" rx="2"/><rect x="7.5" y="7.5" width="5" height="5" rx="1"/></svg>
+          </div>
+          <div class="ov-meta">
+            <div class="ov-lbl">集群平均 CPU</div>
+            <div class="ov-val tnum">18.4<small>%</small></div>
+            <div class="ov-sub">峰值 Aliyun 香港 86.4%</div>
+          </div>
+        </div>
+        <div class="card ov-tile">
+          <div class="ico-box" style="background:var(--disk-bg);color:var(--disk)">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 15.5h14M5.5 13V9M10 13V4.5M14.5 13V7"/></svg>
+          </div>
+          <div class="ov-meta">
+            <div class="ov-lbl">当期累计流量</div>
+            <div class="ov-val tnum">1.64<small>TB</small></div>
+            <div class="ov-sub tnum">↑ 782 GB · ↓ 858 GB</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card map-card">
+        <div class="map-head">
+          <span class="pill ok"><i></i>7 在线 · 5 个地区</span>
+          <span class="pill warn"><i></i>1 离线</span>
+        </div>
+        <div class="map-body">
+          <div class="map-box">
+            <svg viewBox="0 0 360 160" fill="none">
+              <path d="M28 40h58v26H74v18H54V66H28zM78 94h24v38H88v-14H78zM156 32h46v28h-16v12h-30zM160 78h34v44h-18v-16h-16zM210 36h92v38h-22v14h-34V74h-36zM272 104h38v24h-26v-10h-12z" fill="var(--border)"/>
+              <circle cx="58" cy="54" r="6" fill="var(--cpu)"/><circle cx="176" cy="46" r="6" fill="var(--warn)"/><circle cx="256" cy="58" r="7" fill="var(--net)"/><circle cx="268" cy="68" r="6" fill="var(--warn)"/><circle cx="290" cy="54" r="7" fill="var(--mem)"/>
+            </svg>
+          </div>
+          <div class="c-list">
+            <div class="c-row"><span>🇨🇳</span><span>中国</span><span class="tnum" style="color:var(--online-fg);font-weight:600">2/2</span><span class="tnum"><span class="tx">↑215K</span> <span class="rx">↓4.9M</span></span></div>
+            <div class="c-row"><span>🇭🇰</span><span>香港</span><span class="tnum w" style="font-weight:600">1/1</span><span class="tnum"><span class="tx">↑1.08M</span> <span class="rx">↓4.2M</span></span></div>
+            <div class="c-row"><span>🇯🇵</span><span>日本</span><span class="tnum" style="color:var(--online-fg);font-weight:600">2/2</span><span class="tnum"><span class="tx">↑21K</span> <span class="rx">↓22K</span></span></div>
+            <div class="c-row"><span>🇩🇪</span><span>德国</span><span class="tnum w" style="font-weight:600">1/2</span><span class="tnum"><span class="tx">↑25K</span> <span class="rx">↓24K</span></span></div>
+            <div class="c-row"><span>🇺🇸</span><span>美国</span><span class="tnum" style="color:var(--online-fg);font-weight:600">1/1</span><span class="tnum"><span class="tx">↑13K</span> <span class="rx">↓15K</span></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true">全部 <span class="c">8</span></button>
+        <button class="tab" role="tab" aria-selected="false">中国 <span class="c">2</span></button>
+        <button class="tab" role="tab" aria-selected="false">亚太 <span class="c">3</span></button>
+        <button class="tab" role="tab" aria-selected="false">欧洲 <span class="c">2</span></button>
+        <button class="tab" role="tab" aria-selected="false">美国 <span class="c">1</span></button>
+      </div>
+      <div class="tools-r">
+        <div class="seg">
+          <button type="button" id="lg" aria-pressed="true" onclick="setLayout('grid')">卡片</button>
+          <button type="button" id="lt" aria-pressed="false" onclick="setLayout('table')">列表</button>
+        </div>
+        <select class="ctrl"><option>默认顺序</option><option>CPU</option><option>内存</option><option>到期</option></select>
+        <input type="search" class="ctrl search" placeholder="搜索节点、地区或备注…" />
+      </div>
+    </div>
+
+    <section class="node-grid" id="grid-sec"></section>
+    <section class="card tbl-wrap hidden" id="tbl-sec">
+      <table>
+        <thead><tr><th>节点</th><th>地区</th><th>CPU</th><th>内存</th><th>硬盘</th><th>实时速率</th><th>延迟</th><th>丢包</th><th>本期流量</th><th>到期</th><th>状态</th></tr></thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<!-- DETAIL -->
+<main class="wrap hidden" id="v-detail">
+  <div class="stack">
+    <section class="d-kpi">
+      <div class="card ov-tile" style="box-shadow:var(--shadow-lg)">
+        <div class="ico-box" style="background:var(--cpu-bg);color:var(--cpu);font-weight:700">CPU</div>
+        <div class="ov-meta"><div class="ov-lbl">2 核 · 负载 0.08</div><div class="ov-val tnum">14.2<small>%</small></div><div class="pbar" style="--v:14.2%;--c:var(--cpu);margin-top:6px"></div></div>
+      </div>
+      <div class="card ov-tile" style="box-shadow:var(--shadow-lg)">
+        <div class="ico-box" style="background:var(--mem-bg);color:var(--mem);font-weight:700">MEM</div>
+        <div class="ov-meta"><div class="ov-lbl">540 MB / 1.92 GB</div><div class="ov-val tnum">28.1<small>%</small></div><div class="pbar" style="--v:28.1%;--c:var(--mem);margin-top:6px"></div></div>
+      </div>
+      <div class="card ov-tile" style="box-shadow:var(--shadow-lg)">
+        <div class="ico-box" style="background:var(--disk-bg);color:var(--disk);font-weight:700">SSD</div>
+        <div class="ov-meta"><div class="ov-lbl">1.92 / 18.58 GB</div><div class="ov-val tnum">10.3<small>%</small></div><div class="pbar" style="--v:10.3%;--c:var(--disk);margin-top:6px"></div></div>
+      </div>
+      <div class="card ov-tile" style="box-shadow:var(--shadow-lg)">
+        <div class="ico-box" style="background:var(--net-bg);color:var(--net);font-weight:700">NET</div>
+        <div class="ov-meta"><div class="ov-lbl">实时网络速率</div><div class="tnum" style="font-size:15px;font-weight:700"><span class="tx">↑ 180 KB/s</span><br/><span class="rx">↓ 420 KB/s</span></div></div>
+      </div>
+    </section>
+
+    <div class="d-charts">
+      <div class="card ch-card">
+        <div class="map-head"><h3 style="font-size:14px">CPU 使用率</h3><span class="pill ok">14.2%</span></div>
+        <svg class="ch-svg" viewBox="0 0 560 150">
+          <g stroke="var(--chart-grid)"><line x1="36" y1="16" x2="548" y2="16"/><line x1="36" y1="52" x2="548" y2="52"/><line x1="36" y1="88" x2="548" y2="88"/><line x1="36" y1="124" x2="548" y2="124"/></g>
+          <g fill="var(--fg-subtle)" font-size="10"><text x="30" y="20" text-anchor="end">100%</text><text x="30" y="56" text-anchor="end">66%</text><text x="30" y="92" text-anchor="end">33%</text><text x="30" y="127" text-anchor="end">0%</text><text x="44" y="144">15:00</text><text x="200" y="144">17:00</text><text x="360" y="144">19:00</text><text x="512" y="144">21:00</text></g>
+          <polygon fill="var(--cpu-bg)" opacity="0.7" points="36,124 36,112 90,104 144,108 198,92 252,102 306,96 360,84 414,98 468,106 548,100 548,124"/>
+          <polyline fill="none" stroke="var(--cpu)" stroke-width="2" points="36,112 90,104 144,108 198,92 252,102 306,96 360,84 414,98 468,106 548,100"/>
+        </svg>
+      </div>
+      <div class="card ch-card">
+        <div class="map-head"><h3 style="font-size:14px">内存用量</h3><span class="pill" style="background:var(--mem-bg);color:var(--mem)">540 MB / 1.92 GB</span></div>
+        <svg class="ch-svg" viewBox="0 0 560 150">
+          <g stroke="var(--chart-grid)"><line x1="42" y1="16" x2="548" y2="16"/><line x1="42" y1="52" x2="548" y2="52"/><line x1="42" y1="88" x2="548" y2="88"/><line x1="42" y1="124" x2="548" y2="124"/></g>
+          <g fill="var(--fg-subtle)" font-size="10"><text x="36" y="20" text-anchor="end">2.0G</text><text x="36" y="56" text-anchor="end">1.3G</text><text x="36" y="92" text-anchor="end">640M</text><text x="36" y="127" text-anchor="end">0</text><text x="50" y="144">15:00</text><text x="206" y="144">17:00</text><text x="364" y="144">19:00</text><text x="512" y="144">21:00</text></g>
+          <polygon fill="var(--mem-bg)" opacity="0.7" points="42,124 42,96 120,94 200,92 280,95 360,91 440,93 548,92 548,124"/>
+          <polyline fill="none" stroke="var(--mem)" stroke-width="2" points="42,96 120,94 200,92 280,95 360,91 440,93 548,92"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="card ch-card">
+      <div class="map-head"><h3 style="font-size:14px">Ping 探针延迟</h3><span class="pill ok"><i></i>0% 丢包</span></div>
+      <div class="probes">
+        <button class="probe" aria-pressed="true" style="--p:var(--net)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>浙江电信 <span class="tnum">23ms</span></button>
+        <button class="probe" aria-pressed="true" style="--p:var(--cpu)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>浙江联通 <span class="tnum">25ms</span></button>
+        <button class="probe" aria-pressed="true" style="--p:var(--disk)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>浙江移动 <span class="tnum">29ms</span></button>
+        <button class="probe" aria-pressed="false" style="--p:var(--mem)" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true')"><i></i>Cloudflare <span class="tnum">4ms</span></button>
+      </div>
+      <svg class="ch-svg" viewBox="0 0 1120 150">
+        <g stroke="var(--chart-grid)"><line x1="42" y1="16" x2="1108" y2="16"/><line x1="42" y1="52" x2="1108" y2="52"/><line x1="42" y1="88" x2="1108" y2="88"/><line x1="42" y1="124" x2="1108" y2="124"/></g>
+        <g fill="var(--fg-subtle)" font-size="11"><text x="36" y="20" text-anchor="end">60ms</text><text x="36" y="56" text-anchor="end">40ms</text><text x="36" y="92" text-anchor="end">20ms</text><text x="36" y="127" text-anchor="end">0ms</text></g>
+        <polyline fill="none" stroke="var(--net)" stroke-width="2" points="42,84 160,82 280,80 400,85 520,78 640,83 760,81 880,79 1000,84 1108,82"/>
+        <polyline fill="none" stroke="var(--cpu)" stroke-width="2" points="42,76 160,74 280,78 400,73 520,75 640,70 760,74 880,76 1000,72 1108,73"/>
+        <polyline fill="none" stroke="var(--disk)" stroke-width="2" points="42,66 160,64 280,69 400,62 520,66 640,61 760,65 880,67 1000,63 1108,64"/>
+      </svg>
+    </div>
+  </div>
+</main>
+
+<script>
+const NODES = [
+  { name:"PortChannel Zero 上海", flag:"🇨🇳", up:"在线 98天", st:"ok", cpu:14, load:"0.08, 0.05", mem:28, memTxt:"540M/1.9G", disk:10, diskTxt:"1.9/18.6G", q:14, qTxt:"114/800G", tx:"↑180K/s", rx:"↓420K/s", mTx:"↑56.4G", mRx:"↓57.6G", exp:"剩余 80 天", ec:"", price:"¥1,188/年", lat:"23·25·29", loss:"0·0·0", lb:"gggggggggggg", db:"gggggggggggg" },
+  { name:"Tencent 广州", flag:"🇨🇳", up:"在线 42天", st:"ok", cpu:6, load:"0.11, 0.04", mem:47, memTxt:"456/973M", disk:15, diskTxt:"6.0/39.1G", q:0, qTxt:"1.01G / ∞", tx:"↑34.8K/s", rx:"↓4.73M/s", mTx:"↑358M", mRx:"↓671M", exp:"剩余 843 天", ec:"", price:"¥629/一次性", lat:"26·26·28", loss:"0·0·0", lb:"gggggggggggg", db:"gggggggggggg" },
+  { name:"Aliyun 香港", flag:"🇭🇰", up:"高负载", st:"warn", cpu:86, load:"3.42, 2.91", mem:93, memTxt:"1.78/1.9G", disk:74, diskTxt:"29.6/40G", q:83, qTxt:"412/500G", tx:"↑1.08M/s", rx:"↓4.20M/s", mTx:"↑204G", mRx:"↓208G", exp:"剩余 218 天", ec:"", price:"US$86.4/年", lat:"142·168·215", loss:"0·1.2·2.4", lb:"gwwwdwwdwwwd", db:"ggwgwggwggwg" },
+  { name:"Hetzner 德国", flag:"🇩🇪", up:"离线 3时", st:"offline", cpu:0, load:"—", mem:0, memTxt:"4.00 GB", disk:0, diskTxt:"40.0 GB", q:2, qTxt:"360G/20T", tx:"↑0 B/s", rx:"↓0 B/s", mTx:"↑180G", mRx:"↓180G", exp:"剩余 120 天", ec:"", price:"€4.51/月", lat:null, loss:null, lb:"", db:"" },
+  { name:"Neburst 日本", flag:"🇯🇵", up:"在线 36天", st:"ok", cpu:11, load:"0.07, 0.06", mem:41, memTxt:"797M/1.9G", disk:45, diskTxt:"8.9/19.9G", q:1, qTxt:"653M/800G", tx:"↑10.6K/s", rx:"↓11.5K/s", mTx:"↑653M", mRx:"↓652M", exp:"剩余 3 天", ec:"w", price:"US$22.4/月", lat:"64·72·68", loss:"0·0·0", lb:"gggggggggggg", db:"gggggggggggg" },
+  { name:"RFCHOST CO 日本", flag:"🇯🇵", up:"高丢包", st:"danger", cpu:22, load:"0.04, 0.08", mem:34, memTxt:"425M/1.9G", disk:8, diskTxt:"1.6/40.0G", q:1, qTxt:"7.1G/1.46T", tx:"↑10.2K/s", rx:"↓10.5K/s", mTx:"↑3.75G", mRx:"↓3.32G", exp:"已到期", ec:"d", price:"US$6.29/月", lat:"—·—·222", loss:"100·100·0", lb:"ddwdddwdddwd", db:"dddddddddddd" },
+  { name:"V.PS 法兰克福", flag:"🇩🇪", up:"在线 17天", st:"ok", cpu:4, load:"0.15, 0.11", mem:21, memTxt:"415M/1.9G", disk:12, diskTxt:"2.4/19.6G", q:1, qTxt:"3.3/750G", tx:"↑25.1K/s", rx:"↓24.6K/s", mTx:"↑1.65G", mRx:"↓1.66G", exp:"剩余 300 天", ec:"", price:"€299.9/年", lat:"—", loss:"—", lb:"............", db:"............" },
+  { name:"BWH MEGABOX 洛杉矶", flag:"🇺🇸", up:"在线 25天", st:"ok", cpu:9, load:"0.00, 0.01", mem:21, memTxt:"427M/2.0G", disk:10, diskTxt:"3.9/40.2G", q:59, qTxt:"1.19/2.0T", tx:"↑12.9K/s", rx:"↓14.8K/s", mTx:"↑593G", mRx:"↓595G", exp:"剩余 184 天", ec:"", price:"US$45.7/年", lat:"136·142·132", loss:"0·0·0", lb:"wwwwwwwwwwww", db:"gggggggggggg" },
+];
+const arcColor = (v, def) => v >= 90 ? "var(--danger)" : v >= 80 ? "var(--warn)" : def;
+const bars = s => s.split("").map(c => `<i class="${c==='.'?'':c}"></i>`).join("");
+const arc = (v, col, lbl, sub, off) => `
+  <div class="arc-tile">
+    <svg class="arc-svg" viewBox="0 0 88 48">
+      <path d="M 10 44 A 34 34 0 0 1 78 44" fill="none" stroke="var(--track)" stroke-width="7" stroke-linecap="round" pathLength="100"/>
+      <path d="M 10 44 A 34 34 0 0 1 78 44" fill="none" stroke="${arcColor(v, col)}" stroke-width="7" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="${100 - v}"/>
+    </svg>
+    <div class="arc-val tnum">${off ? '—' : v + '%'}</div>
+    <div class="arc-lbl">${lbl}</div>
+    <div class="arc-sub tnum">${sub}</div>
+  </div>`;
+
+document.getElementById("grid-sec").innerHTML = NODES.map(n => `
+  <a class="card nc" data-st="${n.st}" href="#detail" onclick="setView('detail');return false">
+    <div class="nc-head">
+      <div class="nc-hl"><span>${n.flag}</span><h3 class="nc-name" title="${n.name}">${n.name}</h3></div>
+      <span class="pill ${n.st}"><i></i>${n.up}</span>
+    </div>
+    <div class="nc-body">
+      <div class="arcs">
+        ${arc(n.cpu, "var(--cpu)", "CPU", n.load, n.st==='offline')}
+        ${arc(n.mem, "var(--mem)", "内存", n.memTxt, n.st==='offline')}
+      </div>
+      <div class="bars-2">
+        <div class="bm">
+          <div class="bm-h"><span class="bm-l"><span class="bm-dot" style="background:var(--disk-bg);color:var(--disk)">D</span>硬盘</span><b class="tnum">${n.st==='offline'?'—':n.disk+'%'}</b></div>
+          <div class="pbar" style="--v:${n.disk}%;--c:${arcColor(n.disk,'var(--disk)')}"></div>
+          <div class="bm-s tnum">${n.diskTxt}</div>
+        </div>
+        <div class="bm">
+          <div class="bm-h"><span class="bm-l"><span class="bm-dot" style="background:var(--net-bg);color:var(--net)">T</span>流量</span><b class="tnum">${n.q===0&&n.qTxt.includes('∞')?'∞':n.q+'%'}</b></div>
+          <div class="pbar" style="--v:${n.q}%;--c:${arcColor(n.q,'var(--net)')}"></div>
+          <div class="bm-s tnum">${n.qTxt}</div>
+        </div>
+      </div>
+    </div>
+    <div class="nc-well">
+      <div class="nc-foot">
+        <span class="fl">实时速率</span><span class="fl">当期流量</span><span class="fl">到期</span>
+        <b class="fv tnum tx">${n.tx}</b><b class="fv tnum">${n.mTx}</b><b class="fv tnum ${n.ec}">${n.exp}</b>
+        <b class="fv tnum rx">${n.rx}</b><b class="fv tnum">${n.mRx}</b><b class="fv mut tnum">${n.price}</b>
+      </div>
+      ${n.lat !== null ? `<div class="nc-ping">
+        <div class="pcap"><span>延迟 ms</span><b class="tnum">${n.lat}</b></div>
+        <div class="pcap"><span>丢包 %</span><b class="tnum">${n.loss}</b></div>
+        <div class="pbars">${bars(n.lb)}</div>
+        <div class="pbars">${bars(n.db)}</div>
+      </div>` : ``}
+    </div>
+  </a>
+`).join("");
+
+document.getElementById("tbl-body").innerHTML = NODES.slice(0,5).map(n => `
+  <tr onclick="setView('detail')">
+    <td style="font-weight:700">${n.name}</td><td>${n.flag}</td>
+    <td class="tnum">${n.st==='offline'?'—':n.cpu+'%'}</td><td class="tnum">${n.st==='offline'?'—':n.mem+'%'}</td><td class="tnum">${n.st==='offline'?'—':n.disk+'%'}</td>
+    <td class="tnum"><span class="tx">${n.tx}</span> <span class="rx">${n.rx}</span></td>
+    <td class="tnum">${n.lat??'—'}</td><td class="tnum">${n.loss??'—'}</td><td class="tnum">${n.qTxt}</td>
+    <td class="tnum ${n.ec}">${n.exp}</td><td><span class="pill ${n.st}"><i></i>${n.up}</span></td>
+  </tr>
+`).join("");
+
+function setView(v){
+  const d = v === 'detail';
+  document.getElementById('v-home').classList.toggle('hidden', d);
+  document.getElementById('v-detail').classList.toggle('hidden', !d);
+  document.getElementById('hero-home').classList.toggle('hidden', d);
+  document.getElementById('hero-detail').classList.toggle('hidden', !d);
+  document.getElementById('vh').setAttribute('aria-pressed', String(!d));
+  document.getElementById('vd').setAttribute('aria-pressed', String(d));
+}
+function setLayout(m){
+  const t = m === 'table';
+  document.getElementById('grid-sec').classList.toggle('hidden', t);
+  document.getElementById('tbl-sec').classList.toggle('hidden', !t);
+  document.getElementById('lg').setAttribute('aria-pressed', String(!t));
+  document.getElementById('lt').setAttribute('aria-pressed', String(t));
+}
+function toggleTheme(){
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.getElementById('tbtn').textContent = dark ? '浅色' : '深色';
+}
+const p = new URLSearchParams(location.search);
+if (p.get('theme') === 'dark') toggleTheme();
+if (p.get('view') === 'detail') setView('detail');
+</script>
+</body>
+</html>
