@@ -2,7 +2,7 @@
   "name": "DYS",
   "short": "dys",
   "description": "服务器监控探针风格的 Monitor 主题：大屏总览、点阵地图与地区统计、指标条与负载趋势、延迟丢包、6 套主题色，Svelte 5 + uPlot",
-  "version": "1.6.0",
+  "version": "2.0.0",
   "author": "dingding229",
   "url": "https://github.com/dingding229/Monitor-DYS",
   "config": [

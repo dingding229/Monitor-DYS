@@ -30,12 +30,16 @@
       (sample?.loss != null && sample.loss >= 5) ||
       (sample?.latency != null && sample.latency >= 200)
     )
+    const ps = node.online && sample?.probes.length ? sample.probes.slice(0, 3) : null
     return {
       m, isCorrupt, isWaiting,
       ledCls: !node.online || snapshotOnly ? "offline" : warn ? "warn" : "",
       osTxt: node.os ? node.os.replace(/\s+GNU\/Linux/i, "") : "未知系统",
       duration: snapshotOnly ? "状态待确认" : node.online ? `在线${m ? " " + cardUptime(m.uptime) : ""}` : `离线 ${offlineFor(node) ?? ""}`,
       load1: m?.load?.[0] != null ? m.load[0].toFixed(2) : "—",
+      latTxt: ps ? ps.map((p) => (p.latency == null ? "—" : String(Math.round(p.latency)))).join(" · ") : "—",
+      lossTxt: ps ? ps.map((p) => (p.loss == null ? "—" : String(Number(p.loss.toFixed(1))))).join("·") : "—",
+      hasPing: Boolean(ps),
       meters: [
         ["CPU", m ? m.cpu : null, node.cpu_cores ? `${node.cpu_cores} 核` : "—", "—"],
         ["内存", memPct, m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total), "—"],
@@ -133,9 +137,9 @@
 
     {#if showPing}
       {@const offset = (sample?.buckets.length ?? 0) - 12}
-      <div class="nc-ping {!node.online || sample?.latency == null ? 'muted' : ''}" data-testid="node-ping" data-latency={sample?.latency ?? ""} data-loss={sample?.loss ?? ""} title={node.online ? probeTitle(sample) : "节点离线"}>
-        <div class="ping-caption">延迟 ms{" "}<b class="nc-pv mono">{node.online && sample?.latency != null ? Math.round(sample.latency) : "—"}</b></div>
-        <div class="ping-caption nc-pr">丢包 %{" "}<b class="nc-pv mono">{node.online && sample?.loss != null ? sample.loss.toFixed(1) : "—"}</b></div>
+      <div class="nc-ping {c.hasPing ? '' : 'muted'}" data-testid="node-ping" data-latency={sample?.latency ?? ""} data-loss={sample?.loss ?? ""} title={node.online ? probeTitle(sample) : "节点离线"}>
+        <div class="ping-caption">延迟 ms{" "}<b class="nc-pv mono">{c.latTxt}</b></div>
+        <div class="ping-caption nc-pr">丢包 %{" "}<b class="nc-pv mono">{c.lossTxt}</b></div>
         {#each [false, true] as isLoss}
           <div data-testid="ping-bars" class="nc-pbars {isLoss ? 'nc-pr' : ''}" aria-hidden="true">
             {#each BAR_SLOTS as i}<i class={barClass(isLoss ? sample?.buckets[i + offset]?.loss : sample?.buckets[i + offset]?.latency, isLoss, node.online)}></i>{/each}
