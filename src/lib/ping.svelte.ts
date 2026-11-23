@@ -1,57 +1,69 @@
 import { isObj as record, num } from "./api"
-import { SvelteMap } from "svelte/reactivity"
 
 type Bucket = { latency: number | null; loss: number | null }
 type Probe = { name: string; latency: number | null; loss: number | null }
 export type PingSummary = Omit<Probe, "name"> & { probes: Probe[]; buckets: Bucket[] }
 const empty: PingSummary = { latency: null, loss: null, probes: [], buckets: [] }
 const number = (v: unknown): v is number => num(v) && v >= 0
-const mean = (values: number[], digits: number) => values.length ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(digits)) : null
+const mean = (sum: number, count: number, digits: number) => count ? Number((sum / count).toFixed(digits)) : null
 
-export function summarizePing(resp: unknown, latestLoss = false): PingSummary {
+function summarizePing(resp: unknown): PingSummary {
   if (!record(resp) || !Array.isArray(resp.ping)) return empty
   const names = record(resp.probes) ? resp.probes : {}
-  const lossMap = record(resp.loss) ? resp.loss : null
-  const groups = new Map<string, { latency: number | null; ts: number; lossTS:number; lastLoss:number|null; losses: number[] }>()
-  const times = new Map<number,{lat:number[]; lost:number[]}>()
+  const lossFields = record(resp.loss) ? Object.values(resp.loss) : null
+  const groups = new Map<string, { latency: number | null; ts: number; lossTS: number; loss: number | null }>()
+  const times = new Map<number, { lat: number; count: number; lost: number; samples: number }>()
+  let lost = 0, samples = 0, latency = 0, count = 0
   for (const point of resp.ping) {
     if (!record(point) || !(number(point.task_id) || typeof point.task_id === "string")) continue
     const id = String(point.task_id)
-    const g = groups.get(id) ?? { latency: null, ts: -Infinity, lossTS:-Infinity, lastLoss:null, losses: [] }
-    const ts = number(point.ts) ? point.ts : g.ts
-    if (number(point.latency) && ts >= g.ts) { g.latency = point.latency; g.ts = ts }
-    // The Hub omits a zero-loss bucket / probe from its loss fields.
-    if (number(point.loss) || point.loss === undefined) g.losses.push(number(point.loss) ? point.loss : 0)
-    if (ts >= g.lossTS) { g.lossTS=ts; g.lastLoss=number(point.loss)?point.loss:point.loss===undefined?0:null }
-    if (number(point.ts)) {
-      const bin=times.get(ts) ?? {lat:[], lost:[]}
-      if(number(point.latency)) bin.lat.push(point.latency)
-      if(number(point.loss) || point.loss===undefined) bin.lost.push(number(point.loss) ? point.loss : 0)
-      times.set(ts,bin)
+    const group = groups.get(id) ?? { latency: null, ts: -Infinity, lossTS: -Infinity, loss: null }
+    const timestamp = number(point.ts) ? point.ts : null
+    const ts = timestamp ?? group.ts
+    const lat = number(point.latency) ? point.latency : null
+    // Older Hubs omit zero-loss buckets, but an explicit null is unknown.
+    const loss = point.loss === undefined ? 0 : number(point.loss) ? point.loss : null
+    if (lat !== null && ts >= group.ts) { group.latency = lat; group.ts = ts }
+    if (ts >= group.lossTS) { group.lossTS = ts; group.loss = loss }
+    groups.set(id, group)
+    if (!lossFields && loss !== null) { lost += loss; samples++ }
+    if (timestamp !== null) {
+      const bin = times.get(ts) ?? { lat: 0, count: 0, lost: 0, samples: 0 }
+      if (lat !== null) { bin.lat += lat; bin.count++ }
+      if (loss !== null) { bin.lost += loss; bin.samples++ }
+      times.set(ts, bin)
     }
-    groups.set(id, g)
   }
   if (!groups.size) return empty
-  const probes = Array.from(groups, ([id, g]) => {
-    const loss = lossMap?.[id]
-    return { name: typeof names[id] === "string" ? names[id] : `探测 #${id}`, latency: g.latency,
-      loss: latestLoss ? g.lastLoss : lossMap ? (number(loss) ? Number(loss.toFixed(1)) : loss === undefined ? 0 : null) : mean(g.losses, 1) }
+  for (const loss of lossFields ?? []) if (number(loss)) { lost += loss; samples++ }
+  const probes = Array.from(groups, ([id, { latency: lat, loss }]) => {
+    if (lat !== null) { latency += lat; count++ }
+    return { name: typeof names[id] === "string" ? names[id] : `探测 #${id}`, latency: lat, loss }
   })
-  const buckets=Array.from(times).sort(([a],[b])=>a-b).slice(-12).map(([,b])=>({latency:mean(b.lat,0),loss:mean(b.lost,1)}))
-  return { probes, buckets, latency: mean(probes.map(p => p.latency).filter(number), 0),
-    loss: lossMap && !Object.keys(lossMap).length ? 0 : mean(lossMap ? Object.values(lossMap).filter(number) : Array.from(groups.values()).flatMap(g => g.losses), 1) }
+  const buckets = [...times].sort(([a], [b]) => a - b).slice(-12).map(([, bin]) => ({
+    latency: mean(bin.lat, bin.count, 0), loss: mean(bin.lost, bin.samples, 1),
+  }))
+  return { probes, buckets, latency: mean(latency, count, 0), loss: lossFields?.length === 0 ? 0 : mean(lost, samples, 1) }
 }
 
 // Undefined means no completed request; null is a completed sample without a value.
 export const latencyText = (n: number | null | undefined) => n === undefined ? "…" : n === null ? "—" : `${n} ms`
 export const lossText = (n: number | null | undefined) => n === undefined ? "…" : n === null ? "—" : `${Number(n.toFixed(1))}%`
-export const latencyColor = (n: number | null | undefined) => n == null ? 'text-neutral-500' : n < 100 ? 'text-emerald-700' : n <= 200 ? 'text-amber-700' : 'text-red-700'
-export const lossColor = (n: number | null | undefined) => n == null || n === 0 ? 'text-neutral-500' : n <= 5 ? 'text-amber-700' : 'text-red-700'
 export const probeTitle = (s?: PingSummary) => s ? s.probes.map(p => `${p.name}：${latencyText(p.latency)} · ${lossText(p.loss)}`).join("\n") : "等待探测数据"
+
+function resultCell() {
+  let value = $state.raw<PingSummary>()
+  return { get value() { return value }, set value(next) { value = next } }
+}
 
 /** One scheduler per app. Card and row subscriptions share results, cooldowns and capacity. */
 export function createPingStore() {
-  const results = new SvelteMap<number, PingSummary>()
+  const results = new Map<number, ReturnType<typeof resultCell>>()
+  function result(id: number) {
+    let cell = results.get(id)
+    if (!cell) results.set(id, cell = resultCell())
+    return cell
+  }
   const next = new Map<number, number>()
   const flight = new Map<number, AbortController>()
   const targets = new Map<Element, number>()
@@ -76,13 +88,15 @@ export function createPingStore() {
       if (res.ok) {
         const body: unknown = await res.json()
         if (record(body) && Array.isArray(body.ping) && !body.ping.length) delay = 600_000
-        value = summarizePing(body,true)
+        value = summarizePing(body)
       }
     } catch { /* A timeout or unsuccessful read clears the previous sample. */ }
     finally {
       clearTimeout(timeout)
-      if (!disposed && (!ctrl.signal.aborted || timedOut)) { results.set(id, value); next.set(id, Date.now() + delay) }
-      flight.delete(id)
+      if (flight.get(id) === ctrl) {
+        flight.delete(id)
+        if (!disposed && (!ctrl.signal.aborted || timedOut)) { result(id).value = value; next.set(id, Date.now() + delay) }
+      }
       schedule()
     }
   }
@@ -133,12 +147,19 @@ export function createPingStore() {
     update(id)
     return { update, destroy: () => update(0) }
   }
+  function forget(id: number) {
+    const ctrl = flight.get(id)
+    flight.delete(id); ctrl?.abort()
+    const cell = results.get(id)
+    if (cell) cell.value = undefined
+    results.delete(id); next.delete(id)
+  }
   function destroy() {
     clearTimeout(settled); window.removeEventListener("scroll",onScroll,true)
     disposed = true; stopTimers(); observer?.disconnect(); document.removeEventListener("visibilitychange", schedule)
     for (const ctrl of flight.values()) ctrl.abort()
-    targets.clear(); visible.clear()
+    targets.clear(); visible.clear(); flight.clear(); next.clear(); results.clear()
   }
-  return { observe, get: (id: number) => results.get(id), destroy }
+  return { observe, get: (id: number) => result(id).value, forget, destroy }
 }
 export type PingStore = ReturnType<typeof createPingStore>

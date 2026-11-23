@@ -90,12 +90,6 @@ export const ALL_GROUP: unique symbol = Symbol("ALL_GROUP")
 export const UNGROUPED: unique symbol = Symbol("UNGROUPED")
 export type GroupKey = typeof ALL_GROUP | typeof UNGROUPED | string
 
-/** Every group in use, in the order of the first node carrying it. */
-export function groupsOf(nodes: Pick<Node, "group">[]): string[] {
-  if (!Array.isArray(nodes)) return []
-  return [...new Set(nodes.map((n) => (typeof n?.group === "string" ? n.group : "")).filter(Boolean))]
-}
-
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -154,6 +148,7 @@ const isNonNegNum = (v: unknown): v is number => num(v) && v >= 0
 const isOptNonNegNum = (v: unknown): boolean => v === undefined || v === null || isNonNegNum(v)
 const requiredFields = ["uptime","cpu","mem_total","mem_used","disk_total","disk_used","net_rx","net_tx","total_rx","total_tx","month_rx","month_tx"] as const
 const optionalFields = ["swap_total", "swap_used", "tcp", "udp", "procs"] as const
+export const metricFields = [...requiredFields, ...optionalFields]
 
 /**
  * Validate node metrics so a malformed report does not crash the whole page.
@@ -178,31 +173,3 @@ export function safeNodes(nodes: Node[]): Node[] {
   })
 }
 
-const KEEP = 60
-export const speedHistory = new Map<GroupKey, { rx: number; tx: number }[]>()
-
-export function sample(nodes: Node[]) {
-  const totals = new Map<GroupKey, { rx: number; tx: number }>()
-  totals.set(ALL_GROUP, { rx: 0, tx: 0 })
-  for (const n of nodes) {
-    const gKey: GroupKey = n.group ? n.group : UNGROUPED
-    const keys: GroupKey[] = [ALL_GROUP, gKey]
-    for (const key of keys) {
-      const total = totals.get(key) ?? { rx: 0, tx: 0 }
-      if (n.online && n.metrics) {
-        total.rx += n.metrics.net_rx
-        total.tx += n.metrics.net_tx
-      }
-      totals.set(key, total)
-    }
-  }
-  for (const key of speedHistory.keys()) {
-    if (!totals.has(key)) speedHistory.delete(key)
-  }
-  for (const [key, total] of totals) {
-    const series = speedHistory.get(key) ?? []
-    series.push(total)
-    if (series.length > KEEP) series.shift()
-    speedHistory.set(key, series)
-  }
-}

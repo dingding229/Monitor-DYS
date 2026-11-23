@@ -41,7 +41,20 @@ test("home renders six summary tiles, 16 cards and a map from one HTTP snapshot"
   await test.step("production HTML inlines the background before the app loads", async () => {
     const html = await readFile(new URL("../../dist/index.html", import.meta.url), "utf8")
     const head = /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(html)?.[1] ?? ""
-    expect(head, "inline background in built <head>").toMatch(/<style\b[^>]*>[^<]*\bbackground:\s*#f5f6f7\b/i)
+    const css = await readFile(new URL("../../src/app.css", import.meta.url), "utf8")
+    const light = /:root\s*\{[^}]*--bg:\s*([^;]+);/i.exec(css)?.[1]?.trim()
+    const dark = /:root\[data-scheme=["']?dark["']?\]\s*\{[^}]*--bg:\s*([^;]+);/i.exec(css)?.[1]?.trim()
+    expect(light, "light --bg").toBeTruthy()
+    expect(dark, "dark --bg").toBeTruthy()
+    const styles = [...head.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1]).join("\n")
+    const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    expect(rules.some(([, selector, body]) => /(?:^|,)\s*html\b/.test(selector) && body.includes(`background:${light}`))).toBe(true)
+    expect(rules.some(([, selector, body]) => /\[data-scheme=["']?dark["']?\]/.test(selector) && body.includes(`background:${dark}`))).toBe(true)
+    const schemeScript = /<script\b[^>]*>[\s\S]*?(?:dataset\.scheme|setAttribute\(["']data-scheme)[\s\S]*?<\/script>/i.exec(head)
+    const firstStylesheet = /<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*>/i.exec(head)
+    expect(schemeScript, "inline scheme script").toBeTruthy()
+    expect(firstStylesheet, "built stylesheet").toBeTruthy()
+    expect(schemeScript!.index).toBeLessThan(firstStylesheet!.index)
   })
 })
 
@@ -315,4 +328,45 @@ test("card Ping displays three per-probe values and twelve segments", async ({ p
   const bars = ping.getByTestId("ping-bars")
   await expect(bars.first()).toBeVisible()
   for (const bar of await bars.all()) await expect(bar.locator(":scope > *")).toHaveCount(12)
+})
+
+
+test("dark mode is set before first paint and Hub light overrides system dark", async ({ browser }) => {
+  const context = await browser.newContext({ colorScheme: "dark" })
+  try {
+    const page = await context.newPage()
+    await page.addInitScript(() => {
+      const w = window as any
+      w.__schemeEvents = []
+      const record = (event: string) => w.__schemeEvents.push({ event, scheme: document.documentElement.dataset.scheme, state: document.readyState })
+      new MutationObserver(() => { if (document.documentElement?.dataset.scheme && !w.__schemeEvents.some((e: any) => e.event === "set")) record("set") }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-scheme"] })
+      requestAnimationFrame(() => record("first-frame"))
+      document.addEventListener("DOMContentLoaded", () => record("domcontentloaded"), { once: true })
+    })
+    await page.route(/^https:\/\/(?:api\.ip\.sb|ipwho\.is)\//, route => route.fulfill({ status: 503, json: {}, headers: { "access-control-allow-origin": "*" } }))
+    await page.goto(mockUrl("normal"))
+    await expect(page.locator("html")).toHaveAttribute("data-scheme", "dark")
+    await page.reload()
+    await expect(page.locator("html")).toHaveAttribute("data-scheme", "dark")
+    await expect.poll(() => page.evaluate(() => (window as any).__schemeEvents.some((e: any) => e.event === "first-frame"))).toBe(true)
+    const events = await page.evaluate(() => (window as any).__schemeEvents)
+    expect(events.find((e: any) => e.event === "set")).toMatchObject({ scheme: "dark", state: "loading" })
+    expect(events.find((e: any) => e.event === "domcontentloaded").scheme).toBe("dark")
+    expect(events.find((e: any) => e.event === "first-frame").scheme).toBe("dark")
+    const darkBg = await page.locator("body").evaluate(el => getComputedStyle(el).backgroundColor)
+    // This scenario's actual Hub config explicitly requests light.
+    await page.goto(mockUrl("config"))
+    await expect(page.locator("html")).toHaveAttribute("data-scheme", "light")
+    const lightBg = await page.locator("body").evaluate(el => getComputedStyle(el).backgroundColor)
+    expect(lightBg).not.toBe(darkBg)
+  } finally { await context.close() }
+})
+
+test("first node card has at most 70 descendant elements", async ({ page }) => {
+  await page.goto(mockUrl("normal"))
+  const card = page.getByTestId("node-card").first()
+  await expect(card).toBeVisible()
+  // Include asynchronously loaded Ping content, not just the initial placeholder.
+  await expect(card.getByTestId("ping-bars").first()).toBeVisible()
+  expect(await card.evaluate(el => el.querySelectorAll("*").length)).toBeLessThanOrEqual(70)
 })

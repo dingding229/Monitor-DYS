@@ -16,59 +16,27 @@ function parsePath(pathname: string): Route {
 }
 
 export function createRouter(win: Window = typeof window !== "undefined" ? window : ({} as Window)) {
-  let current = $state<Route>(parsePath(win.location?.pathname ?? "/"))
-
-  function scrollAfterMount(y: number) { win.requestAnimationFrame?.(() => win.scrollTo(0,y)) }
-  const onPopState = () => {
-    current = parsePath(win.location?.pathname ?? "/")
-    scrollAfterMount(current.page === "home" ? win.history.state?.homeY ?? 0 : 0)
+  let current = $state.raw(parsePath(win.location?.pathname ?? "/"))
+  const scroll = () => win.requestAnimationFrame?.(() => win.scrollTo(0, current.page === "home" ? win.history.state?.homeY ?? 0 : 0))
+  function onPopState() {
+    current = parsePath(win.location.pathname)
+    scroll()
   }
-
-  if (typeof win.addEventListener === "function") {
-    win.addEventListener("popstate", onPopState)
-  }
-
-  function navigate(pathOrNodeId: string | number | null) {
-    const targetPath =
-      pathOrNodeId === null || pathOrNodeId === "/"
-        ? "/"
-        : typeof pathOrNodeId === "number"
-          ? `/node/${pathOrNodeId}`
-          : pathOrNodeId
-
-    if (
-      targetPath.startsWith("/admin") ||
-      targetPath.startsWith("/api") ||
-      targetPath === "/install.sh" ||
-      targetPath.startsWith("/agent/")
-    ) {
-      if (win.location) win.location.href = targetPath
-      return
-    }
-
-    if (win.location?.pathname !== targetPath) {
-      const homeY = current.page === "home" ? win.scrollY : win.history.state?.homeY ?? 0
-      if (current.page === "home") win.history.replaceState({...win.history.state,homeY}, "")
-      win.history.pushState({homeY}, "", targetPath + win.location.search)
-    }
-    current = parsePath(targetPath)
-    scrollAfterMount(current.page === "home" ? win.history.state?.homeY ?? 0 : 0)
-  }
-
-  function destroy() {
-    if (typeof win.removeEventListener === "function") {
-      win.removeEventListener("popstate", onPopState)
-    }
-  }
+  win.addEventListener?.("popstate", onPopState)
 
   return {
-    get route() {
-      return current
+    get route() { return current },
+    navigate(id: number | null) {
+      // Only these two paths belong to the theme; native links handle Hub routes.
+      const path = id === null ? "/" : `/node/${id}`
+      if (win.location?.pathname !== path) {
+        const homeY = current.page === "home" ? win.scrollY : win.history.state?.homeY ?? 0
+        if (current.page === "home") win.history.replaceState({ ...win.history.state, homeY }, "")
+        win.history.pushState({ homeY }, "", path + win.location.search)
+      }
+      current = parsePath(path)
+      scroll()
     },
-    get nodeId() {
-      return current.nodeId
-    },
-    navigate,
-    destroy,
+    destroy() { win.removeEventListener?.("popstate", onPopState) },
   }
 }

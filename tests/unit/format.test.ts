@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { bytes, cycleMonths, expiry, offlineFor, priceShort, regionName, speed } from "../../src/lib/format"
+import { bytes, expiry, offlineFor, priceShort, regionName, speed } from "../../src/lib/format"
 
 const MiB = 1024 ** 2
 const now = Date.parse("2026-11-21T12:00:00Z")
@@ -25,14 +25,15 @@ describe("format", () => {
     expect(regionName("not-a-region")).toBe("not-a-region")
   })
 
-  it.each<[string, number]>([
-    ["monthly", 1], ["quarterly", 3], ["semiannual", 6], ["yearly", 12], ["biennial", 24],
-    ["triennial", 36], ["once", 0], ["60m", 60], ["12m", 12], ["1200m", 1200],
-  ])("cycleMonths(%s) = %s", (cycle, months) => expect(cycleMonths(cycle)).toBe(months))
-
-  it.each(["0m", "1201m", "1.5m", "乱写的值", "toString", "", null])(
-    "rejects billing cycle %s", (cycle) => expect(cycleMonths(cycle)).toBeNaN(),
-  )
+  it.each([
+    ["monthly", "/月"], ["quarterly", "/季"], ["semiannual", "/半年"], ["yearly", "/年"],
+    ["biennial", "/2年"], ["triennial", "/3年"], ["once", "/一次性"],
+    ["60m", "/60月"], ["12m", "/12月"], ["1200m", "/1200月"],
+    ["0m", "/0m"], ["1201m", "/1201m"], ["1.5m", "/1.5m"], ["乱写的值", "/乱写的值"],
+    ["toString", "/toString"], ["", ""], [null, ""],
+  ])("formats billing cycle %s through priceShort", (cycle, suffix) => {
+    expect(priceShort(12, "CNY", cycle)).toBe(`¥12${suffix}`)
+  })
 
   it.each([
     [-3, "已过期 3 天", "expired"], [0, "今天到期", "soon"], [5, "5 天后到期", "soon"],

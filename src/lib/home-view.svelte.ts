@@ -85,11 +85,16 @@ export function createHomeView(readNodes: () => readonly Node[], readFilters: ()
 
 /** Use during map component initialization. Skip ticks while hovered or while the document is hidden. */
 export function createCountryView(readNodes: () => readonly Node[], isHovered: () => boolean) {
-  let nodes = $state.raw(untrack(readNodes))
-  const aggregate = $derived(aggregateCountries(nodes))
+  const first = untrack(readNodes)
+  let previous = new WeakRef(first)
+  let aggregate = $state.raw(aggregateCountries(first))
   onMount(() => {
     const timer = setInterval(() => {
-      if (!isHovered() && !document.hidden) nodes = readNodes()
+      if (isHovered() || document.hidden) return
+      const next = readNodes()
+      if (next === previous.deref()) return
+      previous = new WeakRef(next)
+      aggregate = aggregateCountries(next)
     }, 3000)
     return () => clearInterval(timer)
   })

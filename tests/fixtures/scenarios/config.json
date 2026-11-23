@@ -10,6 +10,7 @@
     "accent": "notacolor",
     "poll_interval": 999,
     "announcement": "第一行：今晚维护\n第二行：<img src=x onerror=alert(1)>",
-    "footer": "由 DYS Mock Hub 提供数据"
+    "footer": "由 DYS Mock Hub 提供数据",
+    "color_scheme": "light"
   }
 }

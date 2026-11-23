@@ -114,6 +114,3 @@ export async function loadSiteConfig(opts?: { fetch?: typeof globalThis.fetch })
   }
 }
 
-export async function loadConfig(opts?: { fetch?: typeof globalThis.fetch }): Promise<ThemeConfig> {
-  return (await loadSiteConfig(opts)).config
-}

@@ -1,7 +1,6 @@
-import { isObj, safeNodes, type Node, type Metrics } from "./api"
+import { isObj, metricFields, safeNodes, type Node, type Metrics } from "./api"
 
 const KEY = "dys:snap:v1", LIMIT = 200_000, TTL = 24 * 60 * 60 * 1000
-const metricKeys = ['uptime','cpu','mem_total','mem_used','swap_total','swap_used','disk_total','disk_used','net_rx','net_tx','total_rx','total_tx','month_rx','month_tx','tcp','udp','procs'] as const
 const strings = ['name','country','os','group','currency','billing_cycle','traffic_mode'] as const
 const numbers = ['price','expires_in','traffic_limit','traffic_reset_day'] as const
 
@@ -12,7 +11,7 @@ function project(raw: unknown) {
   let metrics: Partial<Metrics> | null = null
   if (isObj(m) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(Number.isFinite)) {
     metrics = { load: [m.load[0], m.load[1], m.load[2]] }
-    for (const key of metricKeys) if (typeof m[key] === 'number' && Number.isFinite(m[key])) metrics[key] = m[key]
+    for (const key of metricFields) if (typeof m[key] === 'number' && Number.isFinite(m[key])) metrics[key] = m[key]
   }
   return { id: raw.id, ...Object.fromEntries(strings.map(k => [k, typeof raw[k] === 'string' ? raw[k] : ''])),
     ...Object.fromEntries(numbers.map(k => [k, Number.isFinite(raw[k]) ? raw[k] : null])), metrics }

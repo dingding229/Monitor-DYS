@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { loadConfig, loadSiteConfig, resolveConfig } from "../../src/lib/config"
+import { loadSiteConfig, resolveColorScheme, resolveConfig } from "../../src/lib/config"
 import manifest from "../../theme.json"
 
 const defaults = Object.fromEntries(manifest.config.flatMap((field) => "key" in field ? [[field.key, field.default]] : []))
@@ -46,22 +46,22 @@ describe("resolveConfig", () => {
   })
 })
 
-describe("loadConfig", () => {
+describe("loadSiteConfig", () => {
   it("reads changed keys and merges with manifest defaults", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ layout: "table", announcement: "更新", extra: true }))
-    await expect(loadConfig({ fetch: fetcher })).resolves.toEqual({ ...defaults, layout: "table", announcement: "更新" })
+    await expect(loadSiteConfig({ fetch: fetcher })).resolves.toEqual({ config: { ...defaults, layout: "table", announcement: "更新" }, loaded: true })
     expect(fetcher.mock.calls[0][0]).toBe("/api/themes/dys/config")
   })
 
   it.each([404, 401, 502])("falls back silently on HTTP %i", async (status) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("unavailable", { status }))
-    await expect(loadConfig({ fetch: fetcher })).resolves.toEqual(defaults)
+    await expect(loadSiteConfig({ fetch: fetcher })).resolves.toEqual({ config: defaults, loaded: false })
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it("falls back silently on a network error", async () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("offline"))
-    await expect(loadConfig({ fetch: fetcher })).resolves.toEqual(defaults)
+    await expect(loadSiteConfig({ fetch: fetcher })).resolves.toEqual({ config: defaults, loaded: false })
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 })
@@ -72,4 +72,11 @@ it("distinguishes a successful settings read from a failed read while keeping di
     .mockResolvedValueOnce(new Response(null, { status: 404 }))
   await expect(loadSiteConfig({ fetch: fetcher })).resolves.toEqual({ config: defaults, loaded: true })
   await expect(loadSiteConfig({ fetch: fetcher })).resolves.toEqual({ config: defaults, loaded: false })
+})
+
+
+describe("resolveColorScheme", () => {
+  it.each([["light", "light"], ["dark", "dark"], ["auto", "auto"], ["Dark", "auto"], ["", "auto"], [null, "auto"], [undefined, "auto"], [false, "auto"]] as const)("resolves %s", (value, expected) => {
+    expect(resolveColorScheme(value)).toBe(expected)
+  })
 })

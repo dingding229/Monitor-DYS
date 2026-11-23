@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ALL_GROUP, ApiError, UNGROUPED, api, groupsOf, safeNodes, sample, speedHistory, type Node } from "../../src/lib/api"
+import { ALL_GROUP, ApiError, UNGROUPED, api, safeNodes, sample, speedHistory, type Node } from "../../src/lib/api"
+import { directory } from "../../src/lib/view-state"
 import { metricFixture, nodeFixture } from "../fixtures/nodes"
 
 afterEach(() => {
@@ -85,9 +86,10 @@ describe("node snapshots", () => {
   })
 
   it("preserves first-seen group order and accepts literal names matching reserved labels", () => {
-    expect(groupsOf([{ group: "欧洲" }, {}, { group: "亚太" }, { group: "" }, { group: "欧洲" }, { group: "全部" }, { group: "未分组" }]))
-      .toEqual(["欧洲", "亚太", "全部", "未分组"])
-    expect(groupsOf([{}, { group: "" }])).toEqual([])
+    const nodes = ["欧洲", "", "亚太", "", "欧洲", "全部", "未分组"].map((group, id) => nodeFixture({ id, group }))
+    const tabs = directory(nodes, ALL_GROUP, null, "", "default").tabs
+    expect(tabs.map(tab => tab.key)).toEqual([ALL_GROUP, "欧洲", "亚太", "全部", "未分组", UNGROUPED])
+    expect(directory([nodeFixture({ group: "" })], ALL_GROUP, null, "", "default").tabs).toEqual([])
   })
 
   it("keeps all, ungrouped, and identically named real groups separate in speed history", () => {

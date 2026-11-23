@@ -1,5 +1,6 @@
 import type uPlot from "uplot"
-import { bytes, axisBytes, speed } from "./format"
+import { bytes, speed } from "./format-common"
+import { axisBytes } from "./detail-format"
 import { withAlpha } from "./color"
 /**
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
@@ -92,12 +93,13 @@ export function formatXAxisValues(xs: number[], splits: number[]): string[] {
     return [`${fmtMMDD(d)} ${fmtHHMM(d)}`]
   }
 
-  const rawLabels = splits.map(ts => { const d = new Date(ts * 1000); return isLocalMidnight(d) ? fmtMMDD(d) : fmtHHMM(d) })
   const seen = new Set<string>()
-  return rawLabels.map((lbl) => {
-    if (!lbl || seen.has(lbl)) return ""
-    seen.add(lbl)
-    return lbl
+  return splits.map(ts => {
+    const d = new Date(ts * 1000)
+    const label = isLocalMidnight(d) ? fmtMMDD(d) : fmtHHMM(d)
+    if (seen.has(label)) return ""
+    seen.add(label)
+    return label
   })
 }
 
@@ -141,15 +143,18 @@ export function readProbes(): string[] | null {
 export function saveProbes(names: string[] | null) {
   try { if (names) localStorage.setItem(probeKey, JSON.stringify(names)); else localStorage.removeItem(probeKey) } catch { /* selection still works without storage */ }
 }
-function visibleProbes(all: string[], saved?: readonly string[] | null): string[] {
-  const matches = all.filter(name => saved?.includes(name))
-  return matches.length ? matches : all
-}
-export function probeSelection(probes:{name:string;known:boolean;loss:number}[], saved:string[]|null) {
-  const names=[...new Set(probes.map(p=>p.name))], active=visibleProbes(names,saved)
-  const show=probes.map(p=>active.includes(p.name)), visible=probes.filter((_,i)=>show[i])
-  const hasLoss=visible.some(p=>p.loss>0)
-  return {names,active,show,hasLoss,noLoss:!hasLoss && visible.every(p=>p.known)}
+export function probeSelection(probes: { name: string; known: boolean; loss: number }[], saved: string[] | null) {
+  const names = [...new Set(probes.map(p => p.name))]
+  const matched = names.filter(name => saved?.includes(name))
+  const active = matched.length ? matched : names
+  let hasLoss = false, known = true
+  const show = probes.map(probe => {
+    if (!active.includes(probe.name)) return false
+    hasLoss ||= probe.loss > 0
+    known &&= probe.known
+    return true
+  })
+  return { names, active, show, hasLoss, noLoss: !hasLoss && known }
 }
 export function toggleProbe(all:string[], active:string[], name:string, only:boolean) {
   if(only) return [name]
@@ -158,13 +163,21 @@ export function toggleProbe(all:string[], active:string[], name:string, only:boo
   return next.length === all.length ? null : next
 }
 export function pingCharts(resp: MetricsResponse | null, accent:string) {
-  const rows = resp?.ping ?? []
-  const ids = [...new Set(rows.map(r=>r.task_id))], times=[...new Set(rows.map(r=>r.ts))].sort((a,b)=>a-b)
-  const buckets = new Map(rows.map(r=>[`${r.task_id}:${r.ts}`,r]))
+  const buckets = new Map<number, Map<number, PingPoint>>(), timestamps = new Set<number>()
+  for (const row of resp?.ping ?? []) {
+    let probe = buckets.get(row.task_id)
+    if (!probe) buckets.set(row.task_id, probe = new Map())
+    probe.set(row.ts, row)
+    timestamps.add(row.ts)
+  }
+  const ids = [...buckets.keys()], times = [...timestamps].sort((a,b)=>a-b)
   const colors=[accent,'#2563eb','#d97706','#9333ea','#dc2626','#0891b2']
   const probes = ids.map((id,i)=>{
     let sum=0,count=0,loss=resp?.loss?.[id]??0,known=resp?.loss!=null
-    for(const ts of times){const r=buckets.get(`${id}:${ts}`); if(!r)continue
+    const byTime = buckets.get(id)!
+    for (const ts of times) {
+      const r = byTime.get(ts)
+      if (!r) continue
       if(r.latency!=null && Number.isFinite(r.latency)){sum+=r.latency;count++}
       if(r.loss!=null){known=true;loss=Math.max(loss,r.loss)}
     }
@@ -175,7 +188,7 @@ export function pingCharts(resp: MetricsResponse | null, accent:string) {
     const latency=k==='latency', fmt=latency ? (v:number)=>`${Math.round(v)} ms` : pct
     if(!probes.length || (!latency && !probes.some(p=>p.loss>0))) continue
     charts.push({title:latency?'Ping 延迟':'Ping 丢包率',height:180,yFormat:v=>Number(v.toFixed(1))+(latency?' ms':'%'),
-      data:[times,...ids.map(id=>times.map(ts=>{const r=buckets.get(`${id}:${ts}`); return r ? r[k] ?? (latency?null:0) : null}))],
+      data:[times,...ids.map(id=>times.map(ts=>{const r=buckets.get(id)!.get(ts); return r ? r[k] ?? (latency?null:0) : null}))],
       series:probes.map(p=>{const loss=resp?.loss?.[p.id]; return line(p.name+(latency && loss ? ` (丢 ${pct(loss)})`:''),p.color,fmt,false,false,latency ? "超时" : "0%")})})
   }
   return {charts,probes}

@@ -3,7 +3,7 @@ import { ReadableStream } from "node:stream/web"
 import { gzipSync } from "node:zlib"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ALL_GROUP, speedHistory } from "../../src/lib/api"
-import { createNodeStore, mergeNodes, type NodeStoreOptions } from "../../src/lib/nodes.svelte"
+import { createNodeStore, type NodeStoreOptions } from "../../src/lib/nodes.svelte"
 import { metricFixture, nodeFixture } from "../fixtures/nodes"
 
 function deferred<T>() {
@@ -69,22 +69,22 @@ afterEach(() => {
 
 const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms)
 
-describe("mergeNodes", () => {
-  it("matches by id, preserves unchanged nodes, and applies changes, additions and removals", () => {
-    const unchanged = nodeFixture({ id: 1 })
-    const changed = nodeFixture({ id: 2 })
-    const removed = nodeFixture({ id: 3 })
-    const added = nodeFixture({ id: 4 })
-    // Simulate independently decoded payloads, including an unchanged nested load array.
-    const unchangedCopy = nodeFixture({ id: 1 })
+describe("node store reconciliation", () => {
+  it("reuses unchanged nodes across WebSocket frames and applies reorders, changes and removals", async () => {
+    const { store, sockets } = harness()
+    const unchanged = nodeFixture({ id: 1 }), changed = nodeFixture({ id: 2 }), removed = nodeFixture({ id: 3 })
+    store.start(Promise.resolve({ nodes: [unchanged, changed, removed] }))
+    await tick()
+    const previous = store.nodes!
     const changedCopy = nodeFixture({ id: 2, metrics: metricFixture({ load: [0.1, 0.2, 0.9] }) })
-
-    const merged = mergeNodes([unchanged, changed, removed], [changedCopy, added, unchangedCopy])
-    expect(merged.map(({ id }) => id)).toEqual([2, 4, 1])
-    expect(merged[0]).not.toBe(changed)
-    expect(merged[0]).toEqual(changedCopy)
-    expect(merged[1]).toEqual(added)
-    expect(merged[2]).toBe(unchanged)
+    const added = nodeFixture({ id: 4 })
+    sockets[0].message(JSON.stringify({ nodes: [changedCopy, added, nodeFixture({ id: 1 })] }))
+    await tick()
+    expect(store.nodes!.map(({ id }) => id)).toEqual([2, 4, 1])
+    expect(store.nodes![0]).not.toBe(previous[1])
+    expect(store.nodes![0]).toEqual(changedCopy)
+    expect(store.nodes![1]).toEqual(added)
+    expect(store.nodes![2]).toBe(previous[0])
   })
 })
 

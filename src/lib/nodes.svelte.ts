@@ -1,12 +1,12 @@
 /**
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
-import { ApiError, api, safeNodes, sample, speedHistory, type Node } from "@/lib/api"
+import { ApiError, api, safeNodes, type Node } from "@/lib/api"
 
-export type ConnectionState = "connecting" | "connected" | "live" | "polling"
+type ConnectionState = "connecting" | "connected" | "live" | "polling"
 type Snapshot = { nodes: Node[] }
 
-export type NodeStoreOptions = {
+type NodeStoreOptions = {
   WebSocket?: typeof globalThis.WebSocket
   fetch?: typeof globalThis.fetch
   document?: Pick<Document, "hidden" | "addEventListener" | "removeEventListener">
@@ -17,6 +17,7 @@ export type NodeStoreOptions = {
   reconnectBaseMs?: number
   cachedNodes?: Node[] | null
   onHttpSnapshot?: (nodes: Node[]) => void
+  onRemoved?: (id: number) => void
   autoStart?: boolean
 }
 
@@ -41,22 +42,32 @@ async function frameText(data: unknown): Promise<string> {
   return String(data)
 }
 
-// Hub frames are JSON values; include optional and unknown fields in equality.
-function same(a:unknown,b:unknown):boolean {
-  if(a===b) return true
-  if(!a || !b || typeof a!=='object' || typeof b!=='object' || Array.isArray(a)!==Array.isArray(b)) return false
-  const x=a as Record<string,unknown>, y=b as Record<string,unknown>, keys=Object.keys(x)
-  return keys.length===Object.keys(y).length && keys.every(k=>Object.hasOwn(y,k) && same(x[k],y[k]))
+// Compare JSON values, including optional fields. V8 can discard the prior frame
+// once the longest-lived consumers (startup props and offscreen stubs) release it.
+function same(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!a || !b || typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return false
+  const x = a as Record<string, unknown>, y = b as Record<string, unknown>, keys = Object.keys(x)
+  return keys.length === Object.keys(y).length && keys.every(k => Object.hasOwn(y,k) && same(x[k],y[k]))
 }
-export function mergeNodes(prev:Node[]|null,next:Node[]):Node[] {
-  if(!prev) return next
-  const old=new Map(prev.map(n=>[n.id,n]))
-  const merged=next.map(n=>{const p=old.get(n.id);return p && same(p,n)?p:n})
-  return merged.length===prev.length && merged.every((n,i)=>n===prev[i])?prev:merged
+function mergeNodes(prev: Node[] | null, next: Node[], onRemoved?: (id: number) => void): Node[] {
+  if (!prev) return next
+  const old = new Map(prev.map(n => [n.id, n]))
+  let changed = prev.length !== next.length
+  const merged = next.map((n,i) => {
+    const p = old.get(n.id)
+    old.delete(n.id)
+    const node = p && same(p,n) ? p : n
+    if (node !== prev[i]) changed = true
+    return node
+  })
+  if (onRemoved) for (const id of old.keys()) onRemoved(id)
+  return changed ? merged : prev
 }
 
 export function createNodeStore(opts: NodeStoreOptions = {}) {
   const WS = opts.WebSocket ?? globalThis.WebSocket
+  const open = WS?.OPEN ?? 1
   const fetchFn = opts.fetch ?? globalThis.fetch
   const doc = opts.document ?? (typeof document !== "undefined" ? document : undefined)
   const loc = opts.location ?? (typeof location !== "undefined" ? location : { protocol: "http:", host: "127.0.0.1:9911" })
@@ -77,17 +88,12 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   let silentTimer: ReturnType<typeof setTimeout> | null = null
 
-  let gap = false
   let epoch = 0
   let retryAttempts = 0
   let active = false
 
   function receive(list: Node[]) {
-    const safe = safeNodes(list)
-    if (gap) speedHistory.clear()
-    gap = false
-    sample(safe)
-    nodes = mergeNodes(nodes,safe)
+    nodes = mergeNodes(nodes, safeNodes(list), opts.onRemoved)
     lastUpdated = Date.now()
     error = null
     closed = false
@@ -104,8 +110,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
       })
       .catch((e: unknown) => {
         if (started !== epoch) return
-        const openState = (WS as { OPEN?: number })?.OPEN ?? 1
-        if (e instanceof ApiError && e.status === 0 && socket?.readyState === openState) return
+        if (e instanceof ApiError && e.status === 0 && socket?.readyState === open) return
         error = e instanceof Error ? e.message : "网络连接失败，稍后再试"
         if (e instanceof ApiError && e.status === 401) {
           closed = true
@@ -159,19 +164,20 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     armWatchdog()
 
     let decoded = Promise.resolve()
-    opened.onmessage = (event: MessageEvent) => {
+    const isCurrent = () => socket === opened && (opened.readyState ?? open) === open
+    opened.onmessage = ({ data }: MessageEvent) => {
       decoded = decoded
         .then(async () => {
-          const text = await frameText(event.data)
+          if (!isCurrent()) return
+          const text = await frameText(data)
+          if (!isCurrent()) return
           const parsed = JSON.parse(text) as { nodes?: Node[] }
-          if (!parsed || !Array.isArray(parsed.nodes)) throw new Error("invalid frame")
-          const openState = (WS as { OPEN?: number })?.OPEN ?? 1
-          if (socket !== opened || (opened.readyState !== undefined && opened.readyState !== openState)) return
+          if (!Array.isArray(parsed?.nodes)) return
+          receive(parsed.nodes)
           retryAttempts = 0
           connected = true
           // Only reset stale connection timer AFTER successfully decoding a frame (SPEC §5.11)
           armWatchdog()
-          receive(parsed.nodes)
           stopPolling()
         })
         .catch(() => {
@@ -232,7 +238,6 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   function resume(initial?: Promise<Snapshot>) {
     pause()
     retryAttempts = 0
-    gap = true
     const resumedEpoch = epoch
     void fetchOnce(initial).then(() => {
       if (resumedEpoch === epoch && !doc?.hidden) connect()
@@ -291,21 +296,12 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     get connectionState(): ConnectionState {
       return connected ? "live" : polling ? "polling" : lastUpdated !== null ? "connected" : "connecting"
     },
-    get connected() {
-      return connected
-    },
-    get polling() {
-      return polling
-    },
     get lastUpdated() {
       return lastUpdated
     },
     start,
     stop,
-    destroy: stop,
-    pause,
     resume,
-    fetchOnce,
     setPollInterval,
   }
 }

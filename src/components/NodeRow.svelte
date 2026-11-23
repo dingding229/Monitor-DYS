@@ -1,3 +1,12 @@
+<script module lang="ts">
+  function latTone(v: number | null | undefined) {
+    return v == null ? "fg-subtle" : v < 100 ? "fg-online" : v <= 200 ? "fg-warn" : "fg-danger"
+  }
+  function lossTone(v: number | null | undefined) {
+    return v == null || v === 0 ? "fg-subtle" : v <= 5 ? "fg-warn" : "fg-danger"
+  }
+</script>
+
 <script lang="ts">
   import BrandIcon from "./BrandIcon.svelte"
   import CountryFlag from "./CountryFlag.svelte"
@@ -22,59 +31,56 @@
   const view = freezeNode(() => incoming, () => defer)
   const observe = view.observe
   const watchPing = (el: Element, id: number) => ping.observe(el, id)
-
-  let n = $derived(view.node)
-  let m = $derived(n.metrics)
-  let exp = $derived(expiry(n, Date.now(), expiryWarningDays))
-  let sample = $derived(ping.get(n.id))
-  let latency = $derived(n.online ? sample?.latency : null)
-  let loss = $derived(n.online ? sample?.loss : null)
-  let state = $derived(snapshotOnly ? "状态待确认" : n.online ? "在线" : `离线 ${offlineFor(n) ?? ""}`)
-
-  function latTone(v: number | null | undefined) {
-    return v == null ? "text-[var(--fg-subtle)]" : v < 100 ? "text-[var(--online-fg)]" : v <= 200 ? "text-[var(--warn-fg)]" : "text-[var(--danger-fg)]"
-  }
-  function lossTone(v: number | null | undefined) {
-    return v == null || v === 0 ? "text-[var(--fg-subtle)]" : v <= 5 ? "text-[var(--warn-fg)]" : "text-[var(--danger-fg)]"
-  }
-  function link(e: MouseEvent) {
-    e.stopPropagation()
-    if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
-    e.preventDefault()
-    onSelect(n.id)
-  }
 </script>
 
 <tr
   data-testid="node-row"
   use:observe
-  use:watchPing={showPing && n.online ? n.id : 0}
-  onclick={() => onSelect(n.id)}
-  class="node-row cursor-pointer whitespace-nowrap transition-colors hover:bg-[var(--surface-hover)]"
+  use:watchPing={showPing && view.node.online ? view.node.id : 0}
+  onclick={() => onSelect(view.node.id)}
+  class="node-row"
 >
   <td>
-    <a href="/node/{n.id}" onfocus={prefetchDetail} onpointerenter={prefetchDetail} onclick={link} class="font-semibold text-[var(--fg)] hover:underline">
-      {n.name}
+    <a
+      href="/node/{view.node.id}"
+      onfocus={prefetchDetail}
+      onpointerenter={prefetchDetail}
+      onclick={(e) => {
+        e.stopPropagation()
+        if (e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+        e.preventDefault()
+        onSelect(view.node.id)
+      }}
+      class="row-link"
+    >
+      {view.node.name}
     </a>
   </td>
   {#if view.painted}
+    {@const n = view.node}
+    {@const m = n.metrics}
+    {@const exp = expiry(n, Date.now(), expiryWarningDays)}
+    {@const sample = ping.get(n.id)}
+    {@const latency = n.online ? sample?.latency : null}
+    {@const loss = n.online ? sample?.loss : null}
+    {@const state = snapshotOnly ? "状态待确认" : n.online ? "在线" : `离线 ${offlineFor(n) ?? ""}`}
+    {@const price = showBilling && n.price > 0 ? priceShort(n.price, n.currency || "CNY", n.billing_cycle) : ""}
+    {@const expLabel = exp.text || "长期"}
     <td>
-      <span class="inline-flex items-center gap-1.5 text-[var(--fg-muted)]">
+      <span class="row-region">
         <CountryFlag code={n.country} />{regionName(n.country) || "—"}<BrandIcon key={osKey(n.os)} title={n.os || "未知系统"} />
       </span>
     </td>
     {#if n._corrupt || (n.online && !m)}
-      <td colspan="3" class="text-[var(--fg-subtle)]" data-testid={n._corrupt ? "status-unavailable" : "status-waiting"}>
+      <td colspan="3" class="fg-subtle" data-testid={n._corrupt ? "status-unavailable" : "status-waiting"}>
         {n._corrupt ? "不可用" : "等待数据"}
       </td>
     {:else}
       {#each [m?.cpu, m && percentNum(m.mem_used, m.mem_total), m && percentNum(m.disk_used, m.disk_total)] as pct}
         {@const tone = pct != null && pct >= 90 ? "danger" : pct != null && pct >= 80 ? "warn" : ""}
         <td>
-          <span class={tone === "danger" ? "text-[var(--danger-fg)]" : tone === "warn" ? "text-[var(--warn-fg)]" : ""}>
-            {pct == null ? "—" : `${pct.toFixed(1)}%`}
-          </span>
-          <i class="nc-bar mt-1 w-16 {tone}" style:--v="{Math.min(100, pct ?? 0)}%"></i>
+          <span class={tone ? `fg-${tone}` : ""}>{pct == null ? "—" : `${pct.toFixed(1)}%`}</span>
+          <i class="nc-bar row-bar {tone}" style:--v="{Math.min(100, pct ?? 0)}%"></i>
         </td>
       {/each}
     {/if}
@@ -84,23 +90,14 @@
       <td data-testid="node-ping" data-latency={latency ?? ""} data-loss={loss ?? ""} class={latTone(latency)} title={probeTitle(sample)}>{latencyText(latency)}</td>
       <td class={lossTone(loss)} title={probeTitle(sample)}>{lossText(loss)}</td>
     {/if}
-    <td class="text-[var(--fg-muted)]">{n.traffic_limit > 0 ? pair(monthUsage(n), n.traffic_limit) : `${bytes(monthUsage(n))} / ${FOREVER}`}</td>
-    <td>
-      <div class={exp.level === "expired" ? "font-semibold text-[var(--danger-fg)]" : exp.level === "soon" ? "font-semibold text-[var(--warn-fg)]" : ""}>
-        {exp.text || "长期"}
-      </div>
-      {#if showBilling && n.price > 0}
-        <small class="text-[var(--fg-subtle)]">{priceShort(n.price, n.currency || "CNY", n.billing_cycle)}</small>
-      {/if}
+    <td class="fg-muted">{n.traffic_limit > 0 ? pair(monthUsage(n), n.traffic_limit) : `${bytes(monthUsage(n))} / ${FOREVER}`}</td>
+    <td class="row-exp" title={price ? `${expLabel} · ${price}` : expLabel}>
+      <span class={exp.level === "expired" ? "fg-danger fw6" : exp.level === "soon" ? "fg-warn fw6" : ""}>{expLabel}</span>
     </td>
-    <td class="text-[var(--fg-muted)]">
-      <i class="mr-1.5 inline-block h-2 w-2 rounded-full" style:background={!snapshotOnly && n.online ? "var(--online)" : "var(--offline)"}></i>{state}
+    <td class="fg-muted">
+      <i class="status-dot" style:background={!snapshotOnly && n.online ? "var(--online)" : "var(--offline)"}></i>{state}
     </td>
   {:else}
-    <td colspan={showPing ? 11 : 9} style="height:44px"></td>
+    <td colspan={showPing ? 11 : 9} class="row-stub"></td>
   {/if}
 </tr>
-
-<style>
-  td { padding: 8px 12px; font-variant-numeric: tabular-nums; }
-</style>

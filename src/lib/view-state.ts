@@ -1,5 +1,5 @@
 import { ALL_GROUP, UNGROUPED, type GroupKey, type Node } from "./api"
-import { percentNum, expiry, regionName } from "./format"
+import { percentNum, expiry, regionName } from "./format-common"
 export type SortKey = "default" | "name" | "cpu" | "mem" | "disk" | "tx" | "rx" | "expiry" | "traffic"
 
 type VisitorPrefs = {

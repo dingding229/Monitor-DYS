@@ -25,6 +25,7 @@ import { readView, writeView, loadPrefs, savePref, type SortKey } from "./view-s
 
 export type AppStartup = {
   initialMe: Promise<Me>
+  /** One-shot HTTP data. Its envelope is emptied after consumption; do not share it with other readers. */
   initialNodes: Promise<{ nodes: Node[] }>
   initialConfig: Promise<{ config: ThemeConfig; loaded: boolean }>
 }
@@ -45,9 +46,10 @@ function cachedScheme(): ColorScheme {
 export function createApp(initial: AppStartup) {
   const router = createRouter()
   const ping = createPingStore()
-  const nodeStore = createNodeStore({ autoStart: false, cachedNodes: readSnapshot(), onHttpSnapshot(nodes) {
-    if (canCachePublic()) saveSnapshot(nodes)
-  } })
+  const nodeStore = createNodeStore({
+    autoStart: false, cachedNodes: readSnapshot(), onRemoved: ping.forget,
+    onHttpSnapshot(nodes) { if (canCachePublic()) saveSnapshot(nodes) },
+  })
   const prefs = loadPrefs()
   let layoutPref = $state(prefs.layout)
   let me = $state.raw<Me | null>(null)
@@ -70,9 +72,10 @@ export function createApp(initial: AppStartup) {
   const home = createHomeView(() => sortedNodes, () => ({
     group, country, query: config.show_search ? debounced : "", sort: config.show_sort ? sort : "default",
   }))
-  const activeNode = $derived(
-    router.nodeId !== null ? sortedNodes.find((n) => n.id === router.nodeId) ?? null : null,
-  )
+  const activeNode = $derived.by(() => {
+    const id = router.route.nodeId
+    return id === null ? null : sortedNodes.find(n => n.id === id) ?? null
+  })
   const detailModule = $derived(router.route.page === "node" ? loadDetail() : null)
   const siteName = $derived(me?.site_name?.trim() || "Monitor")
   const groupLabel = $derived(group === ALL_GROUP ? "全部节点" : group === UNGROUPED ? "未分组" : group)
@@ -154,7 +157,13 @@ export function createApp(initial: AppStartup) {
       // This cache is only a first-paint hint, never a visitor override.
       try { localStorage.setItem(SCHEME_KEY, next.color_scheme) } catch { /* storage unavailable */ }
     })
-    nodeStore.start(initial.initialNodes)
+    // The root props can retain the settled Promise for the page lifetime.
+    nodeStore.start(initial.initialNodes.then(payload => {
+      if (!Array.isArray(payload?.nodes)) return payload
+      const { nodes } = payload
+      payload.nodes = []
+      return { nodes }
+    }))
     window.addEventListener("pagehide", saveLatest)
     window.addEventListener("popstate", restoreView)
   })
@@ -173,7 +182,6 @@ export function createApp(initial: AppStartup) {
     get route() { return router.route },
     get nodes() { return nodeStore.nodes },
     get loading() { return !nodeStore.nodes },
-    get lastUpdated() { return nodeStore.lastUpdated },
     get snapshotOnly() { return nodeStore.lastUpdated === null },
     get nodeError() { return nodeStore.error },
     get error() { return nodeStore.error || meError },
@@ -192,11 +200,9 @@ export function createApp(initial: AppStartup) {
     get orderedNodes() { return home.directory.list },
     get activeNode() { return activeNode },
     get detailModule() { return detailModule },
-    get connectionState() { return nodeStore.connectionState },
     get connectionLabel() { return connectionLabels[nodeStore.connectionState] },
     get lastUpdateTitle() { return lastUpdateTitle },
-    get home() { return home },
-    get ping() { return ping },
+    home, ping,
     get pingEnabled() { return configLoaded && config.show_ping },
     setLayout(next: ThemeConfig["layout"]) {
       layoutPref = next
@@ -210,7 +216,7 @@ export function createApp(initial: AppStartup) {
     setCountry(next: string | null) { country = next },
     setQuery(next: string) { query = next },
     selectNode(id: number) { router.navigate(id) },
-    back() { router.navigate("/") },
+    back() { router.navigate(null) },
     retry() {
       void fetchMe()
       nodeStore.resume()

@@ -6,13 +6,19 @@ let observer: IntersectionObserver | undefined
 /** Offscreen components unsubscribe from the incoming row, retaining their last displayed value. */
 export function freezeNode(read:()=>Node, defer:()=>boolean) {
   let last = untrack(read), visible = $state(false), painted = $state(!untrack(defer))
+  if (!painted) {
+    const { id, name, online } = last
+    // Until painted, the card and row only render this stub. Do not pin the
+    // original node and its metrics for every offscreen item in a large list.
+    last = { id, name, online } as Node
+  }
   return {
     get node() { return visible ? (last=read()) : last }, get painted() { return painted },
     observe(el:Element) {
       observer ??= new IntersectionObserver(entries=>{
         for(const e of entries) watchers.get(e.target)?.(e.isIntersecting)
       },{rootMargin:'300px'})
-      watchers.set(el,yes=>{visible=yes; if(yes) painted=true}); observer.observe(el)
+      watchers.set(el,yes=>{visible=yes; if(yes && !painted){last=untrack(read); painted=true}}); observer.observe(el)
       return {destroy(){watchers.delete(el); observer?.unobserve(el); if(!watchers.size){observer?.disconnect();observer=undefined}}}
     }
   }

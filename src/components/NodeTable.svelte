@@ -17,16 +17,14 @@
   let headers = $derived(["名称", "地区", "CPU", "内存", "硬盘", "↑", "↓", ...(showPing ? ["延迟", "丢包"] : []), "本期流量", "到期", "状态"])
 </script>
 
-<div class="panel overflow-x-auto">
-  <table class="w-full border-collapse text-left text-[12px]">
-    <thead class="sticky top-0 z-10 bg-[var(--surface-subtle)]">
-      <tr class="border-b border-[var(--border)] text-[var(--fg-muted)]">
-        {#each headers as h}
-          <th class="whitespace-nowrap px-3 py-2.5 font-medium">{h}</th>
-        {/each}
+<div class="panel tbl-wrap">
+  <table class="node-table">
+    <thead>
+      <tr>
+        {#each headers as h}<th>{h}</th>{/each}
       </tr>
     </thead>
-    <tbody class="divide-y divide-[var(--border-subtle)]">
+    <tbody>
       {#each nodes as node (node.id)}
         <NodeRow {node} defer={total > 60} {ping} {showPing} {snapshotOnly} {showBilling} {expiryWarningDays} {onSelect} />
       {/each}
