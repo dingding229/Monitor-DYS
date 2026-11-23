@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
-    <!-- Critical paint: keep this background in sync with --bg in app.css. -->
-    <style>html,body{background:#f5f6f7;color:#171717;margin:0}.boot-header{height:48px;background:white;border-bottom:1px solid #e5e7eb}</style>
+    <meta name="color-scheme" content="light dark" />
+    <script>{let s;try{s=localStorage.getItem('dys:scheme')}catch{}document.documentElement.dataset.scheme=s==='light'||s==='dark'?s:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}</script>
+    <!-- Critical paint: keep in sync with --bg/--surface/--border in app.css. -->
+    <style>html,body{background:#f4f6f8;color:#0f172a;margin:0}.boot-header{height:48px;background:#fff;border-bottom:1px solid #e2e8f0}:root[data-scheme="dark"],:root[data-scheme="dark"] body{background:#0b0f14;color:#f1f5f9}:root[data-scheme="dark"] .boot-header{background:#11161d;border-bottom-color:#222c38}</style>
     <link rel="preload" href="/api/nodes" as="fetch" crossorigin="anonymous" />
     <link rel="icon" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

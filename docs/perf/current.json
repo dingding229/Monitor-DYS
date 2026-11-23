@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-11-23T13:18:14.256Z",
+  "dist": "/Volumes/SSD/项目/monitor-theme/dist",
+  "environment": {
+    "browser": "159.0.8154.6",
+    "viewport": "1440x900",
+    "runs": 3,
+    "heapUnit": "MiB",
+    "gzipUnit": "bytes",
+    "timing": "ms",
+    "longTaskWindow": "10 seconds after first visible card",
+    "heapTiming": "60 seconds after first visible card; after detail: 30 seconds after returning home"
+  },
+  "sizes": {
+    "cssGzip": 7178,
+    "jsEntryGzip": 44923,
+    "firstScreenJsGzip": 62268,
+    "detailChunkGzip": 32614,
+    "files": {
+      "entry": "/assets/index-nyG_ae08.js",
+      "preloads": [
+        "/assets/os-icons-BIo-XU0N.js",
+        "/assets/WorldMap-DSfmAks5.js"
+      ],
+      "styles": [
+        "/assets/index-BrWNgsFc.css"
+      ],
+      "detail": "/assets/NodeDetail-5Tqkg2-E.js"
+    }
+  },
+  "scenarios": {
+    "normal": {
+      "runs": [
+        {
+          "firstCardMs": 69.59999990463257,
+          "maxLongTaskMs": 0,
+          "longTaskCount": 0,
+          "domNodes": 3116,
+          "domPerCard": 68,
+          "heapMB": 4.919940948486328,
+          "detailChartMs": 293,
+          "heapAfterDetailMB": 7.499210357666016
+        },
+        {
+          "firstCardMs": 159.20000004768372,
+          "maxLongTaskMs": 0,
+          "longTaskCount": 0,
+          "domNodes": 3116,
+          "domPerCard": 68,
+          "heapMB": 4.874641418457031,
+          "detailChartMs": 264.5,
+          "heapAfterDetailMB": 7.482906341552734
+        },
+        {
+          "firstCardMs": 171.60000002384186,
+          "maxLongTaskMs": 0,
+          "longTaskCount": 0,
+          "domNodes": 3116,
+          "domPerCard": 68,
+          "heapMB": 4.827003479003906,
+          "detailChartMs": 152.29999995231628,
+          "heapAfterDetailMB": 7.486167907714844
+        }
+      ],
+      "median": {
+        "firstCardMs": 159.20000004768372,
+        "maxLongTaskMs": 0,
+        "longTaskCount": 0,
+        "heapMB": 4.874641418457031,
+        "domNodes": 3116,
+        "domPerCard": 68,
+        "detailChartMs": 264.5,
+        "heapAfterDetailMB": 7.486167907714844
+      }
+    },
+    "many": {
+      "runs": [
+        {
+          "firstCardMs": 110.40000009536743,
+          "maxLongTaskMs": 0,
+          "longTaskCount": 0,
+          "domNodes": 5946,
+          "domPerCard": 68,
+          "heapMB": 10.068851470947266,
+          "detailChartMs": 281.5,
+          "heapAfterDetailMB": 15.534465789794922
+        },
+        {
+          "firstCardMs": 96.69999992847443,
+          "maxLongTaskMs": 0,
+          "longTaskCount": 0,
+          "domNodes": 5946,
+          "domPerCard": 68,
+          "heapMB": 10.164005279541016,
+          "detailChartMs": 127.30000007152557,
+          "heapAfterDetailMB": 15.535015106201172
+        },
+        {
+          "firstCardMs": 49.300000071525574,
+          "maxLongTaskMs": 0,
+          "longTaskCount": 0,
+          "domNodes": 5946,
+          "domPerCard": 68,
+          "heapMB": 10.159820556640625,
+          "detailChartMs": 122.30000007152557,
+          "heapAfterDetailMB": 15.539787292480469
+        }
+      ],
+      "median": {
+        "firstCardMs": 96.69999992847443,
+        "maxLongTaskMs": 0,
+        "longTaskCount": 0,
+        "heapMB": 10.159820556640625,
+        "domNodes": 5946,
+        "domPerCard": 68,
+        "detailChartMs": 127.30000007152557,
+        "heapAfterDetailMB": 15.535015106201172
+      }
+    }
+  }
+}

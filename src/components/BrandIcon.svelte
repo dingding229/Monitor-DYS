@@ -32,9 +32,6 @@
   aria-label={title || key}
   class="inline-block shrink-0 align-middle"
 >
-  {#if title}
-    <title>{title}</title>
-  {/if}
   {#each iconDef.paths ?? [] as d (d)}
     <path {d} />
   {/each}

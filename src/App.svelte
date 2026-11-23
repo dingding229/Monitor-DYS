@@ -1,15 +1,15 @@
 <script lang="ts">
   import { untrack } from "svelte"
-  import VisitorBubble from "@/components/VisitorBubble.svelte"
   import Home from "@/pages/Home.svelte"
   import { createApp, type AppStartup } from "@/lib/app-state.svelte"
 
-  const props: AppStartup = $props()
-  const app = untrack(() => createApp(props))
-  const siteConfig = $derived(app.config)
-  const detailModule = $derived(app.detailModule)
+  let { initialMe, initialNodes, initialConfig }: AppStartup = $props()
+  const app = createApp(untrack(() => ({ initialMe, initialNodes, initialConfig })))
+
   let logoFailed = $state(false)
   let footerVisible = $state(false)
+  let visitorModule = $derived(app.configLoaded && app.config.visitor_info_enabled ? import("@/components/VisitorBubble.svelte") : null)
+
   function observeFooter(el: HTMLElement) {
     const observer = new IntersectionObserver(([entry]) => { footerVisible = entry.isIntersecting })
     observer.observe(el)
@@ -19,29 +19,18 @@
 
 {#if app.unauthorized}
   <div class="grid min-h-svh place-items-center px-4 py-12">
-    <div
-      data-testid="login-required"
-      class="w-full max-w-sm rounded-[8px] border border-neutral-200 bg-white p-6 text-center"
-    >
-      <h1 class="text-base font-semibold text-neutral-900">需要登录后查看</h1>
-      <p class="mt-2 text-[12px] text-neutral-500">
+    <div data-testid="login-required" class="panel w-full max-w-sm p-6 text-center">
+      <h1 class="text-[15px] font-bold text-[var(--fg)]">需要登录后查看</h1>
+      <p class="mt-2 text-[12px] text-[var(--fg-muted)]">
         当前状态页未公开，请登录管理员后台后访问。
       </p>
-      <a
-        href="/admin"
-        class="mt-4 inline-flex items-center justify-center rounded-lg px-4 py-2 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
-        style="background-color: var(--accent);"
-      >
-        前往管理后台 (/admin)
-      </a>
+      <a href="/admin" class="btn btn-primary mt-4 px-4">前往管理后台 (/admin)</a>
     </div>
   </div>
 {:else}
   <div class="flex min-h-svh flex-col">
-    <!-- Top Header per SPEC-v1.1 §B & SPEC-v1.2 §5 (view toggle button removed from top bar) -->
-    <header class="site-header sticky top-0 z-20 border-b">
-      <div class="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-[16px] py-2.5">
-        <!-- Left: /favicon.svg + site_name -->
+    <header class="site-header">
+      <div class="wrap flex h-[48px] items-center justify-between gap-3">
         <a
           href="/"
           onclick={(e) => {
@@ -49,23 +38,24 @@
             e.preventDefault()
             app.back()
           }}
-          class="inline-flex cursor-pointer items-center gap-2 text-[15px] font-bold tracking-tight text-neutral-900 transition-opacity hover:opacity-75"
+          class="inline-flex min-w-0 cursor-pointer items-center gap-2 text-[15px] font-bold tracking-tight text-[var(--fg)] transition-opacity hover:opacity-80"
         >
-          {#if !logoFailed}<img src="/favicon.svg" alt="" width="22" height="22" class="shrink-0 rounded-full object-cover ring-1 ring-black/5" onerror={() => (logoFailed = true)} />{/if}
+          {#if !logoFailed}
+            <img
+              src="/favicon.svg"
+              alt=""
+              width="22"
+              height="22"
+              class="shrink-0 rounded-full border border-[var(--border)] object-cover"
+              onerror={() => (logoFailed = true)}
+            />
+          {/if}
           <span class="truncate">{app.siteName}</span>
         </a>
 
-        <!-- Right: conn-status + admin-link (ONLY when me.authed === true) -->
-        <div class="flex items-center gap-2">
-          <div
-            data-testid="conn-status"
-            title={app.lastUpdateTitle}
-            class="inline-flex h-[28px] items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-600"
-          >
-            <span
-              class="h-2 w-2 rounded-full"
-              style="background-color: {app.connectionLabel.color};"
-            ></span>
+        <div class="flex shrink-0 items-center gap-2">
+          <div data-testid="conn-status" title={app.lastUpdateTitle} class="conn-pill">
+            <span class="h-2 w-2 rounded-full" style:background-color={app.connectionLabel.color}></span>
             <span>{app.connectionLabel.text}</span>
           </div>
 
@@ -75,7 +65,7 @@
               data-testid="admin-link"
               title="管理后台"
               aria-label="管理后台"
-              class="inline-flex h-[28px] items-center justify-center gap-1 px-2 rounded-lg border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
+              class="btn h-[28px] px-2"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
                 <path d="M13.12 6.44L14.70 6.82L14.70 9.18L13.12 9.56L12.72 10.51L13.57 11.90L11.90 13.57L10.51 12.72L9.56 13.12L9.18 14.70L6.82 14.70L6.44 13.12L5.49 12.72L4.10 13.57L2.43 11.90L3.28 10.51L2.88 9.56L1.30 9.18L1.30 6.82L2.88 6.44L3.28 5.49L2.43 4.10L4.10 2.43L5.49 3.28L6.44 2.88L6.82 1.30L9.18 1.30L9.56 2.88L10.51 3.28L11.90 2.43L13.57 4.10L12.72 5.49Z" />
@@ -88,144 +78,85 @@
       </div>
     </header>
 
-    <!-- Main Container (max-w 1440px, px 16px, compact spacing 12px) -->
-    <main class="mx-auto w-full max-w-[1440px] flex-1 space-y-3 px-[16px] pt-3.5 pb-[16px]">
-      {#if siteConfig.announcement && siteConfig.announcement.trim()}
-        <div
-          data-testid="announcement"
-          class="rounded-[8px] border border-neutral-200 bg-white px-3.5 py-2.5 text-[12px] leading-relaxed text-neutral-700 whitespace-pre-line"
-        >
-          {siteConfig.announcement}
+    <main class="wrap flex-1 space-y-3 pt-3 pb-5">
+      {#if app.config.announcement?.trim()}
+        <div data-testid="announcement" class="panel announcement">
+          {app.config.announcement}
         </div>
       {/if}
 
-      {#if app.error && app.loading}
-        <div
-          role="alert"
-          class="rounded-[8px] border border-red-200 bg-white p-6 text-center text-[12px] text-red-600"
-        >
+      {#if app.error && !app.nodes}
+        <div role="alert" class="panel border-[var(--danger)] p-6 text-center text-[12px] text-[var(--danger-fg)]">
           <p>{app.error}</p>
-          <button
-            type="button"
-            onclick={app.retry}
-            class="mt-3 cursor-pointer rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            重试
-          </button>
+          <button type="button" onclick={() => app.retry()} class="btn mt-3">重试</button>
         </div>
       {:else}
         {#if app.nodeError}
-          <div
-            role="alert"
-            class="rounded-[8px] border border-amber-200 bg-amber-50 px-3.5 py-2 text-[12px] text-amber-800"
-          >
+          <div role="alert" class="panel border-[var(--warn)] bg-[var(--warn-soft)] px-3.5 py-2 text-[12px] text-[var(--warn-fg)]">
             {app.nodeError}
           </div>
         {/if}
 
         {#if app.route.page === "node"}
-          {#if app.loading || app.snapshotOnly}
-            <div class="rounded-[8px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-400">
-              正在加载节点数据…
-            </div>
-          {:else if app.activeNode && detailModule}
-            {#await detailModule}<div class="panel p-6" data-testid="skeleton">加载详情…</div>
+          {#if !app.nodes || app.snapshotOnly}
+            <div class="panel py-14 text-center text-[12px] text-[var(--fg-subtle)]">正在加载节点数据…</div>
+          {:else if app.activeNode && app.detailModule}
+            {#await app.detailModule}
+              <div class="panel p-6 text-[12px] text-[var(--fg-subtle)]" data-testid="skeleton">加载详情…</div>
             {:then { default: NodeDetail }}
-            <NodeDetail
-              node={app.activeNode}
-              showPing={app.pingEnabled}
-              orderedNodes={app.orderedNodes}
-              groupLabel={app.groupLabel}
-              historyDays={app.historyDays}
-              showBilling={siteConfig.show_billing}
-              expiryWarningDays={siteConfig.expiry_warning_days}
-              accent={siteConfig.accent}
-              onBack={app.back}
-              onSelectNode={app.selectNode}
-            />
-            {:catch}<p role="alert">详情组件加载失败，请刷新重试。</p>{/await}
+              <NodeDetail
+                node={app.activeNode}
+                showPing={app.pingEnabled}
+                orderedNodes={app.orderedNodes}
+                groupLabel={app.groupLabel}
+                historyDays={app.historyDays}
+                showBilling={app.config.show_billing}
+                expiryWarningDays={app.config.expiry_warning_days}
+                accent={app.config.accent}
+                onBack={() => app.back()}
+                onSelectNode={(id) => app.selectNode(id)}
+              />
+            {:catch}
+              <p role="alert" class="panel p-6 text-center text-[12px] text-[var(--danger-fg)]">详情组件加载失败，请刷新重试。</p>
+            {/await}
           {:else}
-            <div class="rounded-[8px] border border-neutral-200 bg-white py-14 text-center text-[12px] text-neutral-500">
+            <div class="panel py-14 text-center text-[12px] text-[var(--fg-muted)]">
               <p>节点不存在或未公开</p>
-              <button
-                type="button"
-                onclick={app.back}
-                class="mt-3 cursor-pointer underline"
-              >
-                返回节点列表
-              </button>
+              <button type="button" onclick={() => app.back()} class="btn mt-3">返回节点列表</button>
             </div>
           {/if}
         {:else}
-          <Home
-            ping={app.ping} showPing={app.pingEnabled && !app.snapshotOnly}
-            snapshotOnly={app.snapshotOnly}
-            loading={app.loading}
-            filtered={app.home.directory}
-            accent={siteConfig.accent}
-            layout={app.layout}
-            cardSize={siteConfig.card_size}
-            showSummary={siteConfig.show_summary}
-            showMap={siteConfig.show_map}
-            showSearch={siteConfig.show_search}
-            showSort={siteConfig.show_sort}
-            showBilling={siteConfig.show_billing}
-            expiryWarningDays={siteConfig.expiry_warning_days}
-            bind:selectedGroup={() => app.group, app.setGroup}
-            bind:selectedCountry={() => app.country, app.setCountry}
-            sortKey={app.sort}
-            bind:searchQuery={() => app.query, app.setQuery}
-            onChangeLayout={app.setLayout}
-            onChangeSort={app.setSort}
-            onSelectNode={app.selectNode}
-          />
+          <Home {app} />
         {/if}
       {/if}
     </main>
 
-    <footer use:observeFooter class="border-t border-neutral-200/80 bg-white py-[16px] text-[12px] text-neutral-500">
-      <div class="footer-inner mx-auto max-w-[1440px] px-[16px]">
+    <footer use:observeFooter class="border-t border-[var(--border)] bg-[var(--surface)] py-4 text-[12px] text-[var(--fg-subtle)]">
+      <div class="footer-inner wrap">
         <div class="flex flex-wrap items-center gap-1.5">
-          <a
-            href="https://github.com/monitor-probe/monitor"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-medium text-neutral-600 transition-colors hover:text-neutral-900"
-          >
-            Powered by Monitor
-          </a>
-          <span class="text-neutral-300">·</span>
-          <a
-            href="https://github.com/dingding229/Monitor-DYS"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-medium text-neutral-600 transition-colors hover:text-neutral-900"
-          >
-            Theme by DYS
-          </a>
+          <a href="https://github.com/monitor-probe/monitor" target="_blank" rel="noopener noreferrer" class="font-medium text-[var(--fg-muted)] hover:text-[var(--fg)]">Powered by Monitor</a>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/dingding229/Monitor-DYS" target="_blank" rel="noopener noreferrer" class="font-medium text-[var(--fg-muted)] hover:text-[var(--fg)]">Theme by DYS</a>
         </div>
 
-        {#if app.configLoaded && siteConfig.visitor_info_enabled}
-          <VisitorBubble enabled docked={footerVisible} />
+        {#if visitorModule}
+          {#await visitorModule then { default: VisitorBubble }}
+            <VisitorBubble enabled docked={footerVisible} />
+          {/await}
         {/if}
-        {#if siteConfig.footer && siteConfig.footer.trim()}
+
+        {#if app.config.footer?.trim()}
           <div>
-            {#if siteConfig.footer_url && /^https?:\/\//i.test(siteConfig.footer_url)}
-              <a
-                href={siteConfig.footer_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-neutral-600 underline-offset-2 hover:text-neutral-900 hover:underline"
-              >
-                {siteConfig.footer}
+            {#if app.config.footer_url && /^https?:\/\//i.test(app.config.footer_url)}
+              <a href={app.config.footer_url} target="_blank" rel="noopener noreferrer" class="text-[var(--fg-muted)] underline-offset-2 hover:text-[var(--fg)] hover:underline">
+                {app.config.footer}
               </a>
             {:else}
-              <span>{siteConfig.footer}</span>
+              <span>{app.config.footer}</span>
             {/if}
           </div>
         {/if}
       </div>
     </footer>
-
   </div>
 {/if}

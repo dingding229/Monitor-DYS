@@ -6,8 +6,11 @@
 
   let {
     title,
-    subtitle = "", noLoss = false,
-    data, show, controls,
+    subtitle = "",
+    noLoss = false,
+    data,
+    show,
+    controls,
     series,
     yFormat,
     yMax,
@@ -29,11 +32,18 @@
   let canvasHost: HTMLDivElement | undefined = $state()
   let chart = $state.raw<uPlot | null>(null)
   let resizeObserver: ResizeObserver | null = null
+  let schemeObserver: MutationObserver | null = null
+  let schemeTick = $state(0)
 
   let hoverIdx = $state<number | null>(null)
   let hoverLeft = $state<number>(0)
   let containerWidth = $state<number>(320)
   let currentTicksJson = $state<string>("[]")
+
+  function cssVar(name: string, fallback: string): string {
+    if (typeof document === "undefined") return fallback
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+  }
 
   function seriesColor(s: uPlot.Series): string {
     return typeof s.stroke === "string" ? s.stroke : "var(--accent)"
@@ -58,25 +68,20 @@
 
   function buildOptions(width: number): uPlot.Options {
     const axisFont = "11px -apple-system, BlinkMacSystemFont, sans-serif"
-    const tickLength = 3, yGap = 4
-    const axisColor = "#737373"
-    const gridColor = "rgba(0,0,0,0.05)"
-    // uPlot may finish an axis pass after Svelte has switched to another node.
-    const timestamps = data[0] as number[], pointCount = timestamps.length
-    // Per SPEC-v1.2 §6.f: Show point circles only when there are fewer than 30 points
+    const tickLength = 3
+    const yGap = 4
+    const axisColor = cssVar("--chart-axis", "#64748b")
+    const gridColor = cssVar("--chart-grid", "#eef2f6")
+    const timestamps = data[0] as number[]
+    const pointCount = timestamps.length
     const showPoints = pointCount > 0 && pointCount < 30
 
     return {
       width: Math.max(180, width),
       height,
-      // Per SPEC-v1.2 §6.c: right padding 24px so the last X-axis tick label is never clipped
       padding: [6, 24, 0, 0],
-      cursor: {
-        drag: { x: false, y: false },
-      },
-      legend: {
-        show: false,
-      },
+      cursor: { drag: { x: false, y: false } },
+      legend: { show: false },
       scales: {
         x: {
           time: true,
@@ -112,9 +117,9 @@
           grid: { stroke: gridColor, width: 1 },
           ticks: { stroke: gridColor, width: 1, size: tickLength },
           size: (self, values) => {
-            // uPlot asks once without labels, then again with formatted ticks. Measure in CSS pixels.
             const ctx = self.ctx
-            ctx.save(); ctx.font = axisFont
+            ctx.save()
+            ctx.font = axisFont
             const longest = (values ?? []).reduce((max, label) => Math.max(max, ctx.measureText(label ?? "").width), 0)
             ctx.restore()
             return Math.ceil(longest) + yGap + tickLength + 2
@@ -139,16 +144,10 @@
         ],
       },
       series: [
-        {
-          label: "时间",
-        },
+        { label: "时间" },
         ...series.map((s) => ({
           ...s,
-          points: {
-            show: showPoints,
-            size: 4,
-            ...(s.points ?? {}),
-          },
+          points: { show: showPoints, size: 4, ...(s.points ?? {}) },
         })),
       ],
     }
@@ -179,55 +178,60 @@
       })
       resizeObserver.observe(container)
     }
+    if (typeof MutationObserver !== "undefined") {
+      schemeObserver = new MutationObserver(() => { schemeTick++ })
+      schemeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-scheme"] })
+    }
   })
 
   $effect(() => {
     void data
     void series
     void yMax
-    if (container) {
-      renderChart()
+    void schemeTick
+    if (container) renderChart()
+  })
+
+  $effect(() => {
+    const u = chart
+    const mask = show
+    if (u && mask) {
+      u.batch(() =>
+        mask.forEach((visible, i) => {
+          if (u.series[i + 1]?.show !== visible) u.setSeries(i + 1, { show: visible })
+        }),
+      )
     }
   })
 
-  // Visibility changes use uPlot's own scale invalidation, not the construction effect.
-  $effect(() => {
-    const u=chart, mask=show
-    if(u && mask) u.batch(()=>mask.forEach((visible,i)=>{
-      if(u.series[i+1]?.show !== visible) u.setSeries(i+1,{show:visible})
-    }))
-  })
   onDestroy(() => {
     resizeObserver?.disconnect()
+    schemeObserver?.disconnect()
     chart?.destroy()
     chart = null
   })
 </script>
 
-<div
-  data-testid="chart"
-  data-ticks={currentTicksJson}
-  class="panel relative rounded-[8px] border border-neutral-200 bg-white p-[12px]"
->
-  <!-- Title on the left, compact series legend on the right -->
+<div data-testid="chart" data-ticks={currentTicksJson} class="panel relative p-3">
   <div class="mb-1.5 flex flex-wrap items-center justify-between gap-1.5">
     <div class="flex items-baseline gap-1.5">
-      <h4 class="text-[12px] font-semibold text-neutral-800">{title}</h4>
+      <h4 class="text-[13px] font-bold text-[var(--fg)]">{title}</h4>
       {#if noLoss}<span class="no-loss-pill" data-testid="no-loss">无丢包</span>{/if}
-      {#if subtitle}
-        <span class="tnum text-[11px] text-neutral-400">{subtitle}</span>
-      {/if}
+      {#if subtitle}<span class="tnum text-[12px] text-[var(--fg-muted)]">{subtitle}</span>{/if}
     </div>
 
-    {#if !controls}<div class="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
-      {#each series as s, i}{#if show?.[i] !== false}
-        {@render legendItem(s)}
-      {/if}{/each}
-    </div>{/if}
+    {#if !controls}
+      <div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--fg-muted)]">
+        {#each series as s, i}
+          {#if show?.[i] !== false}
+            {@render legendItem(s)}
+          {/if}
+        {/each}
+      </div>
+    {/if}
   </div>
   {@render controls?.()}
 
-  <!-- Chart canvas container & compact cursor-following tooltip -->
   <div
     bind:this={container}
     data-ticks={currentTicksJson}
@@ -240,28 +244,31 @@
     <div bind:this={canvasHost} data-ticks={currentTicksJson} class="h-full w-full"></div>
     {#if hoverIdx !== null && hoverTimeStr}
       <div
-        class="pointer-events-none absolute z-20 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px]"
+        class="pointer-events-none absolute z-20 rounded-[6px] border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11px]"
         style="top: 4px; {hoverLeft > containerWidth * 0.55
           ? `right: ${Math.max(4, Math.round(containerWidth - hoverLeft + 10))}px;`
           : `left: ${Math.max(4, Math.round(hoverLeft + 10))}px;`}"
       >
-        <div class="tnum font-medium text-neutral-500">{hoverTimeStr}</div>
-        {#each series as s, i}{#if show?.[i] !== false}
-          <div class="tnum flex items-center justify-between gap-2 text-neutral-800">
-            {@render legendItem(s)}
-            <span class="font-semibold">{formatHoverValue(s, hoverIdx, i)}</span>
-          </div>
-        {/if}{/each}
+        <div class="tnum font-medium text-[var(--fg-subtle)]">{hoverTimeStr}</div>
+        {#each series as s, i}
+          {#if show?.[i] !== false}
+            <div class="tnum flex items-center justify-between gap-2 text-[var(--fg)]">
+              {@render legendItem(s)}
+              <span class="font-semibold">{formatHoverValue(s, hoverIdx, i)}</span>
+            </div>
+          {/if}
+        {/each}
       </div>
     {/if}
   </div>
 </div>
 
-{#snippet legendItem(s:uPlot.Series)}
+{#snippet legendItem(s: uPlot.Series)}
   <span class="legend-item"><i class:dashed={!!s.dash} style:color={seriesColor(s)}></i>{s.label}</span>
 {/snippet}
+
 <style>
-  .legend-item {display:inline-flex;align-items:center;gap:4px}
-  .legend-item i {width:7px;height:7px;border-radius:2px;background:currentColor}
-  .legend-item .dashed {width:9px;height:0;border-top:1px dashed;background:none}
+  .legend-item { display: inline-flex; align-items: center; gap: 4px; }
+  .legend-item i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .legend-item .dashed { width: 9px; height: 0; border-radius: 0; border-top: 1px dashed; background: none; }
 </style>
