@@ -2,7 +2,7 @@
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
 
-import type { Node } from "./api"
+import { num, type Node } from "./api"
 import { bytes, cycleSuffix, unitOf, UNITS } from "./format-core"
 export { bytes } from "./format-core"
 
@@ -79,12 +79,8 @@ export function expiry(
   nowMs = Date.now(),
   warnDays = 7,
 ): ExpiryInfo {
-  const hasExpiresIn = "expires_in" in node && node.expires_in !== undefined
-  const days = hasExpiresIn
-    ? typeof node.expires_in === "number" && Number.isFinite(node.expires_in)
-      ? Math.trunc(node.expires_in)
-      : null
-    : daysUntil(node.expires_at, nowMs)
+  const remaining = node.expires_in
+  const days = remaining === undefined ? daysUntil(node.expires_at, nowMs) : num(remaining) ? Math.trunc(remaining) : null
 
   if (days === null) {
     return { days: null, text: "", level: "none" }
@@ -92,14 +88,9 @@ export function expiry(
   if (days < 0) {
     return { days, text: `已过期 ${-days} 天`, level: "expired" }
   }
-  const threshold = typeof warnDays === "number" && Number.isFinite(warnDays) && warnDays >= 1 ? warnDays : 7
-  if (days === 0) {
-    return { days: 0, text: "今天到期", level: "soon" }
-  }
-  if (days <= threshold) {
-    return { days, text: `${days} 天后到期`, level: "soon" }
-  }
-  return { days, text: `${days} 天后到期`, level: "ok" }
+  if (days === 0) return { days: 0, text: "今天到期", level: "soon" }
+  const threshold = num(warnDays) && warnDays >= 1 ? warnDays : 7
+  return { days, text: `${days} 天后到期`, level: days <= threshold ? "soon" : "ok" }
 }
 
 /**
@@ -117,34 +108,22 @@ export function offlineFor(
 ): string | null {
   if (node.online !== false) return null
 
-  const hasAgo = "last_seen_ago" in node && node.last_seen_ago !== undefined
-  let seconds: number | null
-  if (hasAgo) {
-    if (node.last_seen_ago === null) return "从未上报"
-    seconds = typeof node.last_seen_ago === "number" && Number.isFinite(node.last_seen_ago) ? Math.max(0, node.last_seen_ago) : null
-    if (seconds === null) return "从未上报"
-  } else {
-    if (!node.last_seen || node.last_seen <= 0) return "从未上报"
-    seconds = Math.max(0, Math.floor(nowMs / 1000 - node.last_seen))
-  }
-
-  if (seconds < 60) return `${Math.floor(seconds)} 秒`
-  return uptime(seconds)
+  const ago = node.last_seen_ago
+  const seconds = ago !== undefined
+    ? num(ago) ? Math.max(0, ago) : null
+    : !node.last_seen || node.last_seen <= 0 ? null : Math.max(0, Math.floor(nowMs / 1000 - node.last_seen))
+  return seconds === null ? "从未上报" : seconds < 60 ? `${Math.floor(seconds)} 秒` : uptime(seconds)
 }
 
 
 let regionDisplayNames: Intl.DisplayNames | null = null
 
 export function regionName(code?: string | null): string {
-  if (!code || typeof code !== "string") return ""
-  const trimmed = code.trim()
-  if (!trimmed) return ""
-  const upper = trimmed.toUpperCase()
+  if (typeof code !== "string") return ""
+  const upper = code.trim().toUpperCase()
+  if (!upper) return ""
   try {
-    if (!regionDisplayNames && typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
-      regionDisplayNames = new Intl.DisplayNames("zh-CN", { type: "region" })
-    }
-    const name = regionDisplayNames?.of(upper)
+    const name = (regionDisplayNames ??= new Intl.DisplayNames("zh-CN", { type: "region" })).of(upper)
     if (name && name.toUpperCase() !== upper) {
       return name.replace(/^中国/, "").replace(/特别行政区$/, "") || name
     }

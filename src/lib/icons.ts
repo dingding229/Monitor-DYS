@@ -48,55 +48,28 @@ type BrowserKey =
   | "qq"
   | "unknown"
 
-export function osKey(os?: string | null): OsKey {
-  if (!os || typeof os !== "string") return "unknown"
-  const s = os.trim().toLowerCase()
-  if (!s) return "unknown"
+// Match in the same priority order even when a name contains several aliases.
+const osAliases = [
+  ["openwrt", /istoreos|immortalwrt/], ["debian", /raspbian/], ["ubuntu"], ["rocky"],
+  ["almalinux", /alma/], ["centos"], ["fedora"], ["alpine"], ["arch", /manjaro/],
+  ["opensuse", /suse/], ["freebsd"], ["windows", /win32|win64/], ["macos", /mac os|darwin|os x/],
+  ["linux", /red hat|rhel|gentoo|kali|nixos|oracle|amazon/],
+] as const
+const browserAliases = [
+  ["wechat", /微信|micromessenger/], ["qq"], ["edge", /edg/], ["opera", /opr/],
+  ["firefox"], ["chrome", /chromium/], ["safari"],
+] as const
 
-  if (s.includes("istoreos") || s.includes("immortalwrt") || s.includes("openwrt")) return "openwrt"
-  if (s.includes("debian") || s.includes("raspbian")) return "debian"
-  if (s.includes("ubuntu")) return "ubuntu"
-  if (s.includes("rocky")) return "rocky"
-  if (s.includes("almalinux") || s.includes("alma")) return "almalinux"
-  if (s.includes("centos")) return "centos"
-  if (s.includes("fedora")) return "fedora"
-  if (s.includes("alpine")) return "alpine"
-  if (s.includes("arch") || s.includes("manjaro")) return "arch"
-  if (s.includes("opensuse") || s.includes("suse")) return "opensuse"
-  if (s.includes("freebsd")) return "freebsd"
-  if (s.includes("windows") || s.includes("win32") || s.includes("win64")) return "windows"
-  if (s.includes("macos") || s.includes("mac os") || s.includes("darwin") || s.includes("os x")) return "macos"
-  if (
-    s.includes("linux") ||
-    s.includes("red hat") ||
-    s.includes("rhel") ||
-    s.includes("gentoo") ||
-    s.includes("kali") ||
-    s.includes("nixos") ||
-    s.includes("oracle") ||
-    s.includes("amazon")
-  ) {
-    return "linux"
+function matchBrand<K extends string>(name: unknown, rules: readonly (readonly [K, RegExp?])[]): K | "unknown" {
+  if (typeof name === "string") {
+    const text = name.toLowerCase()
+    for (const [key, alias] of rules) if (text.includes(key) || alias?.test(text)) return key
   }
-
   return "unknown"
 }
 
-export function browserKey(name?: string | null): BrowserKey {
-  if (!name || typeof name !== "string") return "unknown"
-  const s = name.trim().toLowerCase()
-  if (!s) return "unknown"
-
-  if (s.includes("微信") || s.includes("wechat") || s.includes("micromessenger")) return "wechat"
-  if (s.includes("qq")) return "qq"
-  if (s.includes("edge") || s.includes("edg")) return "edge"
-  if (s.includes("opera") || s.includes("opr")) return "opera"
-  if (s.includes("firefox")) return "firefox"
-  if (s.includes("chrome") || s.includes("chromium")) return "chrome"
-  if (s.includes("safari")) return "safari"
-
-  return "unknown"
-}
+export const osKey = (name?: string | null): OsKey => matchBrand(name, osAliases)
+export const browserKey = (name?: string | null): BrowserKey => matchBrand(name, browserAliases)
 
 type IconDef = {
   color: string
@@ -147,14 +120,7 @@ const BROWSER_ICON_MAP: Record<BrowserKey, IconDef> = {
 }
 
 export function getBrandIcon(key: string, kind: "os" | "browser" = "os"): IconDef {
-  if (kind === "browser") {
-    return BROWSER_ICON_MAP[(key as BrowserKey) in BROWSER_ICON_MAP ? (key as BrowserKey) : "unknown"]
-  }
-  if ((key as OsKey) in OS_ICON_MAP && key !== "unknown") {
-    return OS_ICON_MAP[key as OsKey]
-  }
-  if ((key as BrowserKey) in BROWSER_ICON_MAP) {
-    return BROWSER_ICON_MAP[key as BrowserKey]
-  }
-  return OS_ICON_MAP.unknown
+  const browser = BROWSER_ICON_MAP[key as BrowserKey]
+  if (kind === "browser") return browser ?? BROWSER_ICON_MAP.unknown
+  return (key !== "unknown" && OS_ICON_MAP[key as OsKey]) || browser || OS_ICON_MAP.unknown
 }

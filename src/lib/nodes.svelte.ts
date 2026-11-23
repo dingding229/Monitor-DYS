@@ -23,21 +23,20 @@ type NodeStoreOptions = {
   autoStart?: boolean
 }
 
+function inflateText(data: Blob): Promise<string> {
+  return new Response(data.stream().pipeThrough(new DecompressionStream("gzip"))).text()
+}
+
 async function frameText(data: unknown): Promise<string> {
   if (typeof data === "string") return data
   if (typeof Blob !== "undefined" && data instanceof Blob) {
-    if (typeof DecompressionStream === "function") {
-      return new Response(data.stream().pipeThrough(new DecompressionStream("gzip"))).text()
-    }
-    return data.text()
+    return typeof DecompressionStream === "function" ? inflateText(data) : data.text()
   }
   if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
     const buf = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
     // Check gzip magic header 0x1f 0x8b
     if (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b && typeof DecompressionStream === "function") {
-      const copy = new Uint8Array(buf)
-      const stream = new Blob([copy.buffer]).stream().pipeThrough(new DecompressionStream("gzip"))
-      return new Response(stream).text()
+      return inflateText(new Blob([new Uint8Array(buf)]))
     }
     return new TextDecoder().decode(buf)
   }
@@ -71,8 +70,8 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   const WS = opts.WebSocket ?? globalThis.WebSocket
   const open = WS?.OPEN ?? 1
   const fetchFn = opts.fetch ?? globalThis.fetch
-  const doc = opts.document ?? (typeof document !== "undefined" ? document : undefined)
-  const loc = opts.location ?? (typeof location !== "undefined" ? location : { protocol: "http:", host: "127.0.0.1:9911" })
+  const doc = opts.document ?? globalThis.document
+  const loc = opts.location ?? globalThis.location ?? { protocol: "http:", host: "127.0.0.1:9911" }
 
   let pollMs = opts.pollIntervalMs ?? (opts.pollInterval ? opts.pollInterval * 1000 : 5000)
   const staleMs = opts.staleTimeoutMs ?? 10_000
@@ -113,11 +112,11 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
       })
       .catch((e: unknown) => {
         if (started !== epoch) return
-        if (e instanceof ApiError && e.status === 0 && socket?.readyState === open) return
-        error = e instanceof Error ? e.message : "网络连接失败，稍后再试"
-        if (e instanceof ApiError && e.status === 401) {
-          closed = true
+        if (e instanceof ApiError) {
+          if (e.status === 0 && socket?.readyState === open) return
+          if (e.status === 401) closed = true
         }
+        error = e instanceof Error ? e.message : "网络连接失败，稍后再试"
       })
   }
 
@@ -149,8 +148,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     try {
       opened = new WS(url)
     } catch {
-      startPolling()
-      scheduleReconnect()
+      reconnect()
       return
     }
     socket = opened
@@ -203,12 +201,12 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
         clearTimeout(silentTimer)
         silentTimer = null
       }
-      startPolling()
-      scheduleReconnect()
+      reconnect()
     }
   }
 
-  function scheduleReconnect() {
+  function reconnect() {
+    startPolling()
     if (retryTimer) clearTimeout(retryTimer)
     const delay = Math.min(30_000, baseRetryMs * 2 ** retryAttempts)
     retryAttempts++

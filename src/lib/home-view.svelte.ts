@@ -62,7 +62,7 @@ export function summarizeNodes(nodes: readonly Node[], readPing: ReadPing = noPi
     }
     for (const key of ["month_tx", "month_rx", "total_tx", "total_rx"] as const) {
       const value = node[key] ?? node.metrics?.[key]
-      if (Number.isFinite(value)) totals[key] += value
+      if (num(value)) totals[key] += value
     }
     for (const key of ["day_tx", "day_rx"] as const) {
       if (Number.isFinite(node[key])) totals[key] = (totals[key] ?? 0) + node[key]

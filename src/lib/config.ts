@@ -12,7 +12,7 @@ type ConfigField = {
   default?: unknown
   label?: string
   help?: string
-  options?: { value: string; label: string }[]
+  options?: (string | { value: string; label: string })[]
   min?: number
   max?: number
 }
@@ -79,7 +79,7 @@ export function resolveConfig(
     switch (field.type) {
       case 'boolean': valid = typeof val === 'boolean'; break
       case 'number': valid = num(val) && val >= (field.min ?? -Infinity) && val <= (field.max ?? Infinity); break
-      case 'select': valid = !!field.options?.some(o => o.value === val); break
+      case 'select': valid = !!field.options?.some(o => (typeof o === "string" ? o : o.value) === val); break
       case 'string': case 'text':
         valid = typeof val === 'string' && (key !== 'footer_url' || isValidHttpUrl(val))
         break

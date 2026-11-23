@@ -81,7 +81,7 @@ export function createPingStore() {
   let cancelIdle: (() => void) | undefined
   let disposed = false, scrolling = false
   let settled: ReturnType<typeof setTimeout>
-  function onScroll() { scrolling=true; clearTimeout(settled); clearTimeout(timer); cancelIdle?.(); cancelIdle=undefined
+  function onScroll() { scrolling=true; clearTimeout(settled); stopTimers()
     settled=setTimeout(()=>{scrolling=false; schedule()},300) }
 
   async function sample(id: number) {
@@ -113,7 +113,14 @@ export function createPingStore() {
     }
   }
 
-  const visibleIds = () => new Set(Array.from(visible, el => targets.get(el)).filter((id): id is number => !!id))
+  function visibleIds() {
+    const ids = new Set<number>()
+    for (const el of visible) {
+      const id = targets.get(el)
+      if (id) ids.add(id)
+    }
+    return ids
+  }
   function stopTimers() { clearTimeout(timer); cancelIdle?.(); cancelIdle = undefined }
   function schedule() {
     clearTimeout(timer)
@@ -121,7 +128,8 @@ export function createPingStore() {
     const ids = document.hidden ? new Set<number>() : visibleIds()
     for (const [id, ctrl] of flight) if (!ids.has(id)) ctrl.abort()
     if (scrolling || !ids.size || flight.size >= 3) { stopTimers(); return }
-    const due = Math.min(...Array.from(ids, id => flight.has(id) ? Infinity : next.get(id) ?? 0))
+    let due = Infinity
+    for (const id of ids) if (!flight.has(id)) due = Math.min(due, next.get(id) ?? 0)
     if (!Number.isFinite(due)) return
     if (due > Date.now()) { timer = setTimeout(schedule, due - Date.now()); return }
     if (cancelIdle) return

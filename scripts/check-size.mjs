@@ -156,12 +156,12 @@ function main() {
   const version = process.env.SIZE_BUDGET ?? "v2"
   if (version !== "v1" && version !== "v2") throw new Error("SIZE_BUDGET must be v1 or v2")
   const [entryLimit, initialLimit, detailLimit] = version === "v1" ? [60, 85, 40] : [42, 60, 30]
-  const limits = [
+  const jsLimits = [
     ["Entry JS", result.entryFiles, entryLimit, true],
     ["Initial JS (entry + map + static imports)", result.initialFiles, initialLimit, !result.missing.includes("map")],
     ["Additional detail JS", result.detailFiles, detailLimit, !result.missing.includes("NodeDetail/uPlot")],
-    ["CSS (all emitted styles)", result.cssFiles, CSS_LIMIT_KB, true],
   ]
+  const limits = [...jsLimits, ["CSS (all emitted styles)", result.cssFiles, CSS_LIMIT_KB, true]]
   const groups = limits.map(([name, files, limit, complete]) => {
     const bytes = gzipTotal(files)
     const status = bytes > limit * KB ? "OVER" : complete ? "OK" : "UNKNOWN"
@@ -172,6 +172,12 @@ function main() {
     group: name, "gzip bytes": files.length || status === "OK" ? bytes : "—", "budget KB": limit, chunks: files.length, status,
   })))
   for (const { name, files } of groups) console.log(`${name}: ${files.join(", ") || "(not identified)"}`)
+  // Node/zlib versions do not always produce the same gzip sizes. Leave 1.5%
+  // headroom on the JS targets without turning a near-limit build into a failure.
+  for (const { name, bytes, limit } of groups.slice(0, jsLimits.length)) {
+    const target = Math.floor(limit * KB * 985 / 1000)
+    if (bytes > target) console.warn(`WARN CI 余量：${name} 为 ${bytes} 字节，超过建议的 ${target} 字节（预算的 98.5%）。`)
+  }
   if (result.missing.length) {
     console.error(`Cannot identify ${result.missing.join(" and ")} chunk(s); enable build.manifest in vite.config.ts or preserve recognizable chunk names. The size budget cannot be verified.`)
   }

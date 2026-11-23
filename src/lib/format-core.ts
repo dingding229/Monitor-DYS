@@ -18,45 +18,15 @@ export function bytes(n: number, digits?: number): string {
   return `${v.toFixed(i === 0 ? 0 : (digits ?? (v >= 100 ? 0 : v >= 10 ? 1 : 2)))} ${UNITS[i]}`
 }
 
-const NAMED_CYCLES: Record<string, number> = {
-  monthly: 1,
-  quarterly: 3,
-  semiannual: 6,
-  yearly: 12,
-  biennial: 24,
-  triennial: 36,
-  once: 0,
+const CYCLE_LABELS: Record<string, string> = {
+  monthly: "月", quarterly: "季", semiannual: "半年", yearly: "年",
+  biennial: "2年", triennial: "3年", once: "一次性",
 }
-
-
-/**
- * Billing cycle to months:
- * monthly 1 / quarterly 3 / semiannual 6 / yearly 12 / biennial 24 / triennial 36 / once 0
- * `<n>m` (1–1200) -> n
- * unrecognized -> NaN
- */
-function cycleMonths(cycle?: string | null): number {
-  if (!cycle || typeof cycle !== "string") return Number.NaN
-  const c = cycle.trim()
-  if (Object.prototype.hasOwnProperty.call(NAMED_CYCLES, c)) {
-    return NAMED_CYCLES[c]
-  }
-  const m = /^(\d+)m$/.exec(c)
-  if (m) {
-    const n = Number(m[1])
-    if (Number.isInteger(n) && n >= 1 && n <= 1200) return n
-  }
-  return Number.NaN
-}
-
-const SHORT_CYCLES: Record<number, string> = { 1: "月", 3: "季", 6: "半年", 12: "年", 24: "2年", 36: "3年" }
 
 export function cycleSuffix(cycle?: string | null): string {
   const raw = typeof cycle === "string" ? cycle.trim() : ""
   if (!raw) return ""
-  const months = cycleMonths(raw)
-  if (months === 0) return "/一次性"
-  if (!Number.isFinite(months)) return `/${raw}`
-  return `/${raw.endsWith("m") ? `${months}月` : SHORT_CYCLES[months]}`
+  if (Object.hasOwn(CYCLE_LABELS, raw)) return `/${CYCLE_LABELS[raw]}`
+  const months = Number(/^(\d+)m$/.exec(raw)?.[1])
+  return `/${months >= 1 && months <= 1200 ? `${months}月` : raw}`
 }
-

@@ -58,48 +58,37 @@ export function createApp(initial: AppStartup) {
   let configLoaded = $state(false)
   let mounted = false
 
-  const initialView = readView()
-  let group = $state(initialView.group)
-  let country = $state(initialView.country)
-  let sort = $state(initialView.sort)
-  let query = $state(initialView.query)
-  let debounced = $state(initialView.query)
+  const view = $state(readView())
+  let debounced = $state(view.query)
   const sortedNodes = $derived(
     [...(nodeStore.nodes ?? [])].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.id - b.id),
   )
   const home = createHomeView(() => sortedNodes, () => ({
-    group, country, query: config.show_search ? debounced : "", sort: config.show_sort ? sort : "default",
+    group: view.group, country: view.country, query: config.show_search ? debounced : "", sort: config.show_sort ? view.sort : "default",
   }), ping.peek, () => config.expiry_warning_days)
   const activeNode = $derived.by(() => {
     const id = router.route.nodeId
     return id === null ? null : sortedNodes.find(n => n.id === id) ?? null
   })
   const detailModule = $derived(router.route.page === "node" ? loadDetail() : null)
-  const siteName = $derived(me?.site_name?.trim() || "Monitor")
-  const groupLabel = $derived(group === ALL_GROUP ? "全部节点" : group === UNGROUPED ? "未分组" : group)
-  const historyDays = $derived(
-    typeof me?.history_days === "number" && me.history_days >= 1 && me.history_days <= 365 ? me.history_days : 7,
-  )
+  const siteName = () => me?.site_name?.trim() || "Monitor"
   const lastUpdateTitle = $derived.by(() => {
     const ts = nodeStore.lastUpdated
     return ts ? `最后更新 ${new Date(ts).toLocaleTimeString("zh-CN", { hour12: false })}` : "等待数据连接"
   })
 
   $effect(() => {
-    const text = query
+    const text = view.query
     const timer = setTimeout(() => debounced = text, 120)
     return () => clearTimeout(timer)
   })
-  $effect(() => { if (router.route.page === "home") writeView(group, country, query, sort) })
+  $effect(() => { if (router.route.page === "home") writeView(view.group, view.country, view.query, view.sort) })
   function restoreView() {
-    const view = readView()
-    group = view.group
-    country = view.country
-    query = debounced = view.query
-    sort = view.sort
+    Object.assign(view, readView())
+    debounced = view.query
   }
 
-  $effect(() => { document.title = activeNode ? `${activeNode.name} · ${siteName}` : siteName })
+  $effect(() => { document.title = activeNode ? `${activeNode.name} · ${siteName()}` : siteName() })
   $effect(() => { nodeStore.setPollInterval(config.poll_interval) })
   $effect(() => {
     if (nodeStore.closed) {
@@ -176,14 +165,20 @@ export function createApp(initial: AppStartup) {
     get authed() { return me?.authed === true },
     get config(): Readonly<ThemeConfig> { return config },
     get configLoaded() { return configLoaded },
-    get siteName() { return siteName },
+    get siteName() { return siteName() },
     get layout() { return layoutPref ?? config.layout },
-    get group() { return group },
-    get country() { return country },
-    get query() { return query },
-    get sort() { return sort },
-    get groupLabel() { return groupLabel },
-    get historyDays() { return historyDays },
+    get group() { return view.group },
+    get country() { return view.country },
+    get query() { return view.query },
+    get sort() { return view.sort },
+    get groupLabel() {
+      const group = view.group
+      return group === ALL_GROUP ? "全部节点" : group === UNGROUPED ? "未分组" : group
+    },
+    get historyDays() {
+      const days = me?.history_days
+      return typeof days === "number" && days >= 1 && days <= 365 ? days : 7
+    },
     get orderedNodes() { return home.directory.list },
     get activeNode() { return activeNode },
     get detailModule() { return detailModule },
@@ -197,12 +192,12 @@ export function createApp(initial: AppStartup) {
       savePref("layout", next)
     },
     setSort(next: SortKey) {
-      sort = next
+      view.sort = next
       savePref("sort", next)
     },
-    setGroup(next: GroupKey) { group = next },
-    setCountry(next: string | null) { country = next },
-    setQuery(next: string) { query = next },
+    setGroup(next: GroupKey) { view.group = next },
+    setCountry(next: string | null) { view.country = next },
+    setQuery(next: string) { view.query = next },
     selectNode(id: number) { router.navigate(id) },
     back() { router.navigate(null) },
     retry() {

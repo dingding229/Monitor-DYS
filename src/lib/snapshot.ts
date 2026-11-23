@@ -1,4 +1,4 @@
-import { isObj, metricFields, safeNodes, type Node, type Metrics } from "./api"
+import { isObj, metricFields, num, safeNodes, type Node, type Metrics } from "./api"
 
 const KEY = "dys:snap:v1", LIMIT = 200_000, TTL = 24 * 60 * 60 * 1000
 const strings = ['name','country','os','group','currency','billing_cycle','traffic_mode'] as const
@@ -11,16 +11,18 @@ function project(raw: unknown) {
   let metrics: Partial<Metrics> | null = null
   if (isObj(m) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(Number.isFinite)) {
     metrics = { load: [m.load[0], m.load[1], m.load[2]] }
-    for (const key of metricFields) if (typeof m[key] === 'number' && Number.isFinite(m[key])) metrics[key] = m[key]
+    for (const key of metricFields) if (num(m[key])) metrics[key] = m[key]
   }
   return { id: raw.id, ...Object.fromEntries(strings.map(k => [k, typeof raw[k] === 'string' ? raw[k] : ''])),
     ...Object.fromEntries(numbers.map(k => [k, Number.isFinite(raw[k]) ? raw[k] : null])), metrics }
 }
+const fits = (data: string) => data.length <= LIMIT && new TextEncoder().encode(data).byteLength <= LIMIT
+
 export function clearSnapshot() { try { localStorage.removeItem(KEY) } catch { /* storage unavailable */ } }
 export function saveSnapshot(nodes: Node[]) {
   try {
     const data = JSON.stringify({ ts: Date.now(), nodes: (nodes.length>500 ? nodes.slice(0,120) : nodes).map(project).filter(Boolean) })
-    if (new TextEncoder().encode(data).byteLength <= LIMIT) localStorage.setItem(KEY, data)
+    if (fits(data)) localStorage.setItem(KEY, data)
     else clearSnapshot()
   } catch { /* quota/private browsing must not interrupt live updates */ }
 }
@@ -28,7 +30,7 @@ export function readSnapshot(): Node[] | null {
   try {
     const data = localStorage.getItem(KEY)
     if (!data) return null
-    if (data.length <= LIMIT && new TextEncoder().encode(data).byteLength <= LIMIT) {
+    if (fits(data)) {
       const { ts, nodes } = JSON.parse(data)
       const age = Date.now() - ts
       if (typeof ts === 'number' && age >= 0 && age < TTL && Array.isArray(nodes)) {

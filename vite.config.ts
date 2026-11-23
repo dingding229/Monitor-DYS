@@ -12,9 +12,13 @@ const root = import.meta.dirname.replaceAll("\\", "/")
 const themeFile = `${root}/theme.json`
 const formatFile = `${root}/src/lib/format`
 const uplotModule = /[\\/]uplot[\\/]dist[\\/]uPlot\.esm\.js$/
-// Only the line chart constructor is used. Drop unused optional static helpers
-// by exact upstream statement so Rolldown can shake their implementations.
-const unusedPlotHelpers = /^[ \t]*(?:uPlot\.join = join;|\(paths\.(?:stepped = stepped|bars    = bars|spline  = monotoneCubic)\);)$/gm
+// ChartCard uses the constructor, not uPlot's public static helpers. Only
+// remove known upstream statements so new code in a dependency update is kept.
+const unusedPlotHelpers = /^[ \t]*(?:uPlot\.(?:assign|fmtNum|rangeNum|rangeLog|rangeAsinh|orient|join|fmtDate|tzDate|sync|addGap|clipGaps)\s*=\s*\w+;|\(paths\.(?:linear|stepped|bars|spline)\s*=\s*\w+\);)$/gm
+// The theme only constructs aligned time-series charts. Specialize this local
+// mode binding (not other `mode` options) so Rolldown discards the XY facets.
+const plotMode = /(function uPlot\(opts, data, then\) \{\s+const self = \{\s+)(mode: ifNull\(opts\.mode, 1\),)(\s+\};\s+const mode = )(self\.mode;)/
+const plotPathTable = /^[ \t]*let paths = uPlot\.paths = \{\r?\n[ \t]+points,\r?\n[ \t]*\};$/m
 
 export default defineConfig({
   plugins: [svelte(), tailwindcss(), {
@@ -26,9 +30,9 @@ export default defineConfig({
       this.addWatchFile(id)
       const { short, config } = JSON.parse(readFileSync(id, "utf8")) as typeof import("./theme.json")
       return JSON.stringify({ short, config: config.flatMap(field => {
-        if (!("key" in field)) return []
+        if (!("key" in field) || field.key === "theme") return []
         const { type, key, default: value, min, max, options } = field
-        return [{ type, key, default: value, min, max, options: options?.map(({ value }) => ({ value })) }]
+        return [{ type, key, default: value, min, max, options: options?.map(({ value }) => value) }]
       }) })
     },
   }, {
@@ -50,7 +54,10 @@ export default defineConfig({
     transform(source, id) {
       if (!uplotModule.test(id)) return
       // Keep line and column offsets for upstream sourcemaps.
-      return { code: source.replace(unusedPlotHelpers, match => " ".repeat(match.length)), map: null }
+      const bare = (statement: string) => statement.replace(/[^\r\n]/g, " ")
+      const code = plotPathTable.test(source) ? source.replace(plotPathTable, bare).replace(unusedPlotHelpers, bare) : source
+      return { code: code.replace(plotMode, (_, start, option, middle, binding) =>
+        `${start}${"mode: 1,".padEnd(option.length)}${middle}${"1;".padEnd(binding.length)}`), map: null }
     },
   }, {
     name: "simple-os-icon-paths",
@@ -86,7 +93,11 @@ export default defineConfig({
     target: "es2022",
     modulePreload: { polyfill: false },
     // Share one preloaded set of OS paths across cards, rows and details.
-    rolldownOptions: { output: { codeSplitting: { groups: [{ name: "os-icons", test: osIconPath }] } } },
+    rolldownOptions: { output: {
+      // Keep lexical top-level declarations: this compresses better with Oxc.
+      topLevelVar: false,
+      codeSplitting: { groups: [{ name: "os-icons", test: osIconPath }] },
+    } },
     chunkSizeWarningLimit: 500,
   },
   server: {

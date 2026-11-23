@@ -123,11 +123,11 @@ export async function api<T>(
   const fetchFn = opts?.fetch ?? globalThis.fetch
   const timeoutMs = opts?.timeoutMs ?? TIMEOUT
   const maxRetries = opts?.retries ?? RETRIES
-  const url = path.startsWith("/api/") || path === "/api" ? path : `/api${path.startsWith("/") ? path : `/${path}`}`
+  const url = path === "/api" || path.startsWith("/api/") ? path : `/api${path.startsWith("/") ? "" : "/"}${path}`
 
   for (let attempt = 0; ; attempt++) {
     try {
-      const signal = typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(timeoutMs) : undefined
+      const signal = globalThis.AbortSignal?.timeout?.(timeoutMs)
       const res = await fetchFn(url, signal ? { signal } : undefined)
       if (!res.ok) throw await failure(res)
       return (await res.json().catch((e: unknown) => {
@@ -162,7 +162,6 @@ export function safeNodes(nodes: Node[]): Node[] {
     if (m === null) return node
     const valid =
       typeof m === "object" &&
-      m !== null &&
       requiredFields.every((key) => isNonNegNum(m[key])) &&
       optionalFields.every((key) => isOptNonNegNum(m[key])) &&
       Array.isArray(m.load) &&

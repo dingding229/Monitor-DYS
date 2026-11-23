@@ -17,8 +17,7 @@ const VALID_SORTS = new Set<SortKey>(["default", "name", "cpu", "mem", "disk", "
 export function loadPrefs(storage?: Storage): VisitorPrefs {
   const prefs: VisitorPrefs = {}
   try {
-    const store = storage ?? (typeof localStorage !== "undefined" ? localStorage : undefined)
-    if (!store) return prefs
+    const store = storage ?? localStorage
 
     const layout = store.getItem(KEYS.layout)
     if (layout === "grid" || layout === "table") prefs.layout = layout
@@ -33,9 +32,7 @@ export function loadPrefs(storage?: Storage): VisitorPrefs {
 
 export function savePref<K extends keyof VisitorPrefs>(key: K, value: NonNullable<VisitorPrefs[K]>, storage?: Storage): void {
   try {
-    const store = storage ?? (typeof localStorage !== "undefined" ? localStorage : undefined)
-    if (!store) return
-    store.setItem(KEYS[key], value)
+    (storage ?? localStorage).setItem(KEYS[key], value)
   } catch {
     // Storage disabled or blocked
   }
@@ -77,7 +74,12 @@ export function directory(nodes:readonly Node[], group:GroupKey, country:string|
   }
   if(sort!=='default') list.sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-CN'):score(b)-score(a))
   const ungrouped=counts.get(UNGROUPED); counts.delete(UNGROUPED)
-  const tabs: {key:GroupKey;label:string;count:number}[]=counts.size?[{key:ALL_GROUP as GroupKey,label:'全部',count:nodes.length}, ...Array.from(counts,([key,count])=>({key:key as GroupKey,label:String(key),count})), ...(ungrouped?[{key:UNGROUPED as GroupKey,label:'未分组',count:ungrouped}]:[])]:[]
+  const tabs: { key: GroupKey; label: string; count: number }[] = []
+  if (counts.size) {
+    tabs.push({ key: ALL_GROUP, label: "全部", count: nodes.length })
+    for (const [key, count] of counts) tabs.push({ key, label: String(key), count })
+    if (ungrouped) tabs.push({ key: UNGROUPED, label: "未分组", count: ungrouped })
+  }
   return {grouped,list,tabs}
 }
 export type Directory = ReturnType<typeof directory>

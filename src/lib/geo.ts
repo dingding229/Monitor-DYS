@@ -8,7 +8,9 @@ import {
   MAP_GRID_MIN_LAT,
   MAP_GRID_MIN_LON,
   MAP_GRID_ROWS,
-  MAP_LAND_RLE,
+  MAP_LAND_MOVES,
+  MAP_LAND_PALETTE,
+  MAP_LAND_SPANS,
 } from "@/lib/map-data"
 
 const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
@@ -82,19 +84,20 @@ export function getWorldLandDots(width = 360, height = 160): MapDot[] {
   const stepX = width / MAP_GRID_COLS
   const stepY = height / MAP_GRID_ROWS
 
-  for (let row = 0; row < MAP_LAND_RLE.length; row++) {
-    const rle = MAP_LAND_RLE[row]
-    if (!rle) continue
+  const spans = atob(MAP_LAND_SPANS), moves = atob(MAP_LAND_MOVES)
+  const palette: string[] = MAP_LAND_PALETTE.match(/../g) ?? []
+  let pos = 0, index = 0
+  for (let row = 0; row < MAP_GRID_ROWS; row++) {
     const y = Number(((row + 0.5) * stepY).toFixed(2))
-    const segments = rle.split(",")
-    for (const seg of segments) {
-      const [col36, len36, code] = seg.split(".")
-      if (!col36 || !len36 || !code) continue
-      const start = Number.parseInt(col36, 36)
-      const len = Number.parseInt(len36, 36)
-      for (let c = start; c < start + len; c++) {
-        const x = Number(((c + 0.5) * stepX).toFixed(2))
-        dots.push({ x, y, country: code })
+    let col = 0
+    for (let runs = spans.charCodeAt(pos++); runs > 0; runs--) {
+      col += spans.charCodeAt(pos++)
+      const end = col + spans.charCodeAt(pos++)
+      const [country] = palette.splice(moves.charCodeAt(index++), 1)
+      palette.unshift(country)
+      for (; col < end; col++) {
+        const x = Number(((col + 0.5) * stepX).toFixed(2))
+        dots.push({ x, y, country })
       }
     }
   }
