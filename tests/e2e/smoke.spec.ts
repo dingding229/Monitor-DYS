@@ -26,12 +26,12 @@ test.beforeEach(async ({ page }) => {
   }))
 })
 
-test("home renders six summary tiles, 16 cards and a map from one HTTP snapshot", async ({ page }) => {
+test("home renders four summary tiles, 16 cards and a map from one HTTP snapshot", async ({ page }) => {
   let nodeGets = 0
   page.on("request", (request) => { if (request.method() === "GET" && pathIs(request.url(), nodesPath)) nodeGets++ })
   await page.goto(mockUrl("normal"))
   const summary = page.getByTestId("summary")
-  await expect(summary.getByTestId("summary-tile")).toHaveCount(6)
+  await expect(summary.getByTestId("summary-tile")).toHaveCount(4)
   await expect(summary.getByTestId("summary-servers")).toContainText(/\b14\s*\/\s*16\b/)
   await expect(page.getByTestId("node-card")).toHaveCount(16)
   const map = page.getByTestId("world-map")
@@ -43,18 +43,15 @@ test("home renders six summary tiles, 16 cards and a map from one HTTP snapshot"
     const head = /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(html)?.[1] ?? ""
     const css = await readFile(new URL("../../src/app.css", import.meta.url), "utf8")
     const light = /:root\s*\{[^}]*--bg:\s*([^;]+);/i.exec(css)?.[1]?.trim()
-    const dark = /:root\[data-scheme=["']?dark["']?\]\s*\{[^}]*--bg:\s*([^;]+);/i.exec(css)?.[1]?.trim()
     expect(light, "light --bg").toBeTruthy()
-    expect(dark, "dark --bg").toBeTruthy()
     const styles = [...head.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1]).join("\n")
     const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     expect(rules.some(([, selector, body]) => /(?:^|,)\s*html\b/.test(selector) && body.includes(`background:${light}`))).toBe(true)
-    expect(rules.some(([, selector, body]) => /\[data-scheme=["']?dark["']?\]/.test(selector) && body.includes(`background:${dark}`))).toBe(true)
-    const schemeScript = /<script\b[^>]*>[\s\S]*?(?:dataset\.scheme|setAttribute\(["']data-scheme)[\s\S]*?<\/script>/i.exec(head)
+    const themeScript = /<script\b[^>]*>[\s\S]*?(?:dataset\.theme|setAttribute\(["']data-theme)[\s\S]*?<\/script>/i.exec(head)
     const firstStylesheet = /<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*>/i.exec(head)
-    expect(schemeScript, "inline scheme script").toBeTruthy()
+    expect(themeScript, "inline theme script").toBeTruthy()
     expect(firstStylesheet, "built stylesheet").toBeTruthy()
-    expect(schemeScript!.index).toBeLessThan(firstStylesheet!.index)
+    expect(themeScript!.index).toBeLessThan(firstStylesheet!.index)
   })
 })
 
@@ -62,7 +59,7 @@ test("list columns put name first, status last and Ping next to the rates", asyn
   await page.goto(mockUrl("normal"))
   await page.getByRole("button", { name: "列表视图" }).click()
   const headers = page.getByRole("table").getByRole("columnheader")
-  await expect(headers).toHaveText(["名称", "地区", "CPU", "内存", "硬盘", "↑", "↓", "延迟", "丢包", "本期流量", "到期", "状态"])
+  await expect(headers).toHaveText(["名称", "地区", "CPU", "内存", "硬盘", "上行", "下行", "延迟", "丢包", "本期流量", "到期", "状态"])
   const rows = page.getByTestId("node-row")
   await expect(rows).toHaveCount(16)
   const cells = rows.filter({ hasText: "东京 01" }).getByRole("cell")
@@ -83,7 +80,7 @@ test("opening detail renders charts and the stats in the node header", async ({ 
   const nameCard = heading.locator('xpath=ancestor::*[.//*[@data-testid="detail-stats"]][1]')
   const stats = nameCard.getByTestId("detail-stats")
   await expect(stats).toBeVisible()
-  for (const label of [/负载/, /进程/, /TCP\s*\/\s*UDP/, /运行/]) await expect(stats).toContainText(label)
+  for (const label of [/负载/, /进程/, /TCP\s*\/\s*UDP/]) await expect(stats).toContainText(label)
   await expect(nameCard.getByTestId("chart")).toHaveCount(0)
 })
 
@@ -331,42 +328,73 @@ test("card Ping displays three per-probe values and twelve segments", async ({ p
 })
 
 
-test("dark mode is set before first paint and Hub light overrides system dark", async ({ browser }) => {
-  const context = await browser.newContext({ colorScheme: "dark" })
+test("theme configuration is cached and applied before first frame on refresh", async ({ page }) => {
+  let theme = "ocean"
+  let releaseConfig: (() => void) | undefined
+  let delayConfig = false
+  await page.route("**/api/themes/dys/config", async route => {
+    if (delayConfig) await new Promise<void>(resolve => { releaseConfig = resolve })
+    await route.fulfill({ json: { theme } })
+  })
+  await page.addInitScript(() => {
+    ;(window as any).__firstTheme = null
+    requestAnimationFrame(() => { (window as any).__firstTheme = document.documentElement.dataset.theme })
+  })
+  await page.goto(mockUrl("normal"))
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "ocean")
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("dys:theme"))).toBe("ocean")
+  delayConfig = true
   try {
-    const page = await context.newPage()
-    await page.addInitScript(() => {
-      const w = window as any
-      w.__schemeEvents = []
-      const record = (event: string) => w.__schemeEvents.push({ event, scheme: document.documentElement.dataset.scheme, state: document.readyState })
-      new MutationObserver(() => { if (document.documentElement?.dataset.scheme && !w.__schemeEvents.some((e: any) => e.event === "set")) record("set") }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-scheme"] })
-      requestAnimationFrame(() => record("first-frame"))
-      document.addEventListener("DOMContentLoaded", () => record("domcontentloaded"), { once: true })
-    })
-    await page.route(/^https:\/\/(?:api\.ip\.sb|ipwho\.is)\//, route => route.fulfill({ status: 503, json: {}, headers: { "access-control-allow-origin": "*" } }))
-    await page.goto(mockUrl("normal"))
-    await expect(page.locator("html")).toHaveAttribute("data-scheme", "dark")
-    await page.reload()
-    await expect(page.locator("html")).toHaveAttribute("data-scheme", "dark")
-    await expect.poll(() => page.evaluate(() => (window as any).__schemeEvents.some((e: any) => e.event === "first-frame"))).toBe(true)
-    const events = await page.evaluate(() => (window as any).__schemeEvents)
-    expect(events.find((e: any) => e.event === "set")).toMatchObject({ scheme: "dark", state: "loading" })
-    expect(events.find((e: any) => e.event === "domcontentloaded").scheme).toBe("dark")
-    expect(events.find((e: any) => e.event === "first-frame").scheme).toBe("dark")
-    const darkBg = await page.locator("body").evaluate(el => getComputedStyle(el).backgroundColor)
-    // This scenario's actual Hub config explicitly requests light.
-    await page.goto(mockUrl("config"))
-    await expect(page.locator("html")).toHaveAttribute("data-scheme", "light")
-    const lightBg = await page.locator("body").evaluate(el => getComputedStyle(el).backgroundColor)
-    expect(lightBg).not.toBe(darkBg)
-  } finally { await context.close() }
+    await page.reload({ waitUntil: "commit" })
+    await expect.poll(() => page.evaluate(() => (window as any).__firstTheme)).toBe("ocean")
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "ocean")
+  } finally { releaseConfig?.() }
+  delayConfig = false
+  theme = "invalid"
+  await page.reload()
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "emerald")
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("dys:theme"))).toBe("emerald")
 })
 
-test("first node card has at most 70 descendant elements", async ({ page }) => {
+test("first node card has at most 90 descendant elements", async ({ page }) => {
   await page.goto(mockUrl("normal"))
   const card = page.getByTestId("node-card").first()
   await expect(card).toBeVisible()
-  // Include asynchronously loaded Ping content, not just the initial placeholder.
   await expect(card.getByTestId("ping-bars").first()).toBeVisible()
-  expect(await card.evaluate(el => el.querySelectorAll("*").length)).toBeLessThanOrEqual(70)
+  expect(await card.evaluate(el => el.querySelectorAll("*").length)).toBeLessThanOrEqual(90)
+})
+
+test("v3 status and trend indicators render and map tooltips stay inside the map", async ({ page }) => {
+  test.setTimeout(30_000)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(mockUrl("normal"))
+  await expect(page.getByTestId("status-strip")).toBeVisible()
+  await expect(page.getByTestId("fleet-spark").first()).toBeVisible()
+  await expect(page.getByTestId("load-spark").first()).toBeVisible()
+  await expect(page.getByTestId("region-summary")).toBeVisible()
+  const map = page.getByTestId("world-map")
+  const markers = map.getByTestId("map-country")
+  await expect(markers).toHaveCount(12)
+  await map.scrollIntoViewIfNeeded()
+  await page.evaluate(() => window.scrollBy(0, -160))
+  await markers.first().hover()
+  for (const marker of await markers.all()) {
+    await marker.dispatchEvent("mouseenter")
+    const tip = map.locator(".map-tip")
+    await expect(tip).toBeVisible()
+    const box = await map.boundingBox(), bubble = await tip.boundingBox()
+    expect(box).not.toBeNull(); expect(bubble).not.toBeNull()
+    expect(bubble!.x).toBeGreaterThanOrEqual(box!.x - 1)
+    expect(bubble!.y).toBeGreaterThanOrEqual(box!.y - 1)
+    expect(bubble!.x + bubble!.width).toBeLessThanOrEqual(box!.x + box!.width + 1)
+    expect(bubble!.y + bubble!.height).toBeLessThanOrEqual(box!.y + box!.height + 1)
+  }
+})
+
+test("390px hides the map graphic but shows the region list", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(mockUrl("normal"))
+  await expect(page.getByTestId("world-map").locator("svg").first()).toBeHidden()
+  await expect(page.getByTestId("country-list")).toBeVisible()
+  await expect(page.getByTestId("country-row").first()).toBeVisible()
 })

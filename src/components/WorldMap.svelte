@@ -3,9 +3,7 @@
   const MAP_H = 192
   const GRAT_X = [60, 120, 180, 240, 300, 360]
   const GRAT_Y = [38, 76, 114, 152]
-  function latClass(ms: number | null) {
-    return ms == null ? "" : ms < 80 ? "g" : ms <= 160 ? "w" : "d"
-  }
+  const latClass = (ms: number | null) => (ms == null ? "" : ms < 80 ? "g" : ms <= 160 ? "w" : "d")
 </script>
 
 <script lang="ts">
@@ -27,7 +25,7 @@
   const bindMap = (el: HTMLElement) => { mapEl = el }
   const bindBox = (el: HTMLDivElement) => { boxEl = el }
   let hovered = $state<CountryGroup | null>(null)
-  let showAllMobile = $state(false)
+  let expanded = $state(false)
   const countryView = createCountryView(() => nodes, () => Boolean(hovered || mapEl?.matches(":hover")), (id) => readPing(id))
 
   const land = new Map<string, string>()
@@ -86,15 +84,14 @@
   let tipStyle = $derived.by(() => {
     if (!hovered) return ""
     const boxW = boxEl?.clientWidth || 360
-    const boxH = boxEl?.clientHeight || 165
+    const boxH = boxEl?.clientHeight || 195
     const tipW = 148, tipH = 88
     const px = (hovered.dispX / MAP_W) * boxW
     const py = (hovered.dispY / MAP_H) * boxH
     let left = px + 14
     if (left + tipW + 6 > boxW) left = px - tipW - 14
     left = Math.max(6, Math.min(boxW - tipW - 6, left))
-    let top = py - tipH / 2
-    top = Math.max(6, Math.min(boxH - tipH - 6, top))
+    let top = Math.max(6, Math.min(boxH - tipH - 6, py - tipH / 2))
     return `left:${Math.round(left)}px;top:${Math.round(top)}px`
   })
 </script>
@@ -113,18 +110,14 @@
   <div class="radar-body">
     <div class="map-col">
       <div use:bindBox data-testid="world-map" class="radar-box">
-        <svg viewBox="0 0 {MAP_W} {MAP_H}" class="wm-svg" aria-label="全球节点分布图">
+        <svg viewBox="0 0 {MAP_W} {MAP_H}" preserveAspectRatio="xMidYMid meet" class="wm-svg" aria-label="全球节点分布图">
           <g class="c-grat" aria-hidden="true">
             {#each GRAT_X as x}<line x1={x} y1="0" x2={x} y2={MAP_H} />{/each}
             {#each GRAT_Y as y}<line x1="0" y1={y} x2={MAP_W} y2={y} />{/each}
           </g>
           <g fill="none" stroke-linecap="round">
             {#each land as [country, path] (country)}
-              <path
-                d={path}
-                stroke={dotColor(country)}
-                stroke-width={countByCode.has(country) ? 2.4 : 1.7}
-              />
+              <path d={path} stroke={dotColor(country)} stroke-width={countByCode.has(country) ? 2.4 : 1.7} />
             {/each}
           </g>
           {#each countryGroups as m (m.code)}
@@ -197,46 +190,48 @@
       </div>
     </div>
 
-    <div data-testid="country-list" class="thin-scroll r-list {showAllMobile ? 'expanded' : ''}">
-      {#if countryGroups.length === 0}
-        <div class="wm-empty">暂无地区数据</div>
-      {:else}
-        {#each countryGroups as c, idx (c.code)}
-          <button
-            type="button"
-            data-testid="country-row"
-            data-country={c.code}
-            aria-pressed={selectedCountry === c.code}
-            onclick={() => toggleCountry(c.code)}
-            onmouseenter={() => (hovered = c)}
-            onmouseleave={() => { if (hovered?.code === c.code) hovered = null }}
-            class="r-row {idx >= 5 && !showAllMobile ? 'mobile-extra' : ''}"
-          >
-            <CountryFlag code={c.code} />
-            <span class="nm">{c.name}</span>
-            <div class="r-prog">
-              <span>{c.online}/{c.total}</span>
-              <i style="--v:{c.total ? Math.round((c.online / c.total) * 100) : 0}%;--c:{c.online === c.total ? 'var(--online-led)' : c.online > 0 ? 'var(--warn-bar)' : 'var(--offline)'}"></i>
-            </div>
-            <span class="sp mono">
-              <span class="tx">↑{speed(c.tx).replace(" ", "")}</span>
-              <span class="rx">↓{speed(c.rx).replace(" ", "")}</span>
-            </span>
-            <span class="lat-tag {latClass(c.latency)}">{c.latency == null ? "—" : `${Math.round(c.latency)}ms`}</span>
-          </button>
-        {/each}
-        {#if countryGroups.length > 5}
-          <button type="button" class="r-more" onclick={() => (showAllMobile = !showAllMobile)}>
-            {showAllMobile ? "收起地区" : `展开全部 ${countryGroups.length} 个地区`}
-          </button>
+    <div class="r-col">
+      <div data-testid="country-list" class="thin-scroll r-list {expanded ? 'expanded' : ''}">
+        {#if countryGroups.length === 0}
+          <div class="wm-empty">暂无地区数据</div>
+        {:else}
+          {#each countryGroups as c, idx (c.code)}
+            <button
+              type="button"
+              data-testid="country-row"
+              data-country={c.code}
+              aria-pressed={selectedCountry === c.code}
+              onclick={() => toggleCountry(c.code)}
+              onmouseenter={() => (hovered = c)}
+              onmouseleave={() => { if (hovered?.code === c.code) hovered = null }}
+              class="r-row {idx >= 6 && !expanded ? 'extra-d' : ''} {idx === 5 && !expanded ? 'extra-m' : ''}"
+            >
+              <CountryFlag code={c.code} />
+              <span class="nm">{c.name}</span>
+              <span class="r-prog">
+                <i style="--v:{c.total ? Math.round((c.online / c.total) * 100) : 0}%;--c:{c.online === c.total ? 'var(--online-led)' : c.online > 0 ? 'var(--warn-bar)' : 'var(--offline)'}"></i>
+                <span>{c.online}/{c.total}</span>
+              </span>
+              <span class="sp mono">
+                <span class="tx">↑{speed(c.tx).replace(" ", "")}</span>
+                <span class="rx">↓{speed(c.rx).replace(" ", "")}</span>
+              </span>
+              <span class="lat-tag {latClass(c.latency)}">{c.latency == null ? "—" : `${Math.round(c.latency)}ms`}</span>
+            </button>
+          {/each}
         {/if}
+      </div>
+      {#if countryGroups.length > 5}
+        <button type="button" class="r-more {countryGroups.length <= 6 ? 'mobile-only' : ''}" onclick={() => (expanded = !expanded)}>
+          {#if expanded}收起地区{:else}另外 <span class="cnt-d">{countryGroups.length - 6}</span><span class="cnt-m">{countryGroups.length - 5}</span> 个地区{/if}
+        </button>
       {/if}
     </div>
   </div>
 </div>
 
 <style>
-  .radar-card { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .radar-card { padding: 14px; display: flex; flex-direction: column; gap: 10px; height: 100%; }
   .radar-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
   .radar-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .r-stat { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border-sub); font-size: 11.5px; font-weight: 500; color: var(--fg-muted); }
@@ -244,9 +239,9 @@
   .r-stat.ok { background: var(--online-soft); border-color: var(--online-border); color: var(--online); }
   .r-stat.ok b { color: var(--online); }
 
-  .radar-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; flex: 1; }
-  .map-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .radar-box { aspect-ratio: 420 / 192; width: 100%; border-radius: 6px; border: 1px solid var(--border-sub); background: linear-gradient(180deg, #f4f7fb 0%, #edf2f8 100%); position: relative; overflow: hidden; }
+  .radar-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: stretch; flex: 1; min-height: 0; }
+  .map-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; height: 100%; }
+  .radar-box { flex: 1; min-height: 185px; width: 100%; border-radius: 6px; border: 1px solid var(--border-sub); background: linear-gradient(180deg, #f4f7fb 0%, #edf2f8 100%); position: relative; overflow: hidden; }
   .wm-svg { width: 100%; height: 100%; display: block; user-select: none; }
   .c-grat { stroke: #d8e2ee; stroke-width: 0.45; stroke-dasharray: 2 3; }
 
@@ -258,55 +253,46 @@
   .m-pin.sel .m-badge rect { stroke: var(--accent); stroke-width: 1.2; }
   .m-badge text { font-family: var(--font-mono); font-size: 7.5px; font-weight: 700; fill: var(--fg); }
 
-  .map-tip {
-    position: absolute; z-index: 15; pointer-events: none; width: 148px; padding: 7px 9px; border-radius: 6px;
-    background: rgba(255, 255, 255, 0.97); border: 1px solid var(--border-strong);
-    box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.16); font-size: 11px; color: var(--fg);
-  }
+  .map-tip { position: absolute; z-index: 15; pointer-events: none; width: 148px; padding: 7px 9px; border-radius: 6px; background: rgba(255, 255, 255, 0.97); border: 1px solid var(--border-strong); box-shadow: 0 6px 18px -4px rgba(15, 23, 42, 0.16); font-size: 11px; color: var(--fg); }
   .mt-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-weight: 700; padding-bottom: 4px; border-bottom: 1px solid var(--border-sub); }
   .mt-name { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mt-grid { margin-top: 4px; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 10.5px; }
   .mt-grid span { color: var(--fg-subtle); }
   .mt-grid b { text-align: right; font-family: var(--font-mono); }
 
-  .map-legend {
-    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px;
-    padding: 4px 8px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--border-sub);
-    font-size: 10.5px; color: var(--fg-subtle);
-  }
+  .map-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; padding: 4px 8px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--border-sub); font-size: 10.5px; color: var(--fg-subtle); }
   .ml-grp { display: inline-flex; align-items: center; gap: 6px; }
   .ml-sw { display: inline-block; width: 10px; height: 7px; border-radius: 2px; vertical-align: middle; margin-right: 2px; }
   .ml-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle; margin-right: 2px; }
 
-  .r-list { display: flex; flex-direction: column; gap: 5px; max-height: 214px; overflow-y: auto; padding-right: 2px; }
+  .r-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; height: 100%; }
+  .r-list { display: flex; flex-direction: column; gap: 5px; flex: 1; max-height: 224px; overflow-y: auto; padding-right: 2px; }
   .wm-empty { padding: 24px 0; text-align: center; font-size: 12px; color: var(--fg-subtle); }
-  .r-row {
-    display: grid; grid-template-columns: auto minmax(0, 1fr) 48px auto auto;
-    align-items: center; gap: 7px; padding: 6px 9px; border-radius: 6px;
-    background: var(--surface-2); border: 1px solid var(--border-sub);
-    font-size: 12px; text-align: left; white-space: nowrap; cursor: pointer;
-    transition: border-color 120ms, background-color 120ms;
-  }
+  .r-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 7px; padding: 6px 9px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-sub); font-size: 12px; text-align: left; white-space: nowrap; cursor: pointer; transition: border-color 120ms, background-color 120ms; }
   .r-row:hover, .r-row[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
   .r-row .nm { font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
-  .r-prog { display: flex; flex-direction: column; gap: 2px; }
-  .r-prog span { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--fg-muted); text-align: right; }
-  .r-prog i { display: block; height: 4px; border-radius: 2px; background: var(--track); position: relative; overflow: hidden; }
+  .r-prog { display: inline-flex; align-items: center; gap: 5px; }
+  .r-prog i { display: block; width: 32px; height: 5px; border-radius: 2px; background: var(--track); position: relative; overflow: hidden; }
   .r-prog i::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v, 100%); background: var(--c, var(--online-led)); }
+  .r-prog span { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: var(--fg-muted); min-width: 24px; text-align: right; }
   .r-row .sp { font-size: 10.5px; display: inline-flex; gap: 5px; }
   .lat-tag { padding: 1px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; text-align: right; min-width: 42px; color: var(--fg-subtle); background: var(--surface); }
   .lat-tag.g { background: var(--online-soft); color: var(--online); }
   .lat-tag.w { background: var(--warn-soft); color: var(--warn); }
   .lat-tag.d { background: var(--danger-soft); color: var(--danger); }
-  .r-more { display: none; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-muted); font-size: 11.5px; cursor: pointer; }
+  .r-row.extra-d { display: none; }
+  .r-more { height: 26px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-muted); font-size: 11px; font-weight: 500; cursor: pointer; flex-shrink: 0; }
+  .r-more:hover { border-color: var(--border-strong); color: var(--fg); background: var(--surface-hover); }
+  .r-more.mobile-only, .cnt-m { display: none; }
 
-  @media (min-width: 1120px) { .radar-body { grid-template-columns: minmax(0, 1.12fr) minmax(0, 1.05fr); } }
+  @media (min-width: 1120px) { .radar-body { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1.08fr); } }
   @media (max-width: 639px) {
-    .map-col { display: none; }
+    .map-col, .cnt-d { display: none; }
+    .cnt-m { display: inline; }
     .r-list { max-height: none; overflow: visible; padding-right: 0; }
-    .r-row { grid-template-columns: auto minmax(0, 1fr) 46px auto; }
+    .r-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
     .r-row .sp { display: none; }
-    .r-row.mobile-extra { display: none; }
-    .r-more { display: block; }
+    .r-row.extra-m { display: none; }
+    .r-more.mobile-only { display: block; }
   }
 </style>

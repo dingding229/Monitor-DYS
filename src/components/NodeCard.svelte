@@ -6,45 +6,38 @@
   const BAR_SLOTS = Array.from({ length: 12 }, (_, i) => i)
   const level = (p: number | null) => (p === null ? "" : p >= 90 ? "danger" : p >= 80 ? "warn" : "")
   const cardUptime = (s: number) => (s >= 86400 ? `${Math.floor(s / 86400)} 天` : s >= 3600 ? `${Math.floor(s / 3600)} 时` : `${Math.floor(s / 60)} 分`)
-  const shortOs = (os: string | undefined) => (os ? os.replace(/\s+GNU\/Linux/i, "").replace(/\s+LTS$/i, "").slice(0, 18) : "未知系统")
+  const barClass = (v: number | null | undefined, loss: boolean, on: boolean) => (!on || v == null ? "" : v <= (loss ? 0 : 99) ? "g" : v <= (loss ? 5 : 200) ? "w" : "d")
 
-  function formatProbes(sample: PingSummary | undefined, key: "latency" | "loss", online: boolean) {
-    if (!online) return "—"
-    if (!sample) return "…"
-    if (!sample.probes.length) return "—"
-    return sample.probes.slice(0, 3).map((p) => (p[key] == null ? "—" : key === "loss" ? String(Number(p[key].toFixed(1))) : String(Math.round(p[key])))).join("·")
-  }
-  function barClass(v: number | null | undefined, loss: boolean, online: boolean) {
-    return !online || v == null ? "" : v <= (loss ? 0 : 99) ? "g" : v <= (loss ? 5 : 200) ? "w" : "d"
-  }
-  export function sparkPts(vals: readonly number[], hi: number, w: number, h: number, pad: number): string {
+  export function sparkPts(vals: readonly number[], hi: number, w: number, h: number, pad: number, centerFlat = false): string {
     const n = vals.length, bot = h - pad
-    if (!n) return `0,${bot} ${w},${bot}`
-    const y = (v: number) => (bot - (Math.min(hi, Math.max(0, v)) / hi) * (bot - pad)).toFixed(1)
-    return n === 1 ? `0,${y(vals[0])} ${w},${y(vals[0])}` : vals.map((v, i) => `${((i / (n - 1)) * w).toFixed(1)},${y(v)}`).join(" ")
+    if (n <= 1) { const y = centerFlat ? (h / 2).toFixed(1) : String(bot); return `0,${y} ${w},${y}` }
+    const lo = centerFlat ? Math.min(...vals) : 0
+    const span = hi - lo
+    if (centerFlat && span < 1e-4) { const y = (h / 2).toFixed(1); return `0,${y} ${w},${y}` }
+    const y = (v: number) => (bot - ((Math.min(hi, Math.max(lo, v)) - lo) / (span || 1)) * (bot - pad)).toFixed(1)
+    return vals.map((v, i) => `${((i / (n - 1)) * w).toFixed(1)},${y(v)}`).join(" ")
   }
 
-  function buildCard(node: Node, snapshotOnly: boolean, showBilling: boolean, expiryWarningDays: number) {
+  function buildCard(node: Node, sample: PingSummary | undefined, snapshotOnly: boolean, showBilling: boolean, expiryWarningDays: number) {
     const m = node.metrics, isCorrupt = Boolean(node._corrupt), isWaiting = node.online && !m && !isCorrupt
     const exp = expiry(node, Date.now(), expiryWarningDays), used = monthUsage(node)
     const hasT = node.online || node.cpu_cores > 0 || node.mem_total > 0 || used > 0, lim = node.traffic_limit > 0
     const memTot = m?.mem_total || node.mem_total, diskTot = m?.disk_total || node.disk_total
     const memPct = m && memTot > 0 ? percentNum(m.mem_used, memTot) : null
     const diskPct = m && diskTot > 0 ? percentNum(m.disk_used, diskTot) : null
-    const loadTxt = m ? m.load.slice(0, 2).map((v) => v.toFixed(2)).join(", ") : "—"
-    const hi = m ? Math.max(m.cpu, memPct ?? 0, diskPct ?? 0) : 0
-    const danger = node.online && (exp.level === "expired" || hi >= 90)
-    const warn = node.online && !danger && (exp.level === "soon" || hi >= 80)
-    const expTxt = exp.level === "none" ? "长期" : exp.days !== null && exp.days > 0 ? `剩余 ${exp.days} 天` : exp.text
-    const expCls = exp.level === "expired" ? "danger" : exp.level === "soon" ? "warn" : ""
-    const price = showBilling && node.price > 0 ? priceShort(node.price, node.currency || "CNY", node.billing_cycle) : showBilling ? "—" : ""
+    const warn = node.online && (
+      (m != null && (m.cpu >= 90 || (memPct != null && memPct >= 90) || (diskPct != null && diskPct >= 90))) ||
+      (sample?.loss != null && sample.loss >= 5) ||
+      (sample?.latency != null && sample.latency >= 200)
+    )
     return {
-      m, isCorrupt, isWaiting, loadTxt,
-      ledCls: !node.online || snapshotOnly ? "offline" : danger ? "danger" : warn ? "warn" : "",
-      osTxt: shortOs(node.os),
+      m, isCorrupt, isWaiting,
+      ledCls: !node.online || snapshotOnly ? "offline" : warn ? "warn" : "",
+      osTxt: node.os ? node.os.replace(/\s+GNU\/Linux/i, "") : "未知系统",
       duration: snapshotOnly ? "状态待确认" : node.online ? `在线${m ? " " + cardUptime(m.uptime) : ""}` : `离线 ${offlineFor(node) ?? ""}`,
+      load1: m?.load?.[0] != null ? m.load[0].toFixed(2) : "—",
       meters: [
-        ["CPU", m ? m.cpu : null, loadTxt, "—"],
+        ["CPU", m ? m.cpu : null, node.cpu_cores ? `${node.cpu_cores} 核` : "—", "—"],
         ["内存", memPct, m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total), "—"],
         ["硬盘", diskPct, m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total), "—"],
         ["流量", lim && hasT ? percentNum(used, node.traffic_limit) : null, !hasT ? "—" : lim ? pair(used, node.traffic_limit) : `${bytes(used)} / ${FOREVER}`, !hasT ? "—" : lim ? "0.0%" : FOREVER],
@@ -53,7 +46,9 @@
       f1: `↑\u202f${bytes(node.month_tx ?? m?.month_tx ?? 0)}`,
       f3: `↓\u202f${speed(m?.net_rx ?? 0).replace(" ", "")}`,
       f4: `↓\u202f${bytes(node.month_rx ?? m?.month_rx ?? 0)}`,
-      expTxt, expCls, price,
+      expTxt: exp.level === "none" ? "长期" : exp.days !== null && exp.days > 0 ? `剩余 ${exp.days} 天` : exp.text,
+      expCls: exp.level === "expired" ? "danger" : exp.level === "soon" ? "warn" : "",
+      price: showBilling && node.price > 0 ? priceShort(node.price, node.currency || "CNY", node.billing_cycle) : showBilling ? "—" : "",
     }
   }
 </script>
@@ -91,7 +86,8 @@
     <div class="nc-stub">{view.node.name}</div>
   {:else}
     {@const node = view.node}
-    {@const c = buildCard(node, app.snapshotOnly, app.config.show_billing, app.config.expiry_warning_days)}
+    {@const sample = showPing && node.online ? app.ping.get(node.id) : undefined}
+    {@const c = buildCard(node, sample, app.snapshotOnly, app.config.show_billing, app.config.expiry_warning_days)}
     {@const loadArr = (void app.history.version, app.history.load(node.id))}
 
     <div class="nc-top">
@@ -101,7 +97,7 @@
 
     <div class="nc-sub">
       <BrandIcon key={osKey(node.os)} kind="os" size={13} title={node.os || "未知系统"} />
-      <span>{c.osTxt}</span><span aria-hidden="true">·</span><span class="tnum">{c.duration}</span>
+      <span class="nc-os" title={node.os || "未知系统"}>{c.osTxt}</span><span aria-hidden="true">·</span><span class="nc-up tnum">{c.duration}</span>
     </div>
 
     <div class="nc-viz">
@@ -122,9 +118,9 @@
         <div class="spark-row">
           <span class="spark-lbl">负载</span>
           <svg class="spark-svg" data-testid="load-spark" viewBox="0 0 154 16" preserveAspectRatio="none" aria-hidden="true">
-            <polyline fill="none" stroke={node.online ? "var(--accent)" : "var(--offline)"} stroke-width="1.6" points={sparkPts(loadArr, Math.max(0.5, ...loadArr, c.m?.load[0] ?? 0), 154, 16, 3)} />
+            <polyline fill="none" stroke={node.online ? "var(--accent)" : "var(--offline)"} stroke-width="1.6" points={sparkPts(loadArr, Math.max(0.1, ...loadArr), 154, 16, 2.5, true)} />
           </svg>
-          <span class="spark-lbl mono">{c.loadTxt}</span>
+          <span class="spark-lbl mono">{c.load1}</span>
         </div>
       {/if}
     </div>
@@ -136,11 +132,10 @@
     </div>
 
     {#if showPing}
-      {@const sample = node.online ? app.ping.get(node.id) : undefined}
       {@const offset = (sample?.buckets.length ?? 0) - 12}
-      <div class="nc-ping {!node.online || !sample?.probes.length ? 'muted' : ''}" data-testid="node-ping" data-latency={sample?.latency ?? ""} data-loss={sample?.loss ?? ""} title={node.online ? probeTitle(sample) : "节点离线"}>
-        <div class="ping-caption">延迟 ms{" "}<b class="nc-pv mono">{formatProbes(sample, "latency", node.online)}</b></div>
-        <div class="ping-caption nc-pr">丢包 %{" "}<b class="nc-pv mono">{formatProbes(sample, "loss", node.online)}</b></div>
+      <div class="nc-ping {!node.online || sample?.latency == null ? 'muted' : ''}" data-testid="node-ping" data-latency={sample?.latency ?? ""} data-loss={sample?.loss ?? ""} title={node.online ? probeTitle(sample) : "节点离线"}>
+        <div class="ping-caption">延迟 ms{" "}<b class="nc-pv mono">{node.online && sample?.latency != null ? Math.round(sample.latency) : "—"}</b></div>
+        <div class="ping-caption nc-pr">丢包 %{" "}<b class="nc-pv mono">{node.online && sample?.loss != null ? sample.loss.toFixed(1) : "—"}</b></div>
         {#each [false, true] as isLoss}
           <div data-testid="ping-bars" class="nc-pbars {isLoss ? 'nc-pr' : ''}" aria-hidden="true">
             {#each BAR_SLOTS as i}<i class={barClass(isLoss ? sample?.buckets[i + offset]?.loss : sample?.buckets[i + offset]?.latency, isLoss, node.online)}></i>{/each}

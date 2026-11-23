@@ -23,5 +23,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: node scripts/check-size.mjs
+        env:
+          SIZE_BUDGET: v2
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e

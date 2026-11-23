@@ -28,10 +28,10 @@
         ["Swap", hasSwap ? (m?.swap_used != null && m.swap_total != null ? pair(m.swap_used, m.swap_total) : bytes(swapTot)) : null],
       ] as [string, string | number | null | undefined][],
       kpis: [
-        { label: "CPU", cap: node.cpu_cores ? `${node.cpu_cores} 核` : "—", pct: m?.cpu ?? null, left: `负载 ${m ? m.load.slice(0, 2).map((v) => v.toFixed(2)).join(" / ") : "—"}`, right: !m ? "—" : cpuTone === "danger" ? "告警" : cpuTone === "warn" ? "偏高" : "正常", rCls: cpuTone ? `fg-${cpuTone}` : "fg-online" },
-        { label: "内存", cap: bytes(memTot), pct: memPct, left: `已用 ${m ? bytes(m.mem_used) : "—"}`, right: `可用 ${m && memTot >= m.mem_used ? bytes(memTot - m.mem_used) : "—"}`, rCls: "" },
-        { label: "硬盘", cap: bytes(diskTot), pct: diskPct, left: `已用 ${m ? bytes(m.disk_used) : "—"}`, right: `剩余 ${m && diskTot >= m.disk_used ? bytes(diskTot - m.disk_used) : "—"}`, rCls: "" },
-      ],
+        ["CPU", node.cpu_cores ? `${node.cpu_cores} 核` : "—", m?.cpu ?? null, `负载 ${m ? m.load.slice(0, 2).map((v) => v.toFixed(2)).join(" / ") : "—"}`, !m ? "—" : cpuTone === "danger" ? "告警" : cpuTone === "warn" ? "偏高" : "正常", cpuTone ? `fg-${cpuTone}` : "fg-online"],
+        ["内存", bytes(memTot), memPct, `已用 ${m ? bytes(m.mem_used) : "—"}`, `可用 ${m && memTot >= m.mem_used ? bytes(memTot - m.mem_used) : "—"}`, ""],
+        ["硬盘", bytes(diskTot), diskPct, `已用 ${m ? bytes(m.disk_used) : "—"}`, `剩余 ${m && diskTot >= m.disk_used ? bytes(diskTot - m.disk_used) : "—"}`, ""],
+      ] as [string, string, number | null, string, string, string][],
       hardware: [
         ["CPU 型号", cpuName(node.cpu_name)], ["CPU 核心", node.cpu_cores && `${node.cpu_cores} 核`],
         ["架构 / 虚拟化", [node.arch, node.virt === "none" ? "" : node.virt].filter(Boolean).join(" / ")],
@@ -104,11 +104,13 @@
   let selection = $derived(probeSelection(ping.probes, saved))
   function choose(next: string[] | null) { saved = next; saveProbes(next) }
 
-  let tap = { name: "", time: 0 }
+  let tapName = "", tapTime = 0
   function clickProbe(e: MouseEvent, name: string) {
+    if (!name) { choose(null); return }
     const touch = (e as PointerEvent).pointerType === "touch"
-    const twice = touch && tap.name === name && e.timeStamp - tap.time < 400
-    tap = { name: touch && !twice ? name : "", time: e.timeStamp }
+    const twice = touch && tapName === name && e.timeStamp - tapTime < 400
+    tapName = touch && !twice ? name : ""
+    tapTime = e.timeStamp
     choose(toggleProbe(selection.names, selection.active, name, e.altKey || twice || e.detail === 2))
   }
 
@@ -122,17 +124,6 @@
     return () => window.removeEventListener("keydown", fn)
   })
 </script>
-
-{#snippet probeControls()}
-  <div class="probe-controls" role="group" aria-label="选择探测节点">
-    {#each ping.probes as p, i (p.id)}
-      <button type="button" class="probe" data-testid="probe-chip" data-probe={p.name} aria-pressed={selection.show[i]} style="--probe:{p.color}" onclick={(e) => clickProbe(e, p.name)} ondblclick={() => choose([p.name])}>
-        <i aria-hidden="true"></i>{p.name} <span class="mono">{p.avg == null ? "—" : `${p.avg}ms`}</span>
-      </button>
-    {/each}
-    <button type="button" class="probe-all" data-testid="probe-all" disabled={selection.show.every(Boolean)} onclick={() => choose(null)}>全部</button>
-  </div>
-{/snippet}
 
 {#if node}
 {@const d = buildDetail(node, app.config.show_billing, app.config.expiry_warning_days)}
@@ -170,12 +161,12 @@
   </section>
 
   <section class="d-kpi">
-    {#each d.kpis as k (k.label)}
+    {#each d.kpis as [label, cap, pct, left, right, rCls] (label)}
       <div class="panel kpi-card">
-        <div class="kpi-top"><span>{k.label}</span><span class="mono">{k.cap}</span></div>
-        <div class="kpi-val mono">{k.pct == null ? "—" : k.pct.toFixed(1)}<small>{k.pct == null ? "" : "%"}</small></div>
-        <i class="hbar {level(k.pct)}" style="--v:{Math.min(100, Math.max(0, k.pct ?? 0))}%;height:7px"></i>
-        <div class="kpi-foot mono"><span>{k.left}</span><span class={k.rCls}>{k.right}</span></div>
+        <div class="kpi-top"><span>{label}</span><span class="mono">{cap}</span></div>
+        <div class="kpi-val mono">{pct == null ? "—" : pct.toFixed(1)}<small>{pct == null ? "" : "%"}</small></div>
+        <i class="hbar {level(pct)}" style="--v:{Math.min(100, Math.max(0, pct ?? 0))}%;height:7px"></i>
+        <div class="kpi-foot mono"><span>{left}</span><span class={rCls}>{right}</span></div>
       </div>
     {/each}
     <div class="panel kpi-card">
@@ -215,15 +206,15 @@
     {:else}
       <div class="charts-4">
         {#each metrics.slice(0, 4) as spec (spec.title)}
-          <ChartCard {...spec} subtitle={spec.title === "CPU 使用率" && d.m ? `${d.m.cpu.toFixed(1)}%` : spec.title === "网络速率" && d.m ? `↑ ${speed(d.m.net_tx)} · ↓ ${speed(d.m.net_rx)}` : spec.subtitle} />
+          <ChartCard {spec} subtitle={spec.title === "CPU 使用率" && d.m ? `${d.m.cpu.toFixed(1)}%` : spec.title === "网络速率" && d.m ? `↑ ${speed(d.m.net_tx)} · ↓ ${speed(d.m.net_rx)}` : ""} />
         {/each}
       </div>
-      {#each metrics.slice(4) as spec (spec.title)}<ChartCard {...spec} />{/each}
+      {#each metrics.slice(4) as spec (spec.title)}<ChartCard {spec} />{/each}
       {#if app.pingEnabled && ping.charts.length}
         <div class="charts-ping {selection.hasLoss ? 'two' : ''}">
           {#each ping.charts as spec, i (spec.title)}
             <div hidden={i === 1 && !selection.hasLoss} class="min-w0">
-              <ChartCard {...spec} show={selection.show} noLoss={i === 0 && selection.noLoss} controls={i === 0 && selection.names.length > 1 ? probeControls : undefined} />
+              <ChartCard {spec} show={selection.show} noLoss={i === 0 && selection.noLoss} probes={i === 0 && selection.names.length > 1 ? ping.probes : undefined} onProbe={clickProbe} />
             </div>
           {/each}
         </div>
@@ -294,14 +285,6 @@
   .desktop-peak input { accent-color: var(--accent); }
   .h28 { height: 28px; }
   .d-msg { padding: 32px 16px; text-align: center; font-size: 12px; }
-  .probe-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 10px; }
-  .probe-controls button { font-size: 12px; padding: 3px 9px; cursor: pointer; }
-  button.probe { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg-muted); }
-  .probe i { width: 7px; height: 7px; border-radius: 50%; background: var(--offline); }
-  .probe[aria-pressed="true"] { color: var(--fg); font-weight: 600; border-color: color-mix(in srgb, var(--probe) 55%, var(--border)); background: color-mix(in srgb, var(--probe) 11%, var(--surface)); }
-  .probe[aria-pressed="true"] i { background: var(--probe); }
-  .probe-all { color: var(--fg-muted); text-decoration: underline; background: transparent; border: 0; }
-  .probe-all:disabled { color: var(--fg-subtle); text-decoration: none; cursor: default; }
   .spec-card { padding: 14px; }
   .bill-box { margin-top: 10px; border-radius: 6px; border: 1px solid var(--accent-border); background: var(--accent-soft); padding: 9px 12px; display: flex; flex-direction: column; gap: 6px; }
   .bill-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; color: var(--accent-text); }

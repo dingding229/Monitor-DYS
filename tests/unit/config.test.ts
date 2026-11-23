@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { loadSiteConfig, resolveColorScheme, resolveConfig } from "../../src/lib/config"
+import { loadSiteConfig, resolveTheme, resolveConfig } from "../../src/lib/config"
 import manifest from "../../theme.json"
 
 const defaults = Object.fromEntries(manifest.config.flatMap((field) => "key" in field ? [[field.key, field.default]] : []))
@@ -7,31 +7,25 @@ const defaults = Object.fromEntries(manifest.config.flatMap((field) => "key" in 
 afterEach(() => vi.unstubAllGlobals())
 
 describe("resolveConfig", () => {
-  it("accepts valid values for each non-title type and calls CSS.supports for the accent", () => {
-    const supports = vi.fn().mockReturnValue(true)
-    vi.stubGlobal("CSS", { supports })
+  it("accepts valid values for each non-title type", () => {
     const valid = {
-      layout: "table", card_size: "standard", color_scheme: "dark", accent: "  rebeccapurple  ",
+      layout: "table", card_size: "standard", theme: "ocean",
       show_summary: false, show_map: false, show_search: false, show_sort: false, show_billing: false, show_ping: false,
       expiry_warning_days: 3, visitor_info_enabled: false,
       announcement: "第一行\n第二行", footer: "A footer", footer_url: "https://example.invalid/about", poll_interval: 2,
     }
-    expect(resolveConfig(manifest, valid)).toEqual({ ...valid, accent: "rebeccapurple" })
-    expect(supports).toHaveBeenCalledWith("color", "rebeccapurple")
+    expect(resolveConfig(manifest, valid)).toEqual(valid)
     expect(resolveConfig(manifest.config, { poll_interval: 60 }).poll_interval).toBe(60)
   })
 
   it("rejects invalid values per field, skips titles and ignores undeclared keys", () => {
-    const supports = vi.fn().mockReturnValue(false)
-    vi.stubGlobal("CSS", { supports })
     const fields = [...manifest.config, { type: "title", label: "Test title", key: "heading", default: "ignored" }]
     expect(resolveConfig(fields, {
-      layout: "unknown", card_size: 3, color_scheme: "unknown", accent: "notacolor", show_summary: "false", show_billing: 1,
+      layout: "unknown", card_size: 3, theme: "unknown", show_summary: "false", show_billing: 1,
       show_map: "false", show_search: null, show_sort: 1, show_ping: "false", expiry_warning_days: 366,
       visitor_info_enabled: "false", announcement: null, footer: ["not a string"], footer_url: "ftp://example.invalid",
       poll_interval: "5", heading: "not a setting", secret: "undeclared",
     })).toEqual(defaults)
-    expect(supports).toHaveBeenCalledWith("color", "notacolor")
     expect(resolveConfig(manifest, { show_summary: false, poll_interval: 999 })).toEqual({ ...defaults, show_summary: false })
   })
 
@@ -39,11 +33,7 @@ describe("resolveConfig", () => {
     expect(resolveConfig(manifest, { poll_interval: value }).poll_interval).toBe(5)
   })
 
-  it("rejects invented named colors even when CSS.supports is unavailable", () => {
-    vi.stubGlobal("CSS", undefined)
-    expect(resolveConfig(manifest, { accent: "notacolor" }).accent).toBe(defaults.accent)
-    expect(resolveConfig(manifest, { accent: "#123456" }).accent).toBe("#123456")
-  })
+
 })
 
 describe("loadSiteConfig", () => {
@@ -75,8 +65,7 @@ it("distinguishes a successful settings read from a failed read while keeping di
 })
 
 
-describe("resolveColorScheme", () => {
-  it.each([["light", "light"], ["dark", "dark"], ["auto", "auto"], ["Dark", "auto"], ["", "auto"], [null, "auto"], [undefined, "auto"], [false, "auto"]] as const)("resolves %s", (value, expected) => {
-    expect(resolveColorScheme(value)).toBe(expected)
-  })
+describe("resolveTheme", () => {
+  it.each(["emerald", "ocean", "indigo", "amber", "rose", "slate"] as const)("accepts %s", value => expect(resolveTheme(value)).toBe(value))
+  it.each(["", "OCEAN", "unknown", " ocean ", null, undefined, false, 7, {}, []])("falls back for %s", value => expect(resolveTheme(value)).toBe("emerald"))
 })
