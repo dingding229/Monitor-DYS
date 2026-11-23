@@ -2,8 +2,7 @@ import { Blob as NativeBlob } from "node:buffer"
 import { ReadableStream } from "node:stream/web"
 import { gzipSync } from "node:zlib"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { ALL_GROUP, speedHistory } from "../../src/lib/api"
-import { createNodeStore, type NodeStoreOptions } from "../../src/lib/nodes.svelte"
+import { createNodeStore } from "../../src/lib/nodes.svelte"
 import { metricFixture, nodeFixture } from "../fixtures/nodes"
 
 function deferred<T>() {
@@ -18,7 +17,7 @@ function snapshot(name: string, rx = 600) {
 const reply = (name: string) => Response.json(snapshot(name))
 const stores: ReturnType<typeof createNodeStore>[] = []
 
-function harness(options: Partial<NodeStoreOptions> = {}) {
+function harness(options: NonNullable<Parameters<typeof createNodeStore>[0]> = {}) {
   const events: string[] = []
   const sockets: Socket[] = []
   class Socket {
@@ -62,7 +61,6 @@ function harness(options: Partial<NodeStoreOptions> = {}) {
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
   stores.splice(0).forEach((store) => store.stop())
-  speedHistory.clear()
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -135,14 +133,23 @@ describe("node store", () => {
     }
     const first = new SlowBlob([gzip])
     const stream = vi.spyOn(first, "stream")
+    const second = JSON.stringify(snapshot("second text", 202))
+    const parse = JSON.parse
+    let stateBeforeSecond: { name: string; rx: number | undefined } | undefined
+    const parseSpy = vi.spyOn(JSON, "parse").mockImplementation((text, reviver) => {
+      if (text === second) stateBeforeSecond = { name: store.nodes![0].name, rx: store.nodes![0].metrics?.net_rx }
+      return parse(text, reviver)
+    })
     sockets[0].message(first)
-    sockets[0].message(JSON.stringify(snapshot("second text", 202)))
+    sockets[0].message(second)
     await vi.waitFor(() => expect(stream).toHaveBeenCalledTimes(1))
     expect(store.nodes?.[0].name).toBe("initial")
     release.resolve()
     await vi.waitFor(() => expect(store.nodes?.[0].name).toBe("second text"))
-    expect(speedHistory.get(ALL_GROUP)?.map(({ rx }) => rx)).toEqual([600, 101, 202])
-    expect(store.connected).toBe(true)
+    expect(stateBeforeSecond).toEqual({ name: "first gzip", rx: 101 })
+    expect(store.nodes?.[0].metrics?.net_rx).toBe(202)
+    expect(store.connectionState).toBe("live")
+    parseSpy.mockRestore()
   })
 
   it("extends the watchdog only after successfully decoding a valid snapshot", async () => {
@@ -163,7 +170,7 @@ describe("node store", () => {
     await tick(1) // t=1750, one second after the only valid frame
     expect(sockets[0].close).toHaveBeenCalledOnce()
     expect(sockets).toHaveLength(2)
-    expect(store.connected).toBe(false)
+    expect(store.connectionState).not.toBe("live")
   })
 
   it("polls after close, backs off successive reconnects, and stops polling after a valid frame", async () => {
@@ -171,7 +178,7 @@ describe("node store", () => {
     store.start()
     await tick()
     sockets[0].close()
-    expect(store.connected).toBe(false)
+    expect(store.connectionState).not.toBe("live")
     await tick(999)
     expect(fetcher).toHaveBeenCalledTimes(1)
     await tick(1)
@@ -187,7 +194,7 @@ describe("node store", () => {
     expect(sockets).toHaveLength(3)
     sockets[2].message(JSON.stringify(snapshot("live")))
     await tick()
-    expect(store.connected).toBe(true)
+    expect(store.connectionState).toBe("live")
     expect(store.nodes?.[0].name).toBe("live")
     const count = fetcher.mock.calls.length
     await tick(2000)

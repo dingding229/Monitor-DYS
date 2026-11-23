@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ALL_GROUP, ApiError, UNGROUPED, api, safeNodes, sample, speedHistory, type Node } from "../../src/lib/api"
+import { ALL_GROUP, ApiError, UNGROUPED, api, safeNodes, type Node } from "../../src/lib/api"
+import { summarizeNodes } from "../../src/lib/home-view.svelte"
 import { directory } from "../../src/lib/view-state"
 import { metricFixture, nodeFixture } from "../fixtures/nodes"
 
 afterEach(() => {
   vi.restoreAllMocks()
-  speedHistory.clear()
 })
 
 describe("api", () => {
@@ -92,19 +92,20 @@ describe("node snapshots", () => {
     expect(directory([nodeFixture({ group: "" })], ALL_GROUP, null, "", "default").tabs).toEqual([])
   })
 
-  it("keeps all, ungrouped, and identically named real groups separate in speed history", () => {
-    sample([
+  it("keeps all, ungrouped, and identically named real groups separate in visible speed totals", () => {
+    const nodes = [
       nodeFixture({ group: "全部", metrics: metricFixture({ net_rx: 10, net_tx: 20 }) }),
       nodeFixture({ group: "未分组", metrics: metricFixture({ net_rx: 30, net_tx: 40 }) }),
       nodeFixture({ metrics: metricFixture({ net_rx: 50, net_tx: 60 }) }),
       nodeFixture({ online: false }),
-    ])
-    expect(speedHistory.get(ALL_GROUP)).toEqual([{ rx: 90, tx: 120 }])
-    expect(speedHistory.get(UNGROUPED)).toEqual([{ rx: 50, tx: 60 }])
-    expect(speedHistory.get("全部")).toEqual([{ rx: 10, tx: 20 }])
-    expect(speedHistory.get("未分组")).toEqual([{ rx: 30, tx: 40 }])
-    for (let i = 0; i < 65; i++) sample([nodeFixture()])
-    expect(speedHistory.get(ALL_GROUP)).toHaveLength(60)
-    expect(speedHistory.has("全部")).toBe(false)
+    ]
+    const totals = (group: typeof ALL_GROUP | typeof UNGROUPED | string) => {
+      const { rx, tx } = summarizeNodes(directory(nodes, group, null, "", "default").list)
+      return { rx, tx }
+    }
+    expect(totals(ALL_GROUP)).toEqual({ rx: 90, tx: 120 })
+    expect(totals(UNGROUPED)).toEqual({ rx: 50, tx: 60 })
+    expect(totals("全部")).toEqual({ rx: 10, tx: 20 })
+    expect(totals("未分组")).toEqual({ rx: 30, tx: 40 })
   })
 })
