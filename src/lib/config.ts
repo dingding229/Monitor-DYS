@@ -1,10 +1,11 @@
 /**
- * v3: `ThemeConfig.theme` is one of the six `ThemeKey` presets; use
- * `resolveTheme(value)` for untrusted input. Old color settings are ignored.
+ * v2.0.1: `ThemeConfig.accent_color` is a normalized six-digit hex color.
+ * Old color settings are ignored.
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
 import manifest from "../../theme.json"
 import { api, isObj, num } from "@/lib/api"
+import { resolveAccent } from "./theme"
 
 type ConfigField = {
   type: "title" | "select" | "string" | "boolean" | "text" | "number"
@@ -17,15 +18,8 @@ type ConfigField = {
   max?: number
 }
 
-const themes = ["emerald", "ocean", "indigo", "amber", "rose", "slate"] as const
-export type ThemeKey = typeof themes[number]
-
-export function resolveTheme(value: unknown): ThemeKey {
-  return themes.find(theme => theme === value) ?? "emerald"
-}
-
 export type ThemeConfig = {
-  theme: ThemeKey
+  accent_color: string
   layout: "grid" | "table"
   card_size: "compact" | "standard"
   show_summary: boolean
@@ -42,15 +36,12 @@ export type ThemeConfig = {
   poll_interval: number
 }
 
-function isValidHttpUrl(v: string): boolean {
-  const s = v.trim()
-  if (!s) return false
+function httpUrl(value: string): string | undefined {
+  const text = value.trim()
   try {
-    const u = new URL(s)
-    return u.protocol === "http:" || u.protocol === "https:"
-  } catch {
-    return false
-  }
+    const { protocol } = new URL(text)
+    if (protocol === "http:" || protocol === "https:") return text
+  } catch { /* Invalid URLs fall back to the default. */ }
 }
 
 function extractFields(declared: unknown): ConfigField[] {
@@ -65,38 +56,32 @@ export function resolveConfig(
   declared: unknown = manifest.config,
   saved?: Record<string, unknown> | null,
 ): ThemeConfig {
-  const fields = extractFields(declared)
   const raw = isObj(saved) ? saved : {}
-  const result: Record<string, unknown> = { theme: resolveTheme(raw.theme) }
+  const result: Record<string, unknown> = { accent_color: resolveAccent(raw.accent_color) }
 
-  for (const field of fields) {
-    const { key } = field
-    if (!key || field.type === "title" || key === "theme" || key === "accent" || key === "color_scheme") continue
-    const def = field.default
+  for (const { key, type, default: def, min, max, options } of extractFields(declared)) {
+    if (!key || type === "title" || ["accent_color", "theme", "accent", "color_scheme"].includes(key)) continue
     const val = raw[key]
 
-    let valid = false
-    switch (field.type) {
-      case 'boolean': valid = typeof val === 'boolean'; break
-      case 'number': valid = num(val) && val >= (field.min ?? -Infinity) && val <= (field.max ?? Infinity); break
-      case 'select': valid = !!field.options?.some(o => (typeof o === "string" ? o : o.value) === val); break
-      case 'string': case 'text':
-        valid = typeof val === 'string' && (key !== 'footer_url' || isValidHttpUrl(val))
+    switch (type) {
+      case "boolean": result[key] = typeof val === "boolean" ? val : def; break
+      case "number": result[key] = num(val) && val >= (min ?? -Infinity) && val <= (max ?? Infinity) ? val : def; break
+      case "select": result[key] = options?.some(o => (typeof o === "string" ? o : o.value) === val) ? val : def; break
+      case "string": case "text":
+        result[key] = typeof val !== "string" ? def : key === "footer_url" ? httpUrl(val) ?? def : val
         break
-      default: valid = typeof val === typeof def
+      default: result[key] = typeof val === typeof def ? val : def
     }
-    result[key] = !valid ? def : typeof val === 'string' && key === 'footer_url' ? val.trim() : val
   }
   return result as unknown as ThemeConfig
 }
 
 export async function loadSiteConfig(opts?: { fetch?: typeof globalThis.fetch }) {
+  let saved: Record<string, unknown> | undefined
+  let loaded = false
   try {
-    const saved = await api<Record<string, unknown>>(`/themes/${manifest.short}/config`, opts)
-    return { config: resolveConfig(manifest.config, saved), loaded: true }
-  } catch {
-    // Keep the manifest defaults for rendering, but never start geolocation on a failed read.
-    return { config: resolveConfig(), loaded: false }
-  }
+    saved = await api(`/themes/${manifest.short}/config`, opts)
+    loaded = true
+  } catch { /* Keep defaults on failure and do not start geolocation. */ }
+  return { config: resolveConfig(undefined, saved), loaded }
 }
-

@@ -1,7 +1,7 @@
 /**
  * Derived in part from monitor-theme-default (MIT, Copyright (c) 2026 stqfdyr).
  */
-import { ApiError, api, safeNodes, type Node } from "@/lib/api"
+import { ApiError, api, num, safeNodes, type Node } from "@/lib/api"
 
 type ConnectionState = "connecting" | "connected" | "live" | "polling"
 type Snapshot = { nodes: Node[] }
@@ -23,11 +23,15 @@ type NodeStoreOptions = {
   autoStart?: boolean
 }
 
+function closeSocket(socket: WebSocket) {
+  try { socket.close() } catch { /* Already closed. */ }
+}
+
 function inflateText(data: Blob): Promise<string> {
   return new Response(data.stream().pipeThrough(new DecompressionStream("gzip"))).text()
 }
 
-async function frameText(data: unknown): Promise<string> {
+function frameText(data: unknown): string | Promise<string> {
   if (typeof data === "string") return data
   if (typeof Blob !== "undefined" && data instanceof Blob) {
     return typeof DecompressionStream === "function" ? inflateText(data) : data.text()
@@ -105,7 +109,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
     const started = epoch
     return (initial ?? api<Snapshot>("/nodes", { fetch: fetchFn, retries: 2 }))
       .then((d) => {
-        if (started === epoch && d && Array.isArray(d.nodes)) {
+        if (started === epoch && Array.isArray(d?.nodes)) {
           receive(d.nodes)
           opts.onHttpSnapshot?.(d.nodes)
         }
@@ -186,13 +190,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
         })
     }
 
-    opened.onerror = () => {
-      try {
-        opened.close()
-      } catch {
-        // ignore
-      }
-    }
+    opened.onerror = () => closeSocket(opened)
 
     opened.onclose = () => {
       if (socket !== opened) return
@@ -223,11 +221,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
       socket.onclose = null
       socket.onerror = null
       socket.onmessage = null
-      try {
-        socket.close()
-      } catch {
-        // ignore
-      }
+      closeSocket(socket)
       socket = null
     }
     stopPolling()
@@ -271,7 +265,7 @@ export function createNodeStore(opts: NodeStoreOptions = {}) {
   }
 
   function setPollInterval(seconds: number) {
-    if (typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 1) {
+    if (num(seconds) && seconds >= 1) {
       pollMs = seconds * 1000
       if (pollTimer) {
         stopPolling()

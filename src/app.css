@@ -31,23 +31,17 @@
   --chart-grid: #e8eef5;
   --chart-axis: #64748b;
 
-  /* Default theme: emerald (翡翠青) */
-  --accent: #0d9488;
-  --accent-strong: #0f766e;
-  --accent-soft: #f0fdfa;
-  --accent-border: #99f6e4;
-  --accent-text: #0f766e;
+  /* Default accent palette: accentPalette("#10b981") */
+  --accent: #10b981;
+  --accent-strong: #0c875e;
+  --accent-soft: #ecf9f5;
+  --accent-border: #abe7d3;
+  --accent-text: #0b8059;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --mono: var(--font-mono);
 }
-
-html[data-theme="ocean"]  { --accent:#0284c7; --accent-strong:#0369a1; --accent-soft:#f0f9ff; --accent-border:#bae6fd; --accent-text:#0369a1; }
-html[data-theme="indigo"] { --accent:#4f46e5; --accent-strong:#4338ca; --accent-soft:#eef2ff; --accent-border:#c7d2fe; --accent-text:#4338ca; }
-html[data-theme="amber"]  { --accent:#b45309; --accent-strong:#92400e; --accent-soft:#fffbeb; --accent-border:#fde68a; --accent-text:#92400e; }
-html[data-theme="rose"]   { --accent:#e11d48; --accent-strong:#be123c; --accent-soft:#fff1f2; --accent-border:#fecdd3; --accent-text:#be123c; }
-html[data-theme="slate"]  { --accent:#334155; --accent-strong:#1e293b; --accent-soft:#f1f5f9; --accent-border:#cbd5e1; --accent-text:#1e293b; }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { scrollbar-gutter: stable; font-family: var(--font-sans); font-size: 13px; color: var(--fg); background: var(--bg); }
@@ -77,9 +71,10 @@ svg { display: inline-block; vertical-align: middle; }
 .fg-danger { color: var(--danger); }
 .fw6 { font-weight: 600; }
 .brand-ico { display: inline-block; flex-shrink: 0; vertical-align: middle; mask-size: contain; mask-repeat: no-repeat; mask-position: center; }
-.thin-scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.thin-scroll { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; overscroll-behavior: contain; }
 .thin-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
 .thin-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+.thin-scroll::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
 .uplot { font-family: inherit !important; }
 
 /* Shell & Header */
@@ -143,7 +138,10 @@ svg { display: inline-block; vertical-align: middle; }
 
 /* Overview 4 KPI + Map Deck */
 .overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; }
-@media (min-width: 980px) { .overview.split { grid-template-columns: 1fr 1.18fr; } }
+@media (min-width: 980px) {
+  .overview.split { grid-template-columns: 1fr 1.18fr; }
+  .overview.split > .radar-card { height: 0; min-height: 100%; }
+}
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .tile { padding: 14px; display: flex; flex-direction: column; }
 .kpi-inner { display: flex; flex-direction: column; justify-content: space-between; gap: 8px; height: 100%; }

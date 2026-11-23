@@ -223,7 +223,7 @@
       </div>
       {#if countryGroups.length > 5}
         <button type="button" class="r-more {countryGroups.length <= 6 ? 'mobile-only' : ''}" onclick={() => (expanded = !expanded)}>
-          {#if expanded}收起地区{:else}另外 <span class="cnt-d">{countryGroups.length - 6}</span><span class="cnt-m">{countryGroups.length - 5}</span> 个地区{/if}
+          {#if expanded}收起{:else}另外 <span class="cnt-d">{countryGroups.length - 6}</span><span class="cnt-m">{countryGroups.length - 5}</span> 个地区{/if}
         </button>
       {/if}
     </div>
@@ -265,10 +265,10 @@
   .ml-sw { display: inline-block; width: 10px; height: 7px; border-radius: 2px; vertical-align: middle; margin-right: 2px; }
   .ml-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle; margin-right: 2px; }
 
-  .r-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; height: 100%; }
-  .r-list { display: flex; flex-direction: column; gap: 5px; flex: 1; max-height: 224px; overflow-y: auto; padding-right: 2px; }
+  .r-col { display: flex; flex-direction: column; gap: 5px; min-width: 0; min-height: 0; height: 100%; }
+  .r-list { display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
   .wm-empty { padding: 24px 0; text-align: center; font-size: 12px; color: var(--fg-subtle); }
-  .r-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 7px; padding: 6px 9px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-sub); font-size: 12px; text-align: left; white-space: nowrap; cursor: pointer; transition: border-color 120ms, background-color 120ms; }
+  .r-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 7px; height: 32px; flex-shrink: 0; padding: 0 9px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-sub); font-size: 12px; text-align: left; white-space: nowrap; cursor: pointer; transition: border-color 120ms, background-color 120ms; }
   .r-row:hover, .r-row[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
   .r-row .nm { font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
   .r-prog { display: inline-flex; align-items: center; gap: 5px; }
@@ -289,7 +289,7 @@
   @media (max-width: 639px) {
     .map-col, .cnt-d { display: none; }
     .cnt-m { display: inline; }
-    .r-list { max-height: none; overflow: visible; padding-right: 0; }
+    .r-list { max-height: 180px; }
     .r-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
     .r-row .sp { display: none; }
     .r-row.extra-m { display: none; }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { loadSiteConfig, resolveTheme, resolveConfig } from "../../src/lib/config"
+import { loadSiteConfig, resolveConfig } from "../../src/lib/config"
 import manifest from "../../theme.json"
 
 const defaults = Object.fromEntries(manifest.config.flatMap((field) => "key" in field ? [[field.key, field.default]] : []))
@@ -9,19 +9,19 @@ afterEach(() => vi.unstubAllGlobals())
 describe("resolveConfig", () => {
   it("accepts valid values for each non-title type", () => {
     const valid = {
-      layout: "table", card_size: "standard", theme: "ocean",
+      layout: "table", card_size: "standard", accent_color: " #AbC ",
       show_summary: false, show_map: false, show_search: false, show_sort: false, show_billing: false, show_ping: false,
       expiry_warning_days: 3, visitor_info_enabled: false,
       announcement: "第一行\n第二行", footer: "A footer", footer_url: "https://example.invalid/about", poll_interval: 2,
     }
-    expect(resolveConfig(manifest, valid)).toEqual(valid)
+    expect(resolveConfig(manifest, valid)).toEqual({ ...valid, accent_color: "#aabbcc" })
     expect(resolveConfig(manifest.config, { poll_interval: 60 }).poll_interval).toBe(60)
   })
 
   it("rejects invalid values per field, skips titles and ignores undeclared keys", () => {
     const fields = [...manifest.config, { type: "title", label: "Test title", key: "heading", default: "ignored" }]
     expect(resolveConfig(fields, {
-      layout: "unknown", card_size: 3, theme: "unknown", show_summary: "false", show_billing: 1,
+      layout: "unknown", card_size: 3, accent_color: "unknown", show_summary: "false", show_billing: 1,
       show_map: "false", show_search: null, show_sort: 1, show_ping: "false", expiry_warning_days: 366,
       visitor_info_enabled: "false", announcement: null, footer: ["not a string"], footer_url: "ftp://example.invalid",
       poll_interval: "5", heading: "not a setting", secret: "undeclared",
@@ -65,7 +65,15 @@ it("distinguishes a successful settings read from a failed read while keeping di
 })
 
 
-describe("resolveTheme", () => {
-  it.each(["emerald", "ocean", "indigo", "amber", "rose", "slate"] as const)("accepts %s", value => expect(resolveTheme(value)).toBe(value))
-  it.each(["", "OCEAN", "unknown", " ocean ", null, undefined, false, 7, {}, []])("falls back for %s", value => expect(resolveTheme(value)).toBe("emerald"))
+describe("accent_color configuration", () => {
+  it.each([["#abc", "#aabbcc"], ["#ABCDEF", "#abcdef"], ["  #1A2  ", "#11aa22"], [" #3B82F6 ", "#3b82f6"]])("normalizes %s", (value, expected) => {
+    expect(resolveConfig(manifest, { accent_color: value }).accent_color).toBe(expected)
+  })
+  it.each(["red", "#ab", "#abcd", "#ggg", "#12345678", "", null, undefined, 3, false, {}, []])("falls back for %s", value => {
+    expect(resolveConfig(manifest, { accent_color: value }).accent_color).toBe("#10b981")
+  })
+  it("ignores obsolete color keys even when declared", () => {
+    const old = [{ type: "string", key: "theme", default: "ocean" }, { type: "string", key: "accent", default: "#fff" }, { type: "string", key: "color_scheme", default: "dark" }]
+    expect(resolveConfig([...manifest.config, ...old], { theme: "rose", accent: "#f00", color_scheme: "dark" })).toEqual(defaults)
+  })
 })

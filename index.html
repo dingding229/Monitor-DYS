@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="emerald">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light" />
-    <script>{let t;try{t=localStorage.getItem('dys:theme')}catch{}document.documentElement.dataset.theme=/^(?:emerald|ocean|indigo|amber|rose|slate)$/.test(t||'')?t:'emerald'}</script>
+    <script>{try{const p=JSON.parse(localStorage.getItem('dys:accent')||''),r=/^#[0-9a-f]{6}$/,s=document.documentElement.style;if(p&&r.test(p.accent)&&r.test(p.strong)&&r.test(p.soft)&&r.test(p.border)&&r.test(p.text)){s.setProperty('--accent',p.accent);s.setProperty('--accent-strong',p.strong);s.setProperty('--accent-soft',p.soft);s.setProperty('--accent-border',p.border);s.setProperty('--accent-text',p.text)}}catch{}}</script>
     <!-- Critical paint: keep in sync with --bg/--surface/--border in app.css. -->
     <style>html,body{background:#eaedf2;color:#0b1320;margin:0}.boot-header{height:50px;background:#fff;border-bottom:1px solid #d4dde8}</style>
     <link rel="preload" href="/api/nodes" as="fetch" crossorigin="anonymous" />

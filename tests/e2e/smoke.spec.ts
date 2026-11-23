@@ -47,11 +47,12 @@ test("home renders four summary tiles, 16 cards and a map from one HTTP snapshot
     const styles = [...head.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map(m => m[1]).join("\n")
     const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     expect(rules.some(([, selector, body]) => /(?:^|,)\s*html\b/.test(selector) && body.includes(`background:${light}`))).toBe(true)
-    const themeScript = /<script\b[^>]*>[\s\S]*?(?:dataset\.theme|setAttribute\(["']data-theme)[\s\S]*?<\/script>/i.exec(head)
+    const accentScript = [...head.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
+      .find(match => /dys:accent/.test(match[1]) && /setProperty\s*\(\s*["']--accent["']/.test(match[1]))
     const firstStylesheet = /<link\b(?=[^>]*\brel=["']stylesheet["'])[^>]*>/i.exec(head)
-    expect(themeScript, "inline theme script").toBeTruthy()
+    expect(accentScript, "inline accent cache script").toBeTruthy()
     expect(firstStylesheet, "built stylesheet").toBeTruthy()
-    expect(themeScript!.index).toBeLessThan(firstStylesheet!.index)
+    expect(accentScript!.index).toBeLessThan(firstStylesheet!.index)
   })
 })
 
@@ -328,32 +329,74 @@ test("card Ping displays three per-probe values and twelve segments", async ({ p
 })
 
 
-test("theme configuration is cached and applied before first frame on refresh", async ({ page }) => {
-  let theme = "ocean"
-  let releaseConfig: (() => void) | undefined
-  let delayConfig = false
+test("configured accent is cached and applied by DOMContentLoaded after reload", async ({ page }) => {
+  let delay = false
+  let release: (() => void) | undefined
   await page.route("**/api/themes/dys/config", async route => {
-    if (delayConfig) await new Promise<void>(resolve => { releaseConfig = resolve })
-    await route.fulfill({ json: { theme } })
+    if (delay) await new Promise<void>(resolve => { release = resolve })
+    await route.fulfill({ json: { accent_color: "#3b82f6" } }).catch(() => {})
   })
   await page.addInitScript(() => {
-    ;(window as any).__firstTheme = null
-    requestAnimationFrame(() => { (window as any).__firstTheme = document.documentElement.dataset.theme })
+    ;(window as any).__domAccent = null
+    document.addEventListener("DOMContentLoaded", () => {
+      ;(window as any).__domAccent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()
+    }, { once: true })
   })
   await page.goto(mockUrl("normal"))
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "ocean")
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("dys:theme"))).toBe("ocean")
-  delayConfig = true
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim())).toBe("#3b82f6")
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("dys:accent") || "null")?.accent)).toBe("#3b82f6")
+  delay = true
   try {
-    await page.reload({ waitUntil: "commit" })
-    await expect.poll(() => page.evaluate(() => (window as any).__firstTheme)).toBe("ocean")
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "ocean")
-  } finally { releaseConfig?.() }
-  delayConfig = false
-  theme = "invalid"
+    await page.reload({ waitUntil: "domcontentloaded" })
+    expect(await page.evaluate(() => (window as any).__domAccent)).toBe("#3b82f6")
+    expect(await page.evaluate(() => document.documentElement.style.getPropertyValue("--accent").trim())).toBe("#3b82f6")
+  } finally { release?.(); delay = false }
+})
+
+test("first mounted selected button uses delayed configuration color without flashing the default", async ({ page }) => {
+  await page.route("**/api/themes/dys/config", async route => {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    await route.fulfill({ json: { accent_color: "#3b82f6" } })
+  })
+  await page.addInitScript(() => {
+    const w = window as any
+    w.__firstMountedAccent = null
+    function sample() {
+      const button = document.querySelector<HTMLElement>('[data-testid="group-tab"][aria-selected="true"]')
+      if (!button) { requestAnimationFrame(sample); return }
+      const root = getComputedStyle(document.documentElement)
+      w.__firstMountedAccent = { accent: root.getPropertyValue("--accent").trim(), strong: root.getPropertyValue("--accent-strong").trim(), background: getComputedStyle(button).backgroundColor }
+    }
+    requestAnimationFrame(sample)
+  })
+  await page.goto(mockUrl("normal"))
+  await expect.poll(() => page.evaluate(() => (window as any).__firstMountedAccent)).not.toBeNull()
+  const first = await page.evaluate(() => (window as any).__firstMountedAccent)
+  expect(first.accent).toBe("#3b82f6")
+  expect(first.strong).not.toBe("#0c875e")
+  const rgb = first.strong.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/)
+  expect(rgb).not.toBeNull()
+  expect(first.background).toBe(`rgb(${parseInt(rgb[1], 16)}, ${parseInt(rgb[2], 16)}, ${parseInt(rgb[3], 16)})`)
+})
+
+test("failed configuration leaves absent and existing accent caches unchanged", async ({ page }) => {
+  let succeed = false
+  await page.route("**/api/themes/dys/config", route => succeed ? route.fulfill({ json: { accent_color: "#3b82f6" } }) : route.fulfill({ status: 503, body: "unavailable" }))
+  await page.goto(mockUrl("normal"))
+  await expect(page.getByTestId("node-card").first()).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem("dys:accent"))).toBeNull()
+  succeed = true
   await page.reload()
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "emerald")
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("dys:theme"))).toBe("emerald")
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("dys:accent") || "null")?.accent)).toBe("#3b82f6")
+  const cached = await page.evaluate(() => localStorage.getItem("dys:accent"))
+  succeed = false
+  const failedConfig = page.waitForResponse(response => response.url().includes("/api/themes/dys/config") && response.status() === 503)
+  await page.reload()
+  await failedConfig
+  await expect(page.getByTestId("node-card").first()).toBeVisible()
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  expect(await page.evaluate(() => localStorage.getItem("dys:accent"))).toBe(cached)
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim())).toBe("#3b82f6")
 })
 
 test("first node card has at most 90 descendant elements", async ({ page }) => {
@@ -398,3 +441,30 @@ test("390px hides the map graphic but shows the region list", async ({ page }) =
   await expect(page.getByTestId("country-list")).toBeVisible()
   await expect(page.getByTestId("country-row").first()).toBeVisible()
 })
+
+
+for (const width of [1440, 390]) {
+  test(`expanding regions at ${width}px keeps card and page height fixed and scrolls internally`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(mockUrl("normal"))
+    const list = page.getByTestId("country-list")
+    const map = page.getByTestId("world-map")
+    const card = page.locator(".radar-card").filter({ has: map })
+    await expect(list).toBeVisible()
+    await expect(page.getByTestId("country-row")).toHaveCount(12)
+    await expect(page.getByTestId("node-card").first().getByTestId("ping-bars").first()).toBeVisible()
+    const more = card.getByRole("button", { name: /另外\s*\d+\s*个地区/ })
+    await expect(more).toBeVisible()
+    const before = await page.evaluate(() => document.documentElement.scrollHeight)
+    const beforeCard = (await card.boundingBox())!.height
+    await more.click()
+    await expect(card.getByRole("button", { name: "收起" })).toBeVisible()
+    const dimensions = await list.evaluate(el => ({ client: el.clientHeight, scroll: el.scrollHeight, overflow: getComputedStyle(el).overflowY }))
+    expect(dimensions.scroll).toBeGreaterThan(dimensions.client)
+    expect(["auto", "scroll"]).toContain(dimensions.overflow)
+    await list.evaluate(el => { el.scrollTop = el.scrollHeight })
+    expect(await list.evaluate(el => el.scrollTop)).toBeGreaterThan(0)
+    expect((await card.boundingBox())!.height).toBe(beforeCard)
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(before)
+  })
+}

@@ -63,10 +63,8 @@ export function directory(nodes:readonly Node[], group:GroupKey, country:string|
     const m=n.online?n.metrics:null
     switch(sort){
       case 'cpu':return m?.cpu??-1
-      case 'mem':return m?percentNum(m.mem_used,m.mem_total):-1
-      case 'disk':return m?percentNum(m.disk_used,m.disk_total):-1
-      case 'rx':return m?.net_rx??-1
-      case 'tx':return m?.net_tx??-1
+      case 'mem': case 'disk': return m ? percentNum(m[`${sort}_used`], m[`${sort}_total`]) : -1
+      case 'rx': case 'tx': return m?.[`net_${sort}`] ?? -1
       case 'traffic':return (n.month_rx??0)+(n.month_tx??0)
       case 'expiry':return -(expiry(n).days??Infinity)
       default:return 0

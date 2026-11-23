@@ -70,7 +70,7 @@
     }
     if (globalThis.MutationObserver) {
       mo = new MutationObserver(() => themeTick++)
-      mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] })
+      mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] })
     }
   })
 

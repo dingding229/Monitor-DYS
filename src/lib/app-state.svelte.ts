@@ -8,7 +8,7 @@
  * tabs, grouped map input and filtered/sorted nodes. `orderedNodes` is the same
  * filtered order for the detail switcher; `activeNode` can still be a deep link
  * outside that list. `snapshotOnly` means no live/HTTP frame has arrived yet.
- * v3: `config.theme` selects the CSS preset. `history.fleet` stores fleet trends;
+ * `config.accent_color` drives the CSS palette. `history.fleet` stores fleet trends;
  * read `history.version` before `history.load(id)` in a reactive expression.
  * Pass `ping.peek` to the map for cache-only Ping lookups (no new cache cells).
  *
@@ -19,10 +19,11 @@ import { onDestroy, onMount } from "svelte"
 import { ALL_GROUP, UNGROUPED, ApiError, api, type GroupKey, type Me, type Node } from "./api"
 import { resolveConfig, type ThemeConfig } from "./config"
 import { loadDetail } from "./detail"
-import { createHomeView } from "./home-view.svelte"
+import { createHomeView } from "./home-summary.svelte"
 import { createHistory } from "./history.svelte"
 import { createNodeStore } from "./nodes.svelte"
 import { createPingStore } from "./ping.svelte"
+import { accentPalette, applyAccent } from "./theme"
 import { createRouter } from "./router.svelte"
 import { readSnapshot, saveSnapshot, clearSnapshot } from "./snapshot"
 import { readView, writeView, loadPrefs, savePref, type SortKey } from "./view-state"
@@ -129,9 +130,8 @@ export function createApp(initial: AppStartup) {
       if (!mounted) return
       config = next
       configLoaded = loaded
-      document.documentElement.dataset.theme = next.theme
-      // First-paint hint only; the site config still decides the preset.
-      try { localStorage.setItem("dys:theme", next.theme) } catch { /* storage unavailable */ }
+      // A failed config read keeps the cached palette instead of caching the default.
+      if (loaded) applyAccent(accentPalette(config.accent_color))
     })
     // The root props can retain the settled Promise for the page lifetime.
     nodeStore.start(initial.initialNodes.then(payload => {

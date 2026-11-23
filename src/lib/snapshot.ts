@@ -13,8 +13,10 @@ function project(raw: unknown) {
     metrics = { load: [m.load[0], m.load[1], m.load[2]] }
     for (const key of metricFields) if (num(m[key])) metrics[key] = m[key]
   }
-  return { id: raw.id, ...Object.fromEntries(strings.map(k => [k, typeof raw[k] === 'string' ? raw[k] : ''])),
-    ...Object.fromEntries(numbers.map(k => [k, Number.isFinite(raw[k]) ? raw[k] : null])), metrics }
+  const node: { id: number; metrics: Partial<Metrics> | null; [key: string]: unknown } = { id: raw.id, metrics }
+  for (const key of strings) node[key] = typeof raw[key] === "string" ? raw[key] : ""
+  for (const key of numbers) node[key] = num(raw[key]) ? raw[key] : null
+  return node
 }
 const fits = (data: string) => data.length <= LIMIT && new TextEncoder().encode(data).byteLength <= LIMIT
 
@@ -34,11 +36,15 @@ export function readSnapshot(): Node[] | null {
       const { ts, nodes } = JSON.parse(data)
       const age = Date.now() - ts
       if (typeof ts === 'number' && age >= 0 && age < TTL && Array.isArray(nodes)) {
-        const list = nodes.map(project)
-        if (list.every(Boolean) && new Set(list.map(n => n!.id)).size === list.length) {
-          // Snapshot is a display seed only. The first HTTP read supplies live status and full metadata.
-          return safeNodes(list.map((n, sort) => ({ ...n, sort, online: n!.metrics !== null })) as Node[])
+        const seen = new Set<number>(), list = []
+        for (const raw of nodes) {
+          const n = project(raw)
+          if (!n || seen.has(n.id)) break
+          seen.add(n.id)
+          list.push({ ...n, sort: list.length, online: n.metrics !== null })
         }
+        // Snapshot is a display seed only; the first HTTP read supplies live data.
+        if (list.length === nodes.length) return safeNodes(list as Node[])
       }
     }
   } catch { /* discard corrupt / inaccessible storage */ }

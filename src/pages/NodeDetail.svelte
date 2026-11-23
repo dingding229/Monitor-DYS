@@ -5,7 +5,7 @@
   const MODES: Record<string, string> = { up: "仅上传", down: "仅下载", max: "单向取大" }
   const errMsg = (e: unknown) => (e instanceof Error ? e.message : "读取历史数据失败")
   const level = (p: number | null | undefined) => (p == null ? "" : p >= 90 ? "danger" : p >= 80 ? "warn" : "")
-  const readAccent = () => (typeof document === "undefined" ? "#0d9488" : getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0d9488")
+  const readAccent = () => (typeof document === "undefined" ? "#10b981" : getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#10b981")
 
   function buildDetail(node: Node, showBilling: boolean, expiryWarningDays: number) {
     const m = node.metrics, isCorrupt = Boolean(node._corrupt), isWaiting = node.online && !m && !isCorrupt
@@ -97,7 +97,8 @@
     return () => { cur = false }
   })
 
-  let accentColor = $derived.by(() => { void app.config.theme; return readAccent() })
+  let styleTick = $state(0)
+  let accentColor = $derived.by(() => { void styleTick; return readAccent() })
   let metrics = $derived(metricCharts(metricsResp, accentColor, showPeak, node.metrics?.mem_total || node.mem_total, node.metrics?.disk_total || node.disk_total))
   let ping = $derived(pingCharts(pingResp, accentColor))
   let saved = $state.raw(readProbes())
@@ -121,7 +122,12 @@
       if (target) { e.preventDefault(); app.selectNode(target.id) }
     }
     window.addEventListener("keydown", fn)
-    return () => window.removeEventListener("keydown", fn)
+    let mo: MutationObserver | null = null
+    if (globalThis.MutationObserver) {
+      mo = new MutationObserver(() => styleTick++)
+      mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] })
+    }
+    return () => { window.removeEventListener("keydown", fn); mo?.disconnect() }
   })
 </script>
 
