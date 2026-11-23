@@ -4,8 +4,22 @@ import { defineConfig } from "vitest/config"
 import { svelte } from "@sveltejs/vite-plugin-svelte"
 import tailwindcss from "@tailwindcss/vite"
 
+// Cards need only the original path, not the Simple Icons object or SVG wrapper.
+const osIconPath = /[\\/]simple-icons[\\/]icons[\\/][a-z0-9-]+\.svg\?icon-path$/
+
 export default defineConfig({
   plugins: [svelte(), tailwindcss(), {
+    name: "simple-os-icon-paths",
+    enforce: "pre",
+    load(id) {
+      if (!osIconPath.test(id)) return
+      const file = id.slice(0, id.indexOf("?"))
+      this.addWatchFile(file)
+      const path = /<path d="([^"]+)"\s*\/>/.exec(readFileSync(file, "utf8"))?.[1]
+      if (!path) return this.error(`Missing SVG path in ${file}`)
+      return `export default ${JSON.stringify(path)}`
+    },
+  }, {
     name: "local-country-flags",
     apply: "build",
     generateBundle() {
@@ -25,8 +39,8 @@ export default defineConfig({
     },
   },
   build: {
-    // Share one preloaded, tree-shaken set of OS paths across cards, rows and details.
-    rolldownOptions: { output: { codeSplitting: { groups: [{ name: "os-icons", test: /node_modules\/simple-icons\/index\.mjs$/ }] } } },
+    // Share one preloaded set of OS paths across cards, rows and details.
+    rolldownOptions: { output: { codeSplitting: { groups: [{ name: "os-icons", test: osIconPath }] } } },
     chunkSizeWarningLimit: 500,
   },
   server: {

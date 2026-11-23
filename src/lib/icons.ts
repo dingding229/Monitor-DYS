@@ -1,7 +1,19 @@
 /**
  * OS and Browser brand icon key mapping & individually bundled SVG assets per SPEC-v1.2 §2 & §4.
  */
-import { siDebian, siUbuntu, siCentos, siRockylinux, siAlmalinux, siFedora, siAlpinelinux, siArchlinux, siOpensuse, siOpenwrt, siFreebsd, siMacos, siLinux } from "simple-icons"
+import siDebian from "simple-icons/icons/debian.svg?icon-path"
+import siUbuntu from "simple-icons/icons/ubuntu.svg?icon-path"
+import siCentos from "simple-icons/icons/centos.svg?icon-path"
+import siRockylinux from "simple-icons/icons/rockylinux.svg?icon-path"
+import siAlmalinux from "simple-icons/icons/almalinux.svg?icon-path"
+import siFedora from "simple-icons/icons/fedora.svg?icon-path"
+import siAlpinelinux from "simple-icons/icons/alpinelinux.svg?icon-path"
+import siArchlinux from "simple-icons/icons/archlinux.svg?icon-path"
+import siOpensuse from "simple-icons/icons/opensuse.svg?icon-path"
+import siOpenwrt from "simple-icons/icons/openwrt.svg?icon-path"
+import siFreebsd from "simple-icons/icons/freebsd.svg?icon-path"
+import siMacos from "simple-icons/icons/macos.svg?icon-path"
+import siLinux from "simple-icons/icons/linux.svg?icon-path"
 import siGooglechrome from "simple-icons/icons/googlechrome.svg?no-inline"
 import siFirefoxbrowser from "simple-icons/icons/firefoxbrowser.svg?no-inline"
 import siSafari from "simple-icons/icons/safari.svg?no-inline"
@@ -9,7 +21,7 @@ import siOpera from "simple-icons/icons/opera.svg?no-inline"
 import siWechat from "simple-icons/icons/wechat.svg?no-inline"
 import siQq from "simple-icons/icons/qq.svg?no-inline"
 
-export type OsKey =
+type OsKey =
   | "debian"
   | "ubuntu"
   | "centos"
@@ -26,7 +38,7 @@ export type OsKey =
   | "linux"
   | "unknown"
 
-export type BrowserKey =
+type BrowserKey =
   | "chrome"
   | "edge"
   | "safari"
@@ -35,8 +47,6 @@ export type BrowserKey =
   | "wechat"
   | "qq"
   | "unknown"
-
-export type BrandKey = OsKey | BrowserKey
 
 export function osKey(os?: string | null): OsKey {
   if (!os || typeof os !== "string") return "unknown"
@@ -88,7 +98,7 @@ export function browserKey(name?: string | null): BrowserKey {
   return "unknown"
 }
 
-export type IconDef = {
+type IconDef = {
   color: string
   paths?: string[]
   src?: string
@@ -106,21 +116,21 @@ const NEUTRAL_GLOBE_PATHS = [
 
 
 const OS_ICON_MAP: Record<OsKey, IconDef> = {
-  debian: { paths: [siDebian.path], color: "#A81D33" },
-  ubuntu: { paths: [siUbuntu.path], color: "#E95420" },
-  centos: { paths: [siCentos.path], color: "#262577" },
-  rocky: { paths: [siRockylinux.path], color: "#10B981" },
-  almalinux: { paths: [siAlmalinux.path], color: "#0f4266" },
-  fedora: { paths: [siFedora.path], color: "#51A2DA" },
-  alpine: { paths: [siAlpinelinux.path], color: "#0D597F" },
-  arch: { paths: [siArchlinux.path], color: "#1793D1" },
-  opensuse: { paths: [siOpensuse.path], color: "#73BA25" },
-  openwrt: { paths: [siOpenwrt.path], color: "#00B5E2" },
-  freebsd: { paths: [siFreebsd.path], color: "#AB2B28" },
-  macos: { paths: [siMacos.path], color: "#374151" },
+  debian: { paths: [siDebian], color: "#A81D33" },
+  ubuntu: { paths: [siUbuntu], color: "#E95420" },
+  centos: { paths: [siCentos], color: "#262577" },
+  rocky: { paths: [siRockylinux], color: "#10B981" },
+  almalinux: { paths: [siAlmalinux], color: "#0f4266" },
+  fedora: { paths: [siFedora], color: "#51A2DA" },
+  alpine: { paths: [siAlpinelinux], color: "#0D597F" },
+  arch: { paths: [siArchlinux], color: "#1793D1" },
+  opensuse: { paths: [siOpensuse], color: "#73BA25" },
+  openwrt: { paths: [siOpenwrt], color: "#00B5E2" },
+  freebsd: { paths: [siFreebsd], color: "#AB2B28" },
+  macos: { paths: [siMacos], color: "#374151" },
   // Per SPEC-v1.2 §2: icons missing from simple-icons (e.g. windows) use Tux (siLinux)
-  windows: { paths: [siLinux.path], color: "#4b5563" },
-  linux: { paths: [siLinux.path], color: "#4b5563" },
+  windows: { paths: [siLinux], color: "#4b5563" },
+  linux: { paths: [siLinux], color: "#4b5563" },
   unknown: { color: "#6b7280", paths: NEUTRAL_SERVER_PATHS },
 }
 

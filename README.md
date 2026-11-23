@@ -53,6 +53,7 @@ https://github.com/dingding229/Monitor-DYS
 | `layout` | `select` | `"grid"` | 默认布局：`"grid"`（卡片）或 `"table"`（列表）；访客可在页面切换并保存在浏览器 `localStorage` |
 | `card_size` | `select` | `"compact"` | 卡片尺寸：`"compact"`（紧凑）或 `"standard"`（标准） |
 | `accent` | `string` | `"#10b981"` | 主题色（任意合法 CSS 颜色，无效值回退 `#10b981`） |
+| `color_scheme`（v2.0） | `select` | `"auto"` | 配色：`"auto"` 跟随系统，`"light"` / `"dark"` 固定浅色 / 深色；非法值回退 `"auto"`。 |
 | `show_summary` | `boolean` | `true` | 显示首页六格总览卡片 |
 | `show_ping` | `boolean` | `true` | 卡片底部显示最多三个探针的读数，以及最近 12 段延迟和丢包色条；列表显示平均值。关闭后首页和详情页均不请求 Ping。首页仅在空闲时读取视口附近的在线节点，每分钟更新，并发最多 3 个。 |
 | `show_map` | `boolean` | `true` | 显示首页点阵世界地图与国家列表 |
@@ -95,6 +96,7 @@ MONITOR_HUB=http://127.0.0.1:9911 npm run dev
 - `npm run gen:map`：从 `world-atlas` (Natural Earth 110m) 重新生成 `src/lib/map-data.ts`
 - `npm run check`：运行 `svelte-check` 与 TypeScript 类型检查
 - `npm run build`：构建生产包至 `dist/`
+- `node scripts/check-size.mjs`：检查构建资产的 gzip 体积（v2 入口 / 首屏 / 详情 JS 分别为 42 / 60 / 30 KB，CSS 总量 ≤ 8.936 KB）。重写期间可用 `SIZE_BUDGET=v1` 验证旧 JS 预算；GitHub Actions 暂时默认 v1，可用 `SIZE_BUDGET=v2` 切换。
 - `npm test`：运行 Vitest 单元测试
 - `npm run test:e2e`：运行 Playwright 端到端测试
 

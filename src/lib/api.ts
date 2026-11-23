@@ -150,16 +150,17 @@ export async function api<T>(
   }
 }
 
+const isNonNegNum = (v: unknown): v is number => num(v) && v >= 0
+const isOptNonNegNum = (v: unknown): boolean => v === undefined || v === null || isNonNegNum(v)
+const requiredFields = ["uptime","cpu","mem_total","mem_used","disk_total","disk_used","net_rx","net_tx","total_rx","total_tx","month_rx","month_tx"] as const
+const optionalFields = ["swap_total", "swap_used", "tcp", "udp", "procs"] as const
+
 /**
  * Validate node metrics so a malformed report does not crash the whole page.
  * Per SPEC §5.1 & §5.15: swap_total, swap_used, tcp, udp, procs may be absent on older hubs.
  */
 export function safeNodes(nodes: Node[]): Node[] {
   if (!Array.isArray(nodes)) return []
-  const isNonNegNum = (v: unknown): v is number => num(v) && v >= 0
-  const isOptNonNegNum = (v: unknown): boolean => v === undefined || v === null || isNonNegNum(v)
-  const requiredFields = ["uptime","cpu","mem_total","mem_used","disk_total","disk_used","net_rx","net_tx","total_rx","total_tx","month_rx","month_tx"] as const
-  const optionalFields = ["swap_total", "swap_used", "tcp", "udp", "procs"] as const
 
   return nodes.map((node) => {
     const m = node.metrics
@@ -167,8 +168,8 @@ export function safeNodes(nodes: Node[]): Node[] {
     const valid =
       typeof m === "object" &&
       m !== null &&
-      requiredFields.every((key) => isNonNegNum((m as Record<string, unknown>)[key])) &&
-      optionalFields.every((key) => isOptNonNegNum((m as Record<string, unknown>)[key])) &&
+      requiredFields.every((key) => isNonNegNum(m[key])) &&
+      optionalFields.every((key) => isOptNonNegNum(m[key])) &&
       Array.isArray(m.load) &&
       m.load.length === 3 &&
       m.load.every(isNonNegNum)

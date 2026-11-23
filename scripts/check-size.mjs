@@ -9,6 +9,8 @@ const mapName = /(?:^|[/_.-])(?:worldmap|map(?:[-_]?data)?)(?=[/_.-]|$)/i
 const detailName = /(?:^|[/_.-])(?:nodedetail|uplot(?:chart)?|detail)(?=[/_.-]|$)/i
 const buildOrigin = "https://dys-build.invalid"
 const KB = 1000
+// v1.6 build: 8,511 bytes across all CSS assets (entry + detail); allow up to 5% more.
+const CSS_LIMIT_KB = Math.floor(8511 * 1.05) / KB
 
 function* filesUnder(root, prefix = "") {
   for (const entry of readdirSync(join(root, prefix), { withFileTypes: true })) {
@@ -84,7 +86,9 @@ export function inspectBuild(directory = "dist") {
   const root = resolve(directory)
   const { roots, preloads } = htmlChunks(readFileSync(join(root, "index.html"), "utf8"))
   if (!roots.length) throw new Error("index.html does not reference an entry JavaScript chunk")
-  const files = new Set([...filesUnder(root)].filter((file) => jsFile.test(file)))
+  const artifacts = [...filesUnder(root)]
+  const files = new Set(artifacts.filter((file) => jsFile.test(file)))
+  const cssFiles = artifacts.filter((file) => /\.css$/i.test(file)).sort()
   const manifest = readManifest(root)
   const entries = Object.entries(manifest.data).filter(([, record]) => jsFile.test(record?.file ?? ""))
   const dependencies = new Map()
@@ -136,7 +140,7 @@ export function inspectBuild(directory = "dist") {
   const initialFiles = [...initial].sort()
   const missing = [!mapRoots.size && "map", !detailRoots.size && "NodeDetail/uPlot"].filter(Boolean)
   const eagerDetail = [...detailRoots].filter((file) => initial.has(file)).sort()
-  return { root, manifest: manifest.file, entryFiles, initialFiles, detailFiles, missing, eagerDetail }
+  return { root, manifest: manifest.file, entryFiles, initialFiles, detailFiles, cssFiles, missing, eagerDetail }
 }
 
 function main() {
@@ -149,19 +153,24 @@ function main() {
       return total + cache.get(file)
     }, 0)
   }
+  // Keep current GitHub workflows on v1 until the v2 UI lands. An explicit override always wins.
+  const version = process.env.SIZE_BUDGET ?? (process.env.GITHUB_ACTIONS === "true" ? "v1" : "v2")
+  if (version !== "v1" && version !== "v2") throw new Error("SIZE_BUDGET must be v1 or v2")
+  const [entryLimit, initialLimit, detailLimit] = version === "v1" ? [60, 85, 40] : [42, 60, 30]
   const limits = [
-    ["Entry JS", result.entryFiles, 60, true],
-    ["Initial JS (entry + map + static imports)", result.initialFiles, 85, !result.missing.includes("map")],
-    ["Additional detail JS", result.detailFiles, 40, !result.missing.includes("NodeDetail/uPlot")],
+    ["Entry JS", result.entryFiles, entryLimit, true],
+    ["Initial JS (entry + map + static imports)", result.initialFiles, initialLimit, !result.missing.includes("map")],
+    ["Additional detail JS", result.detailFiles, detailLimit, !result.missing.includes("NodeDetail/uPlot")],
+    ["CSS (all emitted styles)", result.cssFiles, CSS_LIMIT_KB, true],
   ]
   const groups = limits.map(([name, files, limit, complete]) => {
     const bytes = gzipTotal(files)
     const status = bytes > limit * KB ? "OVER" : complete ? "OK" : "UNKNOWN"
     return { name, files, limit, bytes, status }
   })
-  console.log(`Gzip JavaScript budget (${result.manifest ?? "HTML + chunk filenames"}; 1 KB = 1000 bytes)`)
+  console.log(`Gzip asset budget ${version} (${result.manifest ?? "HTML + chunk filenames"}; 1 KB = 1000 bytes)`)
   console.table(groups.map(({ name, files, limit, bytes, status }) => ({
-    group: name, "gzip bytes": files.length ? bytes : "—", "budget KB": limit, chunks: files.length, status,
+    group: name, "gzip bytes": files.length || status === "OK" ? bytes : "—", "budget KB": limit, chunks: files.length, status,
   })))
   for (const { name, files } of groups) console.log(`${name}: ${files.join(", ") || "(not identified)"}`)
   if (result.missing.length) {

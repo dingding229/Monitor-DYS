@@ -11,7 +11,7 @@ import {
   MAP_LAND_RLE,
 } from "@/lib/map-data"
 
-export const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
+const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
   AD: [1.6, 42.5], AE: [54.0, 24.0], AF: [65.0, 33.0], AG: [-61.8, 17.05],
   AI: [-63.05, 18.25], AL: [20.0, 41.0], AM: [45.0, 40.0], AO: [18.5, -12.5],
   AR: [-64.0, -34.0], AT: [13.33, 47.33], AU: [135.0, -25.0], AZ: [47.5, 40.5],
@@ -71,10 +71,7 @@ export function projectGeo(
   return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) }
 }
 
-export const MAP_COLS = MAP_GRID_COLS
-export const MAP_ROWS = MAP_GRID_ROWS
-
-export type MapDot = {
+type MapDot = {
   x: number
   y: number
   country: string

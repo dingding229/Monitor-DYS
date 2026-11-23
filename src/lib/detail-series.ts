@@ -141,7 +141,7 @@ export function readProbes(): string[] | null {
 export function saveProbes(names: string[] | null) {
   try { if (names) localStorage.setItem(probeKey, JSON.stringify(names)); else localStorage.removeItem(probeKey) } catch { /* selection still works without storage */ }
 }
-export function visibleProbes(all: string[], saved?: readonly string[] | null): string[] {
+function visibleProbes(all: string[], saved?: readonly string[] | null): string[] {
   const matches = all.filter(name => saved?.includes(name))
   return matches.length ? matches : all
 }

@@ -4,7 +4,7 @@ import { isObj } from "./api"
  * External requests may ONLY go to `https://api.ip.sb/geoip` and `https://ipwho.is/`.
  */
 
-export type ParsedUA = {
+type ParsedUA = {
   browser: string
   version: string
   os: string
@@ -60,7 +60,7 @@ function cleanStr(v: unknown): string {
   return typeof v === "string" ? v.trim() : ""
 }
 
-export function normalizeGeo(source: "ipsb" | "ipwho", json: unknown): VisitorGeo | null {
+function normalizeGeo(source: "ipsb" | "ipwho", json: unknown): VisitorGeo | null {
   if (!json || typeof json !== "object") return null
   const data = json as Record<string, unknown>
 

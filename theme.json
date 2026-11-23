@@ -45,6 +45,27 @@
       ]
     },
     {
+      "key": "color_scheme",
+      "type": "select",
+      "default": "auto",
+      "label": "配色模式",
+      "help": "自动：跟随访客系统的浅色/深色设置",
+      "options": [
+        {
+          "value": "auto",
+          "label": "自动"
+        },
+        {
+          "value": "light",
+          "label": "浅色"
+        },
+        {
+          "value": "dark",
+          "label": "深色"
+        }
+      ]
+    },
+    {
       "key": "accent",
       "type": "string",
       "default": "#10b981",

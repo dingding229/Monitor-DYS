@@ -2,7 +2,7 @@ import { ALL_GROUP, UNGROUPED, type GroupKey, type Node } from "./api"
 import { percentNum, expiry, regionName } from "./format"
 export type SortKey = "default" | "name" | "cpu" | "mem" | "disk" | "tx" | "rx" | "expiry" | "traffic"
 
-export type VisitorPrefs = {
+type VisitorPrefs = {
   layout?: "grid" | "table"
   sort?: SortKey
 }
@@ -52,7 +52,7 @@ export function writeView(group:GroupKey, country:string|null, query:string, sor
   for (const [k,v] of Object.entries(values)) { if(v) url.searchParams.set(k,v); else url.searchParams.delete(k) }
   if (url.href!==location.href) history.replaceState(history.state,'',url)
 }
-export function directory(nodes:Node[], group:GroupKey, country:string|null, search:string, sort:SortKey) {
+export function directory(nodes:readonly Node[], group:GroupKey, country:string|null, search:string, sort:SortKey) {
   const counts = new Map<GroupKey,number>(), grouped:Node[] = [], list:Node[] = [], q=search.trim().toLowerCase()
   for (const n of nodes) {
     const key=n.group || UNGROUPED; counts.set(key,(counts.get(key)??0)+1)

@@ -15,17 +15,20 @@ const unitOf = (n: number) => {
 }
 
 export function bytes(n: number, digits?: number): string {
-  if (typeof n !== "number" || !Number.isFinite(n) || n < 1) return "0 B"
+  if (!num(n) || n < 1) return "0 B"
   const i = unitOf(n)
   const v = n / 1024 ** i
   return `${v.toFixed(i === 0 ? 0 : (digits ?? (v >= 100 ? 0 : v >= 10 ? 1 : 2)))} ${UNITS[i]}`
 }
 
 export function pair(used: number, total: number): string {
-  if (used > 0 && total > 0 && unitOf(used) === unitOf(total)) {
+  if (used > 0 && total > 0) {
     const i = unitOf(total)
-    const f = (n: number) => (n / 1024 ** i).toFixed(i === 0 ? 0 : 2)
-    return `${f(used)} / ${f(total)} ${UNITS[i]}`
+    if (unitOf(used) === i) {
+      const size = 1024 ** i
+      const f = (n: number) => (n / size).toFixed(i === 0 ? 0 : 2)
+      return `${f(used)} / ${f(total)} ${UNITS[i]}`
+    }
   }
   return `${bytes(used)} / ${bytes(total)}`
 }
@@ -56,19 +59,19 @@ export const FOREVER = "∞"
 
 const MONEY = new Map<string, Intl.NumberFormat>()
 
-function formatMoney(amount: number, currency: string, digits?: 0 | 2): string {
+function formatMoney(amount: number, currency: string, digits: 0 | 2): string {
   const value = num(amount) ? amount : 0
   try {
     if (!currency || typeof currency !== "string") throw new Error("invalid currency")
-    const key = `${currency}:${digits ?? "default"}`
+    const key = `${currency}:${digits}`
     let format = MONEY.get(key)
     if (!format) {
-      format = new Intl.NumberFormat("zh-CN", { style: "currency", currency, minimumFractionDigits: digits, maximumFractionDigits: digits ?? 2 })
+      format = new Intl.NumberFormat("zh-CN", { style: "currency", currency, minimumFractionDigits: digits, maximumFractionDigits: digits })
       MONEY.set(key, format)
     }
     return format.format(value)
   } catch {
-    return `${currency ?? ""} ${value.toFixed(digits ?? 2)}`.trim()
+    return `${currency ?? ""} ${value.toFixed(digits)}`.trim()
   }
 }
 
@@ -136,13 +139,13 @@ export function priceFull(amount: number, currency: string, cycle?: string | nul
 }
 
 
-export type ExpiryInfo = {
+type ExpiryInfo = {
   days: number | null
   text: string
   level: "ok" | "soon" | "expired" | "none"
 }
 
-export function daysUntil(date?: string | null, nowMs = Date.now()): number | null {
+function daysUntil(date?: string | null, nowMs = Date.now()): number | null {
   if (!date || typeof date !== "string") return null
   const raw = date.includes("T") ? date : `${date}T00:00:00`
   const target = new Date(raw).getTime()

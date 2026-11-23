@@ -1,0 +1,1747 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DYS v2.0 · UI 设计原型</title>
+<style>
+/* ===== 1. Design Tokens ===== */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-subtle: #f8fafc;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-subtle: #eef2f6;
+
+  --fg: #0f172a;
+  --fg-muted: #475569;
+  --fg-subtle: #64748b;
+
+  --accent: #10b981;
+  --accent-solid: color-mix(in srgb, var(--accent) 68%, #042f23);
+  --accent-solid-fg: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  --accent-border: color-mix(in srgb, var(--accent) 40%, var(--border));
+  --accent-text: color-mix(in srgb, var(--accent) 70%, #052e16);
+
+  --online: #10b981;
+  --online-fg: #047857;
+  --online-soft: #ecfdf5;
+  --offline: #94a3b8;
+  --warn: #d97706;
+  --warn-fg: #b45309;
+  --warn-soft: #fffbeb;
+  --danger: #dc2626;
+  --danger-fg: #b91c1c;
+  --danger-soft: #fef2f2;
+
+  --tx: #047857;
+  --rx: #0369a1;
+  --bar-track: #e2e8f0;
+  --skeleton: #e2e8f0;
+
+  --chart-1: var(--accent);
+  --chart-2: #2563eb;
+  --chart-3: #d97706;
+  --chart-4: #7c3aed;
+  --chart-5: #db2777;
+  --chart-6: #0891b2;
+  --chart-grid: #eef2f6;
+  --chart-axis: #64748b;
+
+  --focus-ring: var(--accent-solid);
+  --radius-panel: 8px;
+  --radius-control: 6px;
+  --radius-pill: 999px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg: #0b0f14;
+  --surface: #11161d;
+  --surface-subtle: #161d26;
+  --surface-hover: #1b2430;
+  --border: #222c38;
+  --border-strong: #334155;
+  --border-subtle: #1b232e;
+
+  --fg: #f1f5f9;
+  --fg-muted: #94a3b8;
+  --fg-subtle: #7b8ba1;
+
+  --accent-solid: color-mix(in srgb, var(--accent) 72%, #042f23);
+  --accent-solid-fg: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  --accent-border: color-mix(in srgb, var(--accent) 45%, var(--border));
+  --accent-text: color-mix(in srgb, var(--accent) 82%, #ffffff);
+
+  --online: #34d399;
+  --online-fg: #34d399;
+  --online-soft: #0d2922;
+  --offline: #475569;
+  --warn: #f59e0b;
+  --warn-fg: #fbbf24;
+  --warn-soft: #2a1f0b;
+  --danger: #ef4444;
+  --danger-fg: #f87171;
+  --danger-soft: #2c1215;
+
+  --tx: #34d399;
+  --rx: #38bdf8;
+  --bar-track: #1e293b;
+  --skeleton: #1e293b;
+
+  --chart-1: var(--accent);
+  --chart-2: #60a5fa;
+  --chart-3: #fbbf24;
+  --chart-4: #a78bfa;
+  --chart-5: #f472b6;
+  --chart-6: #22d3ee;
+  --chart-grid: #1e293b;
+  --chart-axis: #7b8ba1;
+
+  --focus-ring: var(--accent);
+}
+
+/* ===== 2. Base Reset ===== */
+*, *::before, *::after { box-sizing: border-box; }
+html {
+  scrollbar-gutter: stable;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; }
+h1, h2, h3, p, dl, dd, dt { margin: 0; }
+a { color: inherit; text-decoration: none; }
+button, select, input {
+  font-family: inherit;
+  font-size: 12px;
+  color: inherit;
+}
+:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+.tnum { font-variant-numeric: tabular-nums; }
+.hidden { display: none !important; }
+
+/* ===== 3. Layout & Primitives ===== */
+.wrap { width: 100%; max-width: 1440px; margin: 0 auto; padding-inline: 16px; }
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  min-width: 0;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg-muted);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+.btn:hover { background: var(--surface-hover); border-color: var(--border-strong); color: var(--fg); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent-solid);
+  border-color: transparent;
+  color: var(--accent-solid-fg);
+  font-weight: 600;
+}
+.btn-primary:hover { background: var(--accent-solid); border-color: transparent; color: var(--accent-solid-fg); opacity: 0.92; }
+
+/* ===== 4. Top Header ===== */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  min-width: 0;
+}
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.conn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.conn-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--online);
+}
+
+.proto-switch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  gap: 2px;
+}
+.proto-switch button {
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-weight: 500;
+  cursor: pointer;
+}
+.proto-switch button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--fg);
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+.theme-btn { height: 28px; padding: 0 9px; }
+
+/* ===== 5. Main Content ===== */
+main { flex: 1; padding-top: 12px; padding-bottom: 20px; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+
+/* Announcement */
+.announcement {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.announcement strong { color: var(--fg); font-weight: 600; }
+
+/* ===== 6. Overview (Summary 6 Tiles + WorldMap) ===== */
+.overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 900px) { .overview { grid-template-columns: 1fr 1fr; } }
+
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.tile { padding: 12px; display: flex; flex-direction: column; justify-content: center; }
+.tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-muted);
+}
+.tile-head svg { width: 16px; height: 16px; color: var(--fg-subtle); flex-shrink: 0; }
+.tile-val {
+  margin: 4px 0 2px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.tile-val small { font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--fg-subtle); margin-left: 2px; }
+.tile-note {
+  font-size: 11px;
+  color: var(--fg-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Map Card */
+.map-card { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.map-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.badge-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--online-soft);
+  color: var(--online-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-online::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--online); }
+.badge-muted {
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.map-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px; align-items: center; flex: 1; }
+.map-canvas {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  height: 152px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.map-canvas svg { width: 100%; height: 100%; }
+.country-list { display: flex; flex-direction: column; gap: 4px; }
+.country-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.country-row:hover { background: var(--surface-hover); border-color: var(--border); }
+.country-row .cr-name { color: var(--fg); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.country-row .cr-cnt { color: var(--fg-subtle); font-size: 11px; }
+.country-row .cr-spd { font-size: 11px; display: inline-flex; gap: 6px; }
+.tx { color: var(--tx); }
+.rx { color: var(--rx); }
+
+/* ===== 7. Toolbar ===== */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.toolbar-left { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.tabs { display: flex; align-items: center; gap: 6px; overflow-x: auto; max-width: 100%; }
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.tab:hover { background: var(--surface-hover); color: var(--fg); }
+.tab .cnt {
+  padding: 0 6px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  color: var(--fg-subtle);
+  font-size: 11px;
+  font-weight: 500;
+}
+.tab[aria-selected="true"] {
+  background: var(--accent-solid);
+  border-color: transparent;
+  color: var(--accent-solid-fg);
+  font-weight: 600;
+}
+.tab[aria-selected="true"] .cnt {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.seg {
+  display: inline-flex;
+  height: 30px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-weight: 500;
+  cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--surface-hover); color: var(--fg); font-weight: 600; }
+.select-ctrl {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+.select-ctrl:hover { border-color: var(--border-strong); }
+.search-box { position: relative; display: flex; align-items: center; }
+.search-box svg { position: absolute; left: 8px; width: 14px; height: 14px; color: var(--fg-subtle); pointer-events: none; }
+.search-box input {
+  height: 30px;
+  width: 196px;
+  padding: 0 10px 0 28px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+}
+.search-box input::placeholder { color: var(--fg-subtle); }
+.search-box input:hover { border-color: var(--border-strong); }
+
+/* ===== 8. Node Grid & NodeCard (<= 70 DOM elements) ===== */
+.node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 236px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.nc {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  min-width: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+.nc:hover { border-color: var(--border-strong); }
+
+.nc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.nc-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nc-name::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  background: var(--online);
+}
+.nc[data-status="offline"] .nc-name::before { background: var(--offline); }
+.nc[data-status="warn"] .nc-name::before { background: var(--warn); }
+.nc-os { width: 14px; height: 14px; color: var(--fg-subtle); flex-shrink: 0; }
+.nc-flag { font-size: 14px; line-height: 1; flex-shrink: 0; }
+
+.nc-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nc[data-status="offline"] .nc-sub { color: var(--fg-muted); }
+
+/* 2x2 Metrics */
+.nc-metrics {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+.nc[data-status="offline"] .nc-metrics { opacity: 0.55; }
+.nc-m {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 4px;
+  min-width: 0;
+}
+.nc-ml { font-size: 12px; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; }
+.nc-mv { font-size: 13px; font-weight: 600; color: var(--fg); }
+.nc-mv.warn { color: var(--warn-fg); }
+.nc-mv.danger { color: var(--danger-fg); }
+
+/* Single-element progress bar with CSS variable --v */
+.nc-bar {
+  grid-column: 1 / -1;
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--bar-track);
+  overflow: hidden;
+  position: relative;
+}
+.nc-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--v, 0%);
+  border-radius: var(--radius-pill);
+  background: var(--bar-c, var(--accent));
+}
+.nc-bar.warn { --bar-c: var(--warn); }
+.nc-bar.danger { --bar-c: var(--danger); }
+
+.nc-ms {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 3-Column Footer Grid (flat, no column wrapper divs) */
+.nc-foot {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px 8px;
+}
+.nc-fl { font-size: 11px; color: var(--fg-subtle); overflow: hidden; text-overflow: ellipsis; }
+.nc-fv { font-size: 12px; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; }
+.nc-fv.muted { color: var(--fg-muted); font-weight: 400; }
+.nc-fv.warn { color: var(--warn-fg); font-weight: 600; }
+.nc-fv.danger { color: var(--danger-fg); font-weight: 600; }
+
+/* Ping Block (flat 4-col grid) */
+.nc-ping {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.3fr) auto minmax(0, 0.95fr);
+  align-items: baseline;
+  gap: 5px 3px;
+}
+.nc-pl { font-size: 11px; color: var(--fg-subtle); }
+.nc-pv { font-size: 11px; font-weight: 500; letter-spacing: -0.02em; color: var(--fg-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.nc-pr { border-left: 1px solid var(--border-subtle); padding-left: 5px; }
+.nc-pbars {
+  grid-column: span 2;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+}
+.nc-pbars i { display: block; height: 4px; border-radius: 1px; background: var(--bar-track); }
+.nc-pbars i.g { background: var(--online); }
+.nc-pbars i.w { background: var(--warn); }
+.nc-pbars i.d { background: var(--danger); }
+
+/* ===== 9. Table / List View ===== */
+.table-wrap { overflow-x: auto; }
+.node-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.node-table th {
+  padding: 9px 12px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.node-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.node-table tbody tr { cursor: pointer; transition: background-color 120ms ease; }
+.node-table tbody tr:last-child td { border-bottom: 0; }
+.node-table tbody tr:hover { background: var(--surface-hover); }
+.row-name { font-weight: 600; color: var(--fg); }
+.row-meter { display: flex; flex-direction: column; gap: 3px; width: 64px; }
+.row-meter .nc-bar { height: 4px; }
+.row-status { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-muted); }
+.row-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--online); }
+.row-status.off::before { background: var(--offline); }
+
+/* ===== 10. Empty State & Skeleton ===== */
+.empty-state {
+  padding: 36px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.empty-state svg { width: 28px; height: 28px; color: var(--fg-subtle); }
+.empty-state h3 { font-size: 14px; font-weight: 700; color: var(--fg); }
+.empty-state p { font-size: 12px; color: var(--fg-subtle); }
+
+.skel { background: var(--skeleton); border-radius: 4px; display: block; }
+.skel-card { padding: 12px; min-height: 236px; display: flex; flex-direction: column; gap: 12px; }
+.skel-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--fg-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.section-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+.showcase-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 900px) { .showcase-row { grid-template-columns: 1fr 1fr; } }
+
+/* ===== 11. Detail Page ===== */
+.detail-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.switcher { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--fg-muted); }
+.step-btn { width: 30px; padding: 0; }
+
+.identity-card { padding: 14px 16px; }
+.identity-grid { display: grid; align-items: center; gap: 12px; }
+@media (min-width: 900px) { .identity-grid { grid-template-columns: minmax(0, 1fr) auto; } }
+.id-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.id-title h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); }
+.id-sub { margin-top: 4px; font-size: 12px; color: var(--fg-subtle); }
+.detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+}
+.detail-stats > div { white-space: nowrap; }
+.detail-stats span { color: var(--fg-subtle); margin-right: 6px; }
+.detail-stats b { color: var(--fg); font-weight: 600; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 1024px) { .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.kpi-card { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.kpi-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-muted); }
+.kpi-mid { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.kpi-mid strong { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--fg); }
+.kpi-mid small { font-size: 11px; color: var(--fg-subtle); }
+.kpi-net { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 600; }
+
+.trend-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.trend-title h2 { font-size: 14px; font-weight: 700; color: var(--fg); }
+.trend-title p { font-size: 11px; color: var(--fg-subtle); }
+.trend-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.range-group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.range-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.range-btn:hover { background: var(--surface-hover); color: var(--fg); }
+.range-btn[aria-pressed="true"] {
+  background: var(--accent-solid);
+  border-color: transparent;
+  color: var(--accent-solid-fg);
+  font-weight: 600;
+}
+.peak-check { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-muted); cursor: pointer; }
+.peak-check input { accent-color: var(--accent); margin: 0; }
+
+.charts-2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 900px) { .charts-2 { grid-template-columns: 1fr 1fr; } }
+.chart-card { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.chart-head-left { display: flex; align-items: baseline; gap: 8px; }
+.chart-head h3 { font-size: 13px; font-weight: 700; color: var(--fg); }
+.chart-sub { font-size: 12px; color: var(--fg-muted); }
+.chart-legend { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--fg-muted); }
+.leg-item { display: inline-flex; align-items: center; gap: 4px; }
+.leg-item i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.chart-svg { width: 100%; height: auto; display: block; }
+
+/* Probe Chips */
+.probe-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.probe-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--fg-subtle);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.probe-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--offline); }
+.probe-chip[aria-pressed="true"] {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--probe) 45%, var(--border));
+  background: color-mix(in srgb, var(--probe) 10%, var(--surface));
+}
+.probe-chip[aria-pressed="true"] i { background: var(--probe); }
+.probe-all {
+  background: transparent;
+  border: 0;
+  padding: 0 6px;
+  height: 26px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.probe-all:disabled { color: var(--fg-subtle); text-decoration: none; cursor: default; }
+.no-loss-pill {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--online-soft);
+  color: var(--online-fg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Detail Spec Grids */
+.spec-card { padding: 14px; }
+.spec-card h3 { font-size: 14px; font-weight: 700; color: var(--fg); }
+.billing-bar {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.billing-bar-top { display: flex; justify-content: space-between; gap: 8px; color: var(--fg); font-weight: 500; }
+.spec-dl { margin-top: 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.spec-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+.spec-item dt { font-size: 11px; color: var(--fg-subtle); }
+.spec-item dd { margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== 12. Footer & Visitor Bubble ===== */
+footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 14px 0;
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+.footer-inner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.footer-links { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.footer-links a { color: var(--fg-muted); font-weight: 500; }
+.footer-links a:hover { color: var(--fg); }
+.footer-right { justify-self: end; }
+
+.visitor-wrap { position: relative; justify-self: center; }
+.visitor-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.visitor-bubble:hover { border-color: var(--border-strong); color: var(--fg); }
+.visitor-sep { color: var(--border-strong); }
+.visitor-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: 272px;
+  padding: 12px;
+  z-index: 30;
+}
+.vp-head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle); font-weight: 700; color: var(--fg); }
+.vp-dl { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.vp-row { display: flex; justify-content: space-between; gap: 8px; }
+.vp-row dt { color: var(--fg-subtle); }
+.vp-row dd { color: var(--fg); font-weight: 500; }
+
+/* ===== 13. Responsive (390px Mobile) ===== */
+@media (max-width: 639px) {
+  .header-inner { gap: 6px; }
+  .brand { font-size: 14px; }
+  .header-right { gap: 5px; }
+  .conn-pill { padding: 0 7px; font-size: 11px; }
+  .conn-pill span { display: none; }
+  .theme-btn { padding: 0 7px; }
+  .proto-switch button { padding: 0 6px; font-size: 11px; }
+  .tiles { gap: 8px; }
+  .tile { padding: 8px 10px; }
+  .tile-head svg { display: none; }
+  .tile-val { font-size: 18px; }
+  .tile-val small { font-size: 11px; }
+  .tile-note { font-size: 10px; }
+  .map-body { grid-template-columns: 1fr; }
+  .map-canvas { height: 112px; }
+  .toolbar-right { width: 100%; }
+  .search-box { flex: 1; min-width: 0; }
+  .search-box input { width: 100%; }
+  .hide-sm { display: none; }
+  .kpi-mid { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .kpi-mid strong { font-size: 20px; }
+  .footer-inner { display: flex; flex-direction: column; text-align: center; gap: 8px; }
+  .footer-right { justify-self: center; }
+  .spec-dl { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Top Header ===== -->
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#home" onclick="setView('home'); return false;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <rect x="2" y="10" width="3.5" height="7" rx="1" fill="var(--accent)" />
+        <rect x="8.25" y="6" width="3.5" height="11" rx="1" fill="var(--accent)" />
+        <rect x="14.5" y="3" width="3.5" height="14" rx="1" fill="var(--accent)" />
+      </svg>
+      <span>DingDing's Server</span>
+    </a>
+
+    <div class="header-right">
+      <div class="proto-switch" role="group" aria-label="原型页面切换">
+        <button type="button" id="btn-view-home" aria-pressed="true" onclick="setView('home')">首页</button>
+        <button type="button" id="btn-view-detail" aria-pressed="false" onclick="setView('detail')">详情页</button>
+      </div>
+
+      <button type="button" class="btn theme-btn" id="btn-theme" onclick="toggleTheme()" aria-label="切换浅色或深色模式">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1Z" />
+        </svg>
+        <span id="theme-label">深色</span>
+      </button>
+
+      <div class="conn-pill" data-testid="conn-status" title="最后更新 20:55:12"><span>实时更新</span></div>
+
+      <a href="#admin" data-testid="admin-link" class="btn theme-btn" aria-label="管理后台" onclick="return false;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="8" cy="8" r="2.2" />
+          <path d="M8 1.8v1.5M8 12.7v1.5M1.8 8h1.5M12.7 8h1.5M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1" />
+        </svg>
+        <span class="hide-sm">后台</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<!-- ===== MAIN: HOME VIEW ===== -->
+<main class="wrap" id="view-home">
+  <div class="stack">
+
+    <!-- Announcement -->
+    <div class="panel announcement" data-testid="announcement">
+      <strong>维护通知：</strong>本周日 02:00–03:00（UTC+8）亚太线路例行路由优化，期间部分节点监控延迟可能短暂波动。
+    </div>
+
+    <!-- 1. Overview: 6 Summary Tiles + World Map -->
+    <section class="overview" data-testid="summary" aria-label="节点总览">
+      <div class="tiles">
+        <div class="panel tile" data-testid="summary-tile">
+          <div class="tile-head">
+            <span>服务器</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.5" width="12" height="4.5" rx="1"/><rect x="2" y="9" width="12" height="4.5" rx="1"/><path d="M4.5 4.75h.5M4.5 11.25h.5"/></svg>
+          </div>
+          <div class="tile-val tnum">7<small>/ 8</small></div>
+          <div class="tile-note tnum">1 离线 · 5 个地区</div>
+        </div>
+
+        <div class="panel tile" data-testid="summary-tile">
+          <div class="tile-head">
+            <span>实时上行</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4.5 6.5 8 3l3.5 3.5"/></svg>
+          </div>
+          <div class="tile-val tnum">2.18<small>MB/s</small></div>
+          <div class="tile-note tnum">本月上行 44.8 GB</div>
+        </div>
+
+        <div class="panel tile" data-testid="summary-tile">
+          <div class="tile-head">
+            <span>实时下行</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4.5 9.5 8 13l3.5-3.5"/></svg>
+          </div>
+          <div class="tile-val tnum">6.97<small>MB/s</small></div>
+          <div class="tile-note tnum">本月下行 49.2 GB</div>
+        </div>
+
+        <div class="panel tile" data-testid="summary-tile">
+          <div class="tile-head">
+            <span>累计流量</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13h11M4.5 10.5V7.5M8 10.5V3.5M11.5 10.5V6"/></svg>
+          </div>
+          <div class="tile-val tnum">94.0<small>GB</small></div>
+          <div class="tile-note tnum">历史总计 1.42 TB</div>
+        </div>
+
+        <div class="panel tile" data-testid="summary-tile">
+          <div class="tile-head">
+            <span>累计上行</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 10.5v2.5h11v-2.5M8 9.5V2.5M5 5.5 8 2.5l3 3"/></svg>
+          </div>
+          <div class="tile-val tnum">44.8<small>GB</small></div>
+          <div class="tile-note tnum">今日上行 23.6 GB</div>
+        </div>
+
+        <div class="panel tile" data-testid="summary-tile">
+          <div class="tile-head">
+            <span>累计下行</span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 10.5v2.5h11v-2.5M8 2.5v7M5 6.5l3 3 3-3"/></svg>
+          </div>
+          <div class="tile-val tnum">49.2<small>GB</small></div>
+          <div class="tile-note tnum">今日下行 25.6 GB</div>
+        </div>
+      </div>
+
+      <!-- World Map Placeholder Card -->
+      <div class="panel map-card" data-testid="world-map">
+        <div class="map-head">
+          <span class="badge-online tnum">7 在线</span>
+          <span class="badge-muted tnum">5 个国家和地区</span>
+        </div>
+        <div class="map-body">
+          <div class="map-canvas" aria-label="全球节点分布示意图">
+            <svg viewBox="0 0 360 170" fill="none" aria-hidden="true">
+              <!-- Flat minimal stylized continent blocks -->
+              <path d="M28 42h58v26H74v18H54V68H28zM78 96h24v38H88v-14H78zM156 34h46v28h-16v12h-30zM160 80h34v44h-18v-16h-16zM210 38h92v38h-22v14h-34V76h-36zM272 106h38v24h-26v-10h-12z" fill="var(--border)" />
+              <!-- Flat node markers -->
+              <g>
+                <circle cx="58" cy="56" r="5" fill="var(--accent)" /><text x="58" y="59" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">1</text>
+                <circle cx="176" cy="48" r="5" fill="var(--accent)" /><text x="176" y="51" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">2</text>
+                <circle cx="256" cy="60" r="5" fill="var(--accent)" /><text x="256" y="63" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">2</text>
+                <circle cx="268" cy="70" r="5" fill="var(--accent)" /><text x="268" y="73" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">1</text>
+                <circle cx="288" cy="56" r="5" fill="var(--accent)" /><text x="288" y="59" text-anchor="middle" font-size="7" font-weight="700" fill="#fff">2</text>
+              </g>
+            </svg>
+          </div>
+          <div class="country-list" data-testid="country-list">
+            <button type="button" class="country-row" data-testid="country-row">
+              <span>🇨🇳</span><span class="cr-name">中国</span><span class="cr-cnt tnum">2/2</span>
+              <span class="cr-spd tnum"><span class="tx">↑215K</span><span class="rx">↓185K</span></span>
+            </button>
+            <button type="button" class="country-row" data-testid="country-row">
+              <span>🇭🇰</span><span class="cr-name">香港</span><span class="cr-cnt tnum">1/1</span>
+              <span class="cr-spd tnum"><span class="tx">↑1.08M</span><span class="rx">↓4.20M</span></span>
+            </button>
+            <button type="button" class="country-row" data-testid="country-row">
+              <span>🇯🇵</span><span class="cr-name">日本</span><span class="cr-cnt tnum">2/2</span>
+              <span class="cr-spd tnum"><span class="tx">↑63.6K</span><span class="rx">↓96.1K</span></span>
+            </button>
+            <button type="button" class="country-row" data-testid="country-row">
+              <span>🇩🇪</span><span class="cr-name">德国</span><span class="cr-cnt tnum">1/2</span>
+              <span class="cr-spd tnum"><span class="tx">↑25.1K</span><span class="rx">↓24.6K</span></span>
+            </button>
+            <button type="button" class="country-row" data-testid="country-row">
+              <span>🇺🇸</span><span class="cr-name">美国</span><span class="cr-cnt tnum">1/1</span>
+              <span class="cr-spd tnum"><span class="tx">↑12.9K</span><span class="rx">↓14.8K</span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="tabs" role="tablist" aria-label="节点分组">
+          <button type="button" class="tab" role="tab" data-testid="group-tab" aria-selected="true">全部 <span class="cnt tnum">8</span></button>
+          <button type="button" class="tab" role="tab" data-testid="group-tab" aria-selected="false">中国 <span class="cnt tnum">2</span></button>
+          <button type="button" class="tab" role="tab" data-testid="group-tab" aria-selected="false">亚太 <span class="cnt tnum">3</span></button>
+          <button type="button" class="tab" role="tab" data-testid="group-tab" aria-selected="false">欧洲 <span class="cnt tnum">2</span></button>
+          <button type="button" class="tab" role="tab" data-testid="group-tab" aria-selected="false">美国 <span class="cnt tnum">1</span></button>
+        </div>
+        <button type="button" class="filter-chip" data-testid="country-filter-chip" title="点击清除地区筛选">
+          <span>地区：全部</span><span aria-hidden="true">×</span>
+        </button>
+      </div>
+
+      <div class="toolbar-right">
+        <div class="seg" role="group" aria-label="切换视图">
+          <button type="button" id="btn-mode-grid" aria-pressed="true" onclick="setLayout('grid')">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z"/></svg>卡片
+          </button>
+          <button type="button" id="btn-mode-table" aria-pressed="false" onclick="setLayout('table')">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v10H2zM2 6.5h12M2 10h12"/></svg>列表
+          </button>
+        </div>
+
+        <select class="select-ctrl" data-testid="sort-select" aria-label="排序方式">
+          <option>默认顺序</option>
+          <option>名称</option>
+          <option>CPU</option>
+          <option>内存</option>
+          <option>硬盘</option>
+          <option>上行</option>
+          <option>下行</option>
+          <option>到期</option>
+        </select>
+
+        <div class="search-box">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/>
+          </svg>
+          <input type="search" data-testid="search-input" placeholder="搜索节点…" aria-label="搜索名称、地区、系统或备注" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Primary Node Grid (8 Cards covering all states) -->
+    <section id="main-grid" class="node-grid" aria-label="节点卡片列表">
+      <!-- Card 1: 在线正常 -->
+      <a class="nc" data-testid="node-card" data-status="online" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="PortChannel Zero 上海">PortChannel Zero 上海</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 4.5 8.6M8 5a3 3 0 1 0 2.2 5"/></svg>
+          <span class="nc-flag" aria-label="中国">🇨🇳</span>
+        </div>
+        <div class="nc-sub tnum">在线 98 天</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum">4.2%</b><i class="nc-bar" style="--v:4.2%"></i><small class="nc-ms tnum">0.08, 0.05, 0.02</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum">15.2%</b><i class="nc-bar" style="--v:15.2%"></i><small class="nc-ms tnum">299 MB / 1.92 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">10.3%</b><i class="nc-bar" style="--v:10.3%"></i><small class="nc-ms tnum">1.92 / 18.58 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum">14.2%</b><i class="nc-bar" style="--v:14.2%"></i><small class="nc-ms tnum">114 / 800 GB</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum tx">↑ 180KB/s</b><b class="nc-fv tnum">↑ 56.4 GB</b><b class="nc-fv tnum">剩余 80 天</b>
+          <b class="nc-fv tnum rx">↓ 180KB/s</b><b class="nc-fv tnum">↓ 57.6 GB</b><b class="nc-fv tnum muted">¥1,188/年</b>
+        </div>
+        <div class="nc-ping" data-testid="node-ping">
+          <span class="nc-pl">延迟 ms</span><b class="nc-pv tnum">23·25·29</b>
+          <span class="nc-pl nc-pr">丢包 %</span><b class="nc-pv tnum">0·0·0</b>
+          <div class="nc-pbars" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i></div>
+          <div class="nc-pbars nc-pr" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i></div>
+        </div>
+      </a>
+
+      <!-- Card 2: 在线正常（不限流量） -->
+      <a class="nc" data-testid="node-card" data-status="online" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="Tencent 广州">Tencent 广州</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 6a2 2 0 1 0 0 4"/></svg>
+          <span class="nc-flag" aria-label="中国">🇨🇳</span>
+        </div>
+        <div class="nc-sub tnum">在线 42 天</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum">0.5%</b><i class="nc-bar" style="--v:0.5%"></i><small class="nc-ms tnum">0.11, 0.04, 0.01</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum">46.9%</b><i class="nc-bar" style="--v:46.9%"></i><small class="nc-ms tnum">456 / 973 MB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">15.4%</b><i class="nc-bar" style="--v:15.4%"></i><small class="nc-ms tnum">6.03 / 39.1 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum">∞</b><i class="nc-bar" style="--v:0%"></i><small class="nc-ms tnum">1.01 GB / ∞</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum tx">↑ 34.8KB/s</b><b class="nc-fv tnum">↑ 358 MB</b><b class="nc-fv tnum">剩余 843 天</b>
+          <b class="nc-fv tnum rx">↓ 4.73MB/s</b><b class="nc-fv tnum">↓ 671 MB</b><b class="nc-fv tnum muted">¥629/一次性</b>
+        </div>
+        <div class="nc-ping" data-testid="node-ping">
+          <span class="nc-pl">延迟 ms</span><b class="nc-pv tnum">26·26·28</b>
+          <span class="nc-pl nc-pr">丢包 %</span><b class="nc-pv tnum">0·0·0</b>
+          <div class="nc-pbars" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i></div>
+          <div class="nc-pbars nc-pr" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i></div>
+        </div>
+      </a>
+
+      <!-- Card 3: 高负载警告（CPU 86.4% 警告 + 内存 92.8% 危险） -->
+      <a class="nc" data-testid="node-card" data-status="warn" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="Aliyun 香港">Aliyun 香港</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 12 6.5 4l3 5 2-3L14 12Z"/></svg>
+          <span class="nc-flag" aria-label="香港">🇭🇰</span>
+        </div>
+        <div class="nc-sub tnum">在线 168 天</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum warn">86.4%</b><i class="nc-bar warn" style="--v:86.4%"></i><small class="nc-ms tnum">3.42, 2.91, 2.15</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum danger">92.8%</b><i class="nc-bar danger" style="--v:92.8%"></i><small class="nc-ms tnum">1.78 / 1.92 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">74.2%</b><i class="nc-bar" style="--v:74.2%"></i><small class="nc-ms tnum">29.6 / 40.0 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum warn">82.5%</b><i class="nc-bar warn" style="--v:82.5%"></i><small class="nc-ms tnum">412 / 500 GB</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum tx">↑ 1.08MB/s</b><b class="nc-fv tnum">↑ 204 GB</b><b class="nc-fv tnum">剩余 218 天</b>
+          <b class="nc-fv tnum rx">↓ 4.20MB/s</b><b class="nc-fv tnum">↓ 208 GB</b><b class="nc-fv tnum muted">US$86.40/年</b>
+        </div>
+        <div class="nc-ping" data-testid="node-ping">
+          <span class="nc-pl">延迟 ms</span><b class="nc-pv tnum">142·168·215</b>
+          <span class="nc-pl nc-pr">丢包 %</span><b class="nc-pv tnum">0·1.2·2.4</b>
+          <div class="nc-pbars" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="d"></i><i class="w"></i><i class="w"></i><i class="d"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="d"></i></div>
+          <div class="nc-pbars nc-pr" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="w"></i><i class="g"></i><i class="w"></i><i class="g"></i><i class="g"></i><i class="w"></i><i class="g"></i><i class="g"></i><i class="w"></i><i class="g"></i></div>
+        </div>
+      </a>
+
+      <!-- Card 4: 离线 -->
+      <a class="nc" data-testid="node-card" data-status="offline" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="Hetzner 德国">Hetzner 德国</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 4.5 8.6M8 5a3 3 0 1 0 2.2 5"/></svg>
+          <span class="nc-flag" aria-label="德国">🇩🇪</span>
+        </div>
+        <div class="nc-sub tnum">离线 3 小时</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum">—</b><i class="nc-bar" style="--v:0%"></i><small class="nc-ms tnum">—</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum">—</b><i class="nc-bar" style="--v:0%"></i><small class="nc-ms tnum">4.00 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">—</b><i class="nc-bar" style="--v:0%"></i><small class="nc-ms tnum">40.0 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum">1.8%</b><i class="nc-bar" style="--v:1.8%"></i><small class="nc-ms tnum">360 GB / 20 TB</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum muted">↑ 0 B/s</b><b class="nc-fv tnum">↑ 180 GB</b><b class="nc-fv tnum">剩余 120 天</b>
+          <b class="nc-fv tnum muted">↓ 0 B/s</b><b class="nc-fv tnum">↓ 180 GB</b><b class="nc-fv tnum muted">€4.51/月</b>
+        </div>
+      </a>
+
+      <!-- Card 5: 即将到期 -->
+      <a class="nc" data-testid="node-card" data-status="online" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="Neburst 日本">Neburst 日本</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 6a2 2 0 1 0 0 4"/></svg>
+          <span class="nc-flag" aria-label="日本">🇯🇵</span>
+        </div>
+        <div class="nc-sub tnum">在线 36 天</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum">1.0%</b><i class="nc-bar" style="--v:1%"></i><small class="nc-ms tnum">0.07, 0.06, 0.02</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum">41.1%</b><i class="nc-bar" style="--v:41.1%"></i><small class="nc-ms tnum">797 MB / 1.90 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">44.9%</b><i class="nc-bar" style="--v:44.9%"></i><small class="nc-ms tnum">8.96 / 19.93 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum">0.1%</b><i class="nc-bar" style="--v:0.8%"></i><small class="nc-ms tnum">653 MB / 800 GB</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum tx">↑ 10.6KB/s</b><b class="nc-fv tnum">↑ 653 MB</b><b class="nc-fv tnum warn">剩余 3 天</b>
+          <b class="nc-fv tnum rx">↓ 11.5KB/s</b><b class="nc-fv tnum">↓ 652 MB</b><b class="nc-fv tnum muted">US$22.42/月</b>
+        </div>
+        <div class="nc-ping" data-testid="node-ping">
+          <span class="nc-pl">延迟 ms</span><b class="nc-pv tnum">64·72·68</b>
+          <span class="nc-pl nc-pr">丢包 %</span><b class="nc-pv tnum">0·0·0</b>
+          <div class="nc-pbars" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i></div>
+          <div class="nc-pbars nc-pr" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i></div>
+        </div>
+      </a>
+
+      <!-- Card 6: 已到期 + 高丢包 -->
+      <a class="nc" data-testid="node-card" data-status="online" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="RFCHOST CO 日本">RFCHOST CO 日本</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2 13.5 5.2v5.6L8 14l-5.5-3.2V5.2Z"/></svg>
+          <span class="nc-flag" aria-label="日本">🇯🇵</span>
+        </div>
+        <div class="nc-sub tnum">在线 12 天</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum">5.0%</b><i class="nc-bar" style="--v:5%"></i><small class="nc-ms tnum">0.04, 0.08, 0.08</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum">21.6%</b><i class="nc-bar" style="--v:21.6%"></i><small class="nc-ms tnum">425 MB / 1.92 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">4.1%</b><i class="nc-bar" style="--v:4.1%"></i><small class="nc-ms tnum">1.65 / 39.99 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum">0.5%</b><i class="nc-bar" style="--v:0.8%"></i><small class="nc-ms tnum">7.07 GB / 1.46 TB</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum tx">↑ 10.2KB/s</b><b class="nc-fv tnum">↑ 3.75 GB</b><b class="nc-fv tnum danger">已到期</b>
+          <b class="nc-fv tnum rx">↓ 10.5KB/s</b><b class="nc-fv tnum">↓ 3.32 GB</b><b class="nc-fv tnum muted">US$6.29/月</b>
+        </div>
+        <div class="nc-ping" data-testid="node-ping">
+          <span class="nc-pl">延迟 ms</span><b class="nc-pv tnum">—·—·222</b>
+          <span class="nc-pl nc-pr">丢包 %</span><b class="nc-pv tnum">100·100·0</b>
+          <div class="nc-pbars" data-testid="ping-bars" aria-hidden="true"><i class="d"></i><i class="d"></i><i class="w"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="w"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="w"></i><i class="d"></i></div>
+          <div class="nc-pbars nc-pr" data-testid="ping-bars" aria-hidden="true"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i></div>
+        </div>
+      </a>
+
+      <!-- Card 7: 没有 ping 数据 -->
+      <a class="nc" data-testid="node-card" data-status="online" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="V.PS 法兰克福">V.PS 法兰克福</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 4.5 8.6M8 5a3 3 0 1 0 2.2 5"/></svg>
+          <span class="nc-flag" aria-label="德国">🇩🇪</span>
+        </div>
+        <div class="nc-sub tnum">在线 17 天</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum">0.2%</b><i class="nc-bar" style="--v:0.2%"></i><small class="nc-ms tnum">0.15, 0.11, 0.09</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum">21.0%</b><i class="nc-bar" style="--v:21%"></i><small class="nc-ms tnum">415 MB / 1.92 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">12.2%</b><i class="nc-bar" style="--v:12.2%"></i><small class="nc-ms tnum">2.39 / 19.64 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum">0.4%</b><i class="nc-bar" style="--v:0.8%"></i><small class="nc-ms tnum">3.31 / 750 GB</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum tx">↑ 25.1KB/s</b><b class="nc-fv tnum">↑ 1.65 GB</b><b class="nc-fv tnum">剩余 300 天</b>
+          <b class="nc-fv tnum rx">↓ 24.6KB/s</b><b class="nc-fv tnum">↓ 1.66 GB</b><b class="nc-fv tnum muted">€299.95/年</b>
+        </div>
+        <div class="nc-ping" data-testid="node-ping">
+          <span class="nc-pl">延迟 ms</span><b class="nc-pv tnum">—</b>
+          <span class="nc-pl nc-pr">丢包 %</span><b class="nc-pv tnum">—</b>
+          <div class="nc-pbars" data-testid="ping-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="nc-pbars nc-pr" data-testid="ping-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </a>
+
+      <!-- Card 8: 在线正常（美国） -->
+      <a class="nc" data-testid="node-card" data-status="online" href="#detail" onclick="setView('detail'); return false;">
+        <div class="nc-head">
+          <h3 class="nc-name" title="BWH MEGABOX 洛杉矶">BWH MEGABOX 洛杉矶</h3>
+          <svg class="nc-os" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 4.5 8.6M8 5a3 3 0 1 0 2.2 5"/></svg>
+          <span class="nc-flag" aria-label="美国">🇺🇸</span>
+        </div>
+        <div class="nc-sub tnum">在线 25 天</div>
+        <div class="nc-metrics">
+          <div class="nc-m"><span class="nc-ml">CPU</span><b class="nc-mv tnum">1.0%</b><i class="nc-bar" style="--v:1%"></i><small class="nc-ms tnum">0.00, 0.01, 0.00</small></div>
+          <div class="nc-m"><span class="nc-ml">内存</span><b class="nc-mv tnum">20.8%</b><i class="nc-bar" style="--v:20.8%"></i><small class="nc-ms tnum">427 MB / 2.0 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">硬盘</span><b class="nc-mv tnum">9.8%</b><i class="nc-bar" style="--v:9.8%"></i><small class="nc-ms tnum">3.9 / 40.2 GB</small></div>
+          <div class="nc-m"><span class="nc-ml">本期流量</span><b class="nc-mv tnum">59.4%</b><i class="nc-bar" style="--v:59.4%"></i><small class="nc-ms tnum">1.19 / 2.00 TB</small></div>
+        </div>
+        <div class="nc-foot">
+          <span class="nc-fl">实时速率</span><span class="nc-fl">当期流量</span><span class="nc-fl">到期</span>
+          <b class="nc-fv tnum tx">↑ 12.9KB/s</b><b class="nc-fv tnum">↑ 593 GB</b><b class="nc-fv tnum">剩余 184 天</b>
+          <b class="nc-fv tnum rx">↓ 14.8KB/s</b><b class="nc-fv tnum">↓ 595 GB</b><b class="nc-fv tnum muted">US$45.68/年</b>
+        </div>
+        <div class="nc-ping" data-testid="node-ping">
+          <span class="nc-pl">延迟 ms</span><b class="nc-pv tnum">136·142·132</b>
+          <span class="nc-pl nc-pr">丢包 %</span><b class="nc-pv tnum">0·0·0</b>
+          <div class="nc-pbars" data-testid="ping-bars" aria-hidden="true"><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i><i class="w"></i></div>
+          <div class="nc-pbars nc-pr" data-testid="ping-bars" aria-hidden="true"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i></div>
+        </div>
+      </a>
+    </section>
+
+    <!-- 4. List View (5 Rows) -->
+    <div class="section-divider" id="list-divider">列表视图（5 行示例）</div>
+    <section id="main-table" class="panel table-wrap" aria-label="节点列表视图">
+      <table class="node-table">
+        <thead>
+          <tr>
+            <th>名称</th><th>地区</th><th>CPU</th><th>内存</th><th>硬盘</th><th>↑</th><th>↓</th><th>延迟</th><th>丢包</th><th>本期流量</th><th>到期</th><th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-testid="node-row" onclick="setView('detail')">
+            <td class="row-name">PortChannel Zero 上海</td>
+            <td>🇨🇳 中国</td>
+            <td><div class="row-meter"><span class="tnum">4.2%</span><i class="nc-bar" style="--v:4.2%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum">15.2%</span><i class="nc-bar" style="--v:15.2%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum">10.3%</span><i class="nc-bar" style="--v:10.3%"></i></div></td>
+            <td class="tnum tx">180 KB/s</td>
+            <td class="tnum rx">180 KB/s</td>
+            <td class="tnum" data-testid="node-ping">26 ms</td>
+            <td class="tnum">0%</td>
+            <td class="tnum">114 / 800 GB</td>
+            <td class="tnum">80 天后到期</td>
+            <td><span class="row-status">在线</span></td>
+          </tr>
+          <tr data-testid="node-row" onclick="setView('detail')">
+            <td class="row-name">Aliyun 香港</td>
+            <td>🇭🇰 香港</td>
+            <td><div class="row-meter"><span class="tnum" style="color:var(--warn-fg)">86.4%</span><i class="nc-bar warn" style="--v:86.4%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum" style="color:var(--danger-fg)">92.8%</span><i class="nc-bar danger" style="--v:92.8%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum">74.2%</span><i class="nc-bar" style="--v:74.2%"></i></div></td>
+            <td class="tnum tx">1.08 MB/s</td>
+            <td class="tnum rx">4.20 MB/s</td>
+            <td class="tnum" style="color:var(--warn-fg)" data-testid="node-ping">175 ms</td>
+            <td class="tnum" style="color:var(--warn-fg)">1.2%</td>
+            <td class="tnum">412 / 500 GB</td>
+            <td class="tnum">218 天后到期</td>
+            <td><span class="row-status">在线</span></td>
+          </tr>
+          <tr data-testid="node-row" onclick="setView('detail')">
+            <td class="row-name">Hetzner 德国</td>
+            <td>🇩🇪 德国</td>
+            <td class="tnum" style="color:var(--fg-subtle)">—</td>
+            <td class="tnum" style="color:var(--fg-subtle)">—</td>
+            <td class="tnum" style="color:var(--fg-subtle)">—</td>
+            <td class="tnum" style="color:var(--fg-subtle)">0 B/s</td>
+            <td class="tnum" style="color:var(--fg-subtle)">0 B/s</td>
+            <td class="tnum" style="color:var(--fg-subtle)" data-testid="node-ping">—</td>
+            <td class="tnum" style="color:var(--fg-subtle)">—</td>
+            <td class="tnum">360 GB / 20 TB</td>
+            <td class="tnum">120 天后到期</td>
+            <td><span class="row-status off">离线 3 小时</span></td>
+          </tr>
+          <tr data-testid="node-row" onclick="setView('detail')">
+            <td class="row-name">Neburst 日本</td>
+            <td>🇯🇵 日本</td>
+            <td><div class="row-meter"><span class="tnum">1.0%</span><i class="nc-bar" style="--v:1%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum">41.1%</span><i class="nc-bar" style="--v:41.1%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum">44.9%</span><i class="nc-bar" style="--v:44.9%"></i></div></td>
+            <td class="tnum tx">10.6 KB/s</td>
+            <td class="tnum rx">11.5 KB/s</td>
+            <td class="tnum" data-testid="node-ping">68 ms</td>
+            <td class="tnum">0%</td>
+            <td class="tnum">653 MB / 800 GB</td>
+            <td class="tnum" style="color:var(--warn-fg);font-weight:600">3 天后到期</td>
+            <td><span class="row-status">在线</span></td>
+          </tr>
+          <tr data-testid="node-row" onclick="setView('detail')">
+            <td class="row-name">V.PS 法兰克福</td>
+            <td>🇩🇪 德国</td>
+            <td><div class="row-meter"><span class="tnum">0.2%</span><i class="nc-bar" style="--v:0.2%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum">21.0%</span><i class="nc-bar" style="--v:21%"></i></div></td>
+            <td><div class="row-meter"><span class="tnum">12.2%</span><i class="nc-bar" style="--v:12.2%"></i></div></td>
+            <td class="tnum tx">25.1 KB/s</td>
+            <td class="tnum rx">24.6 KB/s</td>
+            <td class="tnum" style="color:var(--fg-subtle)" data-testid="node-ping">—</td>
+            <td class="tnum" style="color:var(--fg-subtle)">—</td>
+            <td class="tnum">3.31 / 750 GB</td>
+            <td class="tnum">300 天后到期</td>
+            <td><span class="row-status">在线</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 5. Empty State & Skeleton Preview -->
+    <div class="section-divider">空状态与骨架屏示例</div>
+    <div class="showcase-row">
+      <div class="panel empty-state" data-testid="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+          <circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/>
+        </svg>
+        <h3>没有匹配的节点</h3>
+        <p>当前筛选条件或搜索关键词下暂无结果</p>
+        <button type="button" class="btn btn-primary" style="margin-top:4px">清除筛选</button>
+      </div>
+
+      <div class="skel-grid" data-testid="skeleton" aria-label="骨架屏示例">
+        <div class="panel skel-card" aria-hidden="true">
+          <span class="skel" style="height:14px;width:62%"></span>
+          <span class="skel" style="height:11px;width:34%"></span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px">
+            <span class="skel" style="height:28px"></span>
+            <span class="skel" style="height:28px"></span>
+            <span class="skel" style="height:28px"></span>
+            <span class="skel" style="height:28px"></span>
+          </div>
+          <span class="skel" style="height:36px;margin-top:auto"></span>
+        </div>
+        <div class="panel skel-card" aria-hidden="true">
+          <span class="skel" style="height:14px;width:54%"></span>
+          <span class="skel" style="height:11px;width:40%"></span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px">
+            <span class="skel" style="height:28px"></span>
+            <span class="skel" style="height:28px"></span>
+            <span class="skel" style="height:28px"></span>
+            <span class="skel" style="height:28px"></span>
+          </div>
+          <span class="skel" style="height:36px;margin-top:auto"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ===== MAIN: DETAIL VIEW ===== -->
+<main class="wrap hidden" id="view-detail">
+  <div class="stack">
+
+    <!-- 1. Sub-navigation Bar -->
+    <div class="detail-nav">
+      <button type="button" class="btn" onclick="setView('home')">← 返回列表</button>
+      <div class="switcher" data-testid="node-switcher">
+        <span class="tnum">全部节点 · 8 台</span>
+        <button type="button" class="btn step-btn" aria-label="上一个节点" disabled>‹</button>
+        <select class="select-ctrl" aria-label="切换节点">
+          <option selected>PortChannel Zero 上海</option>
+          <option>Tencent 广州</option>
+          <option>Aliyun 香港</option>
+          <option>Hetzner 德国</option>
+          <option>Neburst 日本</option>
+        </select>
+        <button type="button" class="btn step-btn" aria-label="下一个节点">›</button>
+      </div>
+    </div>
+
+    <!-- 2. Identity Card -->
+    <section class="panel identity-card">
+      <div class="identity-grid">
+        <div>
+          <div class="id-title">
+            <span style="font-size:18px;line-height:1" aria-label="中国">🇨🇳</span>
+            <h1>PortChannel Zero 上海</h1>
+            <span class="badge-online">在线</span>
+          </div>
+          <p class="id-sub tnum">中国 · 华东 · 最近上报 1 秒前</p>
+        </div>
+
+        <div class="detail-stats tnum" data-testid="detail-stats">
+          <div><span>负载 1/5/15m</span><b>0.08 / 0.05 / 0.02</b></div>
+          <div><span>Swap</span><b>64 MB / 1.00 GB</b></div>
+          <div><span>进程</span><b>97</b></div>
+          <div><span>TCP / UDP</span><b>16 / 2</b></div>
+          <div><span>系统运行</span><b>98 天 14 小时</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Real-time KPI 4 Cards -->
+    <section class="kpi-grid">
+      <div class="panel kpi-card">
+        <div class="kpi-top"><span>CPU</span><span class="tnum">2 核</span></div>
+        <div class="kpi-mid"><strong class="tnum">4.2%</strong><small class="tnum">负载 0.08</small></div>
+        <i class="nc-bar" style="--v:4.2%"></i>
+      </div>
+      <div class="panel kpi-card">
+        <div class="kpi-top"><span>内存</span><span class="tnum">1.92 GB</span></div>
+        <div class="kpi-mid"><strong class="tnum">15.2%</strong><small class="tnum">299 MB / 1.92 GB</small></div>
+        <i class="nc-bar" style="--v:15.2%"></i>
+      </div>
+      <div class="panel kpi-card">
+        <div class="kpi-top"><span>硬盘</span><span class="tnum">18.58 GB</span></div>
+        <div class="kpi-mid"><strong class="tnum">10.3%</strong><small class="tnum">1.92 / 18.58 GB</small></div>
+        <i class="nc-bar" style="--v:10.3%"></i>
+      </div>
+      <div class="panel kpi-card">
+        <div class="kpi-top"><span>网络速率</span><span class="tnum">实时</span></div>
+        <div class="kpi-net tnum">
+          <span class="rx">↓ 180 KB/s</span>
+          <span class="tx">↑ 180 KB/s</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Trends Toolbar -->
+    <div class="trend-bar">
+      <div class="trend-title">
+        <h2>资源趋势</h2>
+        <p class="tnum">历史平均值 · 更新于 20:55:12</p>
+      </div>
+      <div class="trend-controls">
+        <div class="range-group" role="group" aria-label="时间范围">
+          <button type="button" class="range-btn" data-testid="range-btn" aria-pressed="false" onclick="setRange(this)">1 小时</button>
+          <button type="button" class="range-btn" data-testid="range-btn" aria-pressed="true" onclick="setRange(this)">6 小时</button>
+          <button type="button" class="range-btn" data-testid="range-btn" aria-pressed="false" onclick="setRange(this)">1 天</button>
+          <button type="button" class="range-btn" data-testid="range-btn" aria-pressed="false" onclick="setRange(this)">7 天</button>
+          <button type="button" class="range-btn" data-testid="range-btn" aria-pressed="false" onclick="setRange(this)">30 天</button>
+        </div>
+        <label class="peak-check"><input type="checkbox" />显示峰值</label>
+        <button type="button" class="btn" style="height:28px">刷新</button>
+      </div>
+    </div>
+
+    <!-- 5. 2 Metric Chart Cards (SVG polylines) -->
+    <section class="charts-2">
+      <div class="panel chart-card" data-testid="chart">
+        <div class="chart-head">
+          <div class="chart-head-left">
+            <h3>CPU 使用率</h3>
+            <span class="chart-sub tnum">4.2%</span>
+          </div>
+          <div class="chart-legend">
+            <span class="leg-item"><i style="background:var(--chart-1)"></i>平均 CPU</span>
+          </div>
+        </div>
+        <svg class="chart-svg" viewBox="0 0 560 156" aria-label="CPU 使用率趋势图">
+          <g stroke="var(--chart-grid)" stroke-width="1">
+            <line x1="40" y1="16" x2="548" y2="16"/>
+            <line x1="40" y1="48" x2="548" y2="48"/>
+            <line x1="40" y1="80" x2="548" y2="80"/>
+            <line x1="40" y1="112" x2="548" y2="112"/>
+            <line x1="40" y1="136" x2="548" y2="136"/>
+          </g>
+          <g fill="var(--chart-axis)" font-size="10">
+            <text x="34" y="20" text-anchor="end">100%</text>
+            <text x="34" y="52" text-anchor="end">75%</text>
+            <text x="34" y="84" text-anchor="end">50%</text>
+            <text x="34" y="116" text-anchor="end">25%</text>
+            <text x="34" y="139" text-anchor="end">0%</text>
+            <text x="48" y="152">15:00</text>
+            <text x="204" y="152">17:00</text>
+            <text x="364" y="152">19:00</text>
+            <text x="516" y="152">21:00</text>
+          </g>
+          <polyline fill="none" stroke="var(--chart-1)" stroke-width="1.75" stroke-linejoin="round"
+            points="40,130 68,128 96,125 124,129 152,118 180,124 208,127 236,121 264,114 292,126 320,129 348,123 376,119 404,127 432,125 460,120 488,126 516,129 548,128"/>
+        </svg>
+      </div>
+
+      <div class="panel chart-card" data-testid="chart">
+        <div class="chart-head">
+          <div class="chart-head-left">
+            <h3>内存用量</h3>
+            <span class="chart-sub tnum">299 MB / 1.92 GB</span>
+          </div>
+          <div class="chart-legend">
+            <span class="leg-item"><i style="background:var(--chart-2)"></i>已用内存</span>
+            <span class="leg-item"><i style="background:var(--border-strong)"></i>总内存</span>
+          </div>
+        </div>
+        <svg class="chart-svg" viewBox="0 0 560 156" aria-label="内存用量趋势图">
+          <g stroke="var(--chart-grid)" stroke-width="1">
+            <line x1="48" y1="16" x2="548" y2="16"/>
+            <line x1="48" y1="56" x2="548" y2="56"/>
+            <line x1="48" y1="96" x2="548" y2="96"/>
+            <line x1="48" y1="136" x2="548" y2="136"/>
+          </g>
+          <line x1="48" y1="22" x2="548" y2="22" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="4 3"/>
+          <g fill="var(--chart-axis)" font-size="10">
+            <text x="42" y="20" text-anchor="end">2.0G</text>
+            <text x="42" y="60" text-anchor="end">1.3G</text>
+            <text x="42" y="100" text-anchor="end">640M</text>
+            <text x="42" y="139" text-anchor="end">0 B</text>
+            <text x="56" y="152">15:00</text>
+            <text x="210" y="152">17:00</text>
+            <text x="368" y="152">19:00</text>
+            <text x="516" y="152">21:00</text>
+          </g>
+          <polyline fill="none" stroke="var(--chart-2)" stroke-width="1.75" stroke-linejoin="round"
+            points="48,116 88,115 128,114 168,114 208,113 248,115 288,112 328,113 368,114 408,112 448,113 488,114 548,114"/>
+        </svg>
+      </div>
+    </section>
+
+    <!-- 6. Ping Latency Card with Probe Chips -->
+    <section class="panel chart-card" data-testid="chart">
+      <div class="chart-head">
+        <div class="chart-head-left">
+          <h3>Ping 延迟</h3>
+          <span class="chart-sub tnum">4 个探测节点</span>
+        </div>
+        <span class="no-loss-pill" data-testid="no-loss">0 丢包</span>
+      </div>
+
+      <div class="probe-row" role="group" aria-label="选择探测节点">
+        <button type="button" class="probe-chip" data-testid="probe-chip" aria-pressed="true" style="--probe:var(--chart-1)" onclick="toggleProbe(this)"><i></i>浙江电信 <span class="tnum">23ms</span></button>
+        <button type="button" class="probe-chip" data-testid="probe-chip" aria-pressed="true" style="--probe:var(--chart-2)" onclick="toggleProbe(this)"><i></i>浙江联通 <span class="tnum">25ms</span></button>
+        <button type="button" class="probe-chip" data-testid="probe-chip" aria-pressed="true" style="--probe:var(--chart-3)" onclick="toggleProbe(this)"><i></i>浙江移动 <span class="tnum">29ms</span></button>
+        <button type="button" class="probe-chip" data-testid="probe-chip" aria-pressed="false" style="--probe:var(--chart-4)" onclick="toggleProbe(this)"><i></i>Cloudflare <span class="tnum">4ms</span></button>
+        <button type="button" class="probe-all" data-testid="probe-all" onclick="selectAllProbes()">全部</button>
+      </div>
+
+      <svg class="chart-svg" viewBox="0 0 1120 176" aria-label="Ping 延迟趋势图">
+        <g stroke="var(--chart-grid)" stroke-width="1">
+          <line x1="48" y1="18" x2="1108" y2="18"/>
+          <line x1="48" y1="62" x2="1108" y2="62"/>
+          <line x1="48" y1="106" x2="1108" y2="106"/>
+          <line x1="48" y1="150" x2="1108" y2="150"/>
+        </g>
+        <g fill="var(--chart-axis)" font-size="12">
+          <text x="42" y="22" text-anchor="end">60 ms</text>
+          <text x="42" y="66" text-anchor="end">40 ms</text>
+          <text x="42" y="110" text-anchor="end">20 ms</text>
+          <text x="42" y="154" text-anchor="end">0 ms</text>
+          <text x="54" y="170">15:00</text>
+          <text x="310" y="170">16:30</text>
+          <text x="572" y="170">18:00</text>
+          <text x="836" y="170">19:30</text>
+          <text x="1068" y="170">21:00</text>
+        </g>
+        <polyline fill="none" stroke="var(--chart-1)" stroke-width="2" stroke-linejoin="round"
+          points="48,100 114,98 180,95 246,99 312,93 378,98 444,96 510,92 576,99 642,95 708,98 774,94 840,96 906,100 972,95 1038,98 1108,96"/>
+        <polyline fill="none" stroke="var(--chart-2)" stroke-width="2" stroke-linejoin="round"
+          points="48,93 114,91 180,94 246,90 312,92 378,86 444,91 510,93 576,89 642,92 708,88 774,91 840,90 906,93 972,89 1038,92 1108,91"/>
+        <polyline fill="none" stroke="var(--chart-3)" stroke-width="2" stroke-linejoin="round"
+          points="48,84 114,81 180,86 246,80 312,83 378,78 444,82 510,85 576,79 642,83 708,80 774,84 840,81 906,83 972,80 1038,82 1108,81"/>
+      </svg>
+    </section>
+
+    <!-- 7. Hardware & Billing Cards -->
+    <section class="charts-2">
+      <div class="panel spec-card">
+        <h3>硬件与系统</h3>
+        <dl class="spec-dl">
+          <div class="spec-item"><dt>CPU 型号</dt><dd>AMD EPYC 7763 64-Core</dd></div>
+          <div class="spec-item"><dt>架构 / 虚拟化</dt><dd>x86_64 / KVM</dd></div>
+          <div class="spec-item"><dt>操作系统</dt><dd>Debian GNU/Linux 12</dd></div>
+          <div class="spec-item"><dt>内核版本</dt><dd class="tnum">6.1.0-26-amd64</dd></div>
+        </dl>
+      </div>
+      <div class="panel spec-card">
+        <h3>流量与费用</h3>
+        <div class="billing-bar">
+          <div class="billing-bar-top">
+            <span>当期计费流量</span>
+            <span class="tnum">114 / 800 GB (14.2%)</span>
+          </div>
+          <i class="nc-bar" style="--v:14.2%"></i>
+        </div>
+        <dl class="spec-dl">
+          <div class="spec-item"><dt>计费方向 / 重置日</dt><dd class="tnum">双向合计 · 每月 1 日</dd></div>
+          <div class="spec-item"><dt>到期时间</dt><dd class="tnum">2027-02-11 (剩余 80 天)</dd></div>
+        </dl>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- ===== Footer + Visitor Bubble ===== -->
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-links">
+      <a href="#monitor" onclick="return false;">Powered by Monitor</a>
+      <span>·</span>
+      <a href="#dys" onclick="return false;">Theme by DYS v2.0</a>
+    </div>
+
+    <div class="visitor-wrap">
+      <div class="panel visitor-panel hidden" id="visitor-panel" data-testid="visitor-panel">
+        <div class="vp-head">
+          <span>访客连接信息</span>
+          <button type="button" class="btn" style="height:22px;padding:0 6px;font-size:11px" onclick="toggleVisitor()">收起</button>
+        </div>
+        <dl class="vp-dl">
+          <div class="vp-row"><dt>设备 / 系统</dt><dd>桌面端 · macOS</dd></div>
+          <div class="vp-row"><dt>浏览器版本</dt><dd class="tnum">Chrome 131</dd></div>
+          <div class="vp-row"><dt>地区 / 城市</dt><dd>🇨🇳 中国 · 上海</dd></div>
+          <div class="vp-row"><dt>运营商</dt><dd>China Telecom</dd></div>
+        </dl>
+      </div>
+      <button type="button" class="visitor-bubble" data-testid="visitor-bubble" onclick="toggleVisitor()">
+        <span>🇨🇳 中国</span>
+        <span class="visitor-sep">|</span>
+        <span>Chrome</span>
+      </button>
+    </div>
+
+    <div class="footer-right tnum">v2.0 原型预览</div>
+  </div>
+</footer>
+
+<script>
+function setTheme(next) {
+  const dark = next === 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.getElementById('theme-label').textContent = dark ? '浅色' : '深色';
+}
+function toggleTheme() {
+  setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+}
+function setView(view) {
+  const isDetail = view === 'detail';
+  document.getElementById('view-home').classList.toggle('hidden', isDetail);
+  document.getElementById('view-detail').classList.toggle('hidden', !isDetail);
+  document.getElementById('btn-view-home').setAttribute('aria-pressed', String(!isDetail));
+  document.getElementById('btn-view-detail').setAttribute('aria-pressed', String(isDetail));
+  window.scrollTo(0, 0);
+}
+function setLayout(mode) {
+  const isTable = mode === 'table';
+  document.getElementById('main-grid').classList.toggle('hidden', isTable);
+  document.getElementById('list-divider').classList.toggle('hidden', isTable);
+  document.getElementById('btn-mode-grid').setAttribute('aria-pressed', String(!isTable));
+  document.getElementById('btn-mode-table').setAttribute('aria-pressed', String(isTable));
+}
+function setRange(btn) {
+  btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
+}
+function toggleProbe(btn) {
+  btn.setAttribute('aria-pressed', String(btn.getAttribute('aria-pressed') !== 'true'));
+}
+function selectAllProbes() {
+  document.querySelectorAll('.probe-chip').forEach(b => b.setAttribute('aria-pressed', 'true'));
+}
+function toggleVisitor() {
+  document.getElementById('visitor-panel').classList.toggle('hidden');
+}
+// Support URL params ?theme=dark&view=detail for automated screenshots
+(function init() {
+  const p = new URLSearchParams(location.search);
+  if (p.get('theme') === 'dark') setTheme('dark');
+  if (p.get('view') === 'detail') setView('detail');
+})();
+</script>
+</body>
+</html>

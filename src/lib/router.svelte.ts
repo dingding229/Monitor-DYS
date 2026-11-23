@@ -7,7 +7,7 @@
 
 export type Route = { page: "home"; nodeId: null } | { page: "node"; nodeId: number }
 
-export function parsePath(pathname: string): Route {
+function parsePath(pathname: string): Route {
   const match = /^\/node\/(\d+)\/?$/.exec(pathname)
   if (match) {
     return { page: "node", nodeId: Number(match[1]) }

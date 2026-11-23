@@ -4,7 +4,7 @@
 import manifest from "../../theme.json"
 import { api, isObj, num } from "@/lib/api"
 
-export type ConfigField = {
+type ConfigField = {
   type: "title" | "select" | "string" | "boolean" | "text" | "number"
   key?: string
   default?: unknown
@@ -15,7 +15,14 @@ export type ConfigField = {
   max?: number
 }
 
+export type ColorScheme = "auto" | "light" | "dark"
+
+export function resolveColorScheme(value: unknown): ColorScheme {
+  return value === "light" || value === "dark" ? value : "auto"
+}
+
 export type ThemeConfig = {
+  color_scheme: ColorScheme
   layout: "grid" | "table"
   card_size: "compact" | "standard"
   accent: string
@@ -73,10 +80,11 @@ export function resolveConfig(
 ): ThemeConfig {
   const fields = extractFields(declared)
   const raw = isObj(saved) ? saved : {}
-  const result: Record<string, unknown> = {}
+  // Support this built-in setting before the manifest exposes it in the Hub.
+  const result: Record<string, unknown> = { color_scheme: resolveColorScheme(raw.color_scheme) }
 
   for (const field of fields) {
-    if (field.type === "title" || !field.key) continue
+    if (field.type === "title" || !field.key || field.key === "color_scheme") continue
     const key = field.key
     const def = field.default
     const val = raw[key]

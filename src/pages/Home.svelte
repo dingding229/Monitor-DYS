@@ -21,7 +21,7 @@
     expiryWarningDays = 7,
     selectedGroup = $bindable<GroupKey>(ALL_GROUP),
     selectedCountry = $bindable<string | null>(null),
-    sortKey = $bindable<SortKey>("default"),
+    sortKey = "default",
     searchQuery = $bindable<string>(""),
     onChangeLayout,
     onChangeSort,
@@ -145,11 +145,7 @@
           data-testid="sort-select"
           aria-label="排序方式"
           value={sortKey}
-          onchange={(e) => {
-            const next = (e.currentTarget as HTMLSelectElement).value as SortKey
-            sortKey = next
-            onChangeSort?.(next)
-          }}
+          onchange={(e) => onChangeSort?.(e.currentTarget.value as SortKey)}
           class="h-7 cursor-pointer rounded-lg border border-neutral-200 bg-white px-2.5 text-[12px] text-neutral-700 outline-none focus:border-neutral-400"
         >
           <option value="default">默认顺序</option>
